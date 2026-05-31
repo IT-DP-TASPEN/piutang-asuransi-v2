@@ -27,6 +27,9 @@ class ApprovalService
         ApprovalRequest::WORKFLOW_MONTHLY_CKPN_WORKPAPER => [
             ['role_name' => 'accounting_approver'],
         ],
+        ApprovalRequest::WORKFLOW_CKPN_JOURNAL_APPROVAL => [
+            ['role_name' => 'accounting_approver'],
+        ],
         ApprovalRequest::WORKFLOW_CKPN_ADJUSTMENT => [
             ['role_name' => 'accounting_approver'],
         ],

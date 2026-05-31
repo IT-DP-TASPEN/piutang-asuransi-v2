@@ -4,15 +4,20 @@ namespace App\Filament\Resources\CkpnWorkpapers\Pages;
 
 use App\Actions\Ckpn\GenerateMonthlyCkpnWorkpaperAction;
 use App\Actions\Ckpn\RecalculateCkpnWorkpaperAction;
+use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
 use App\Actions\CkpnWorkpaper\ApproveCkpnWorkpaperAction;
 use App\Actions\CkpnWorkpaper\RejectCkpnWorkpaperAction;
 use App\Actions\CkpnWorkpaper\ReturnCkpnWorkpaperAction;
 use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
+use App\Actions\GeneratedExport\GenerateCkpnWorkpaperSakepExportAction;
 use App\Filament\Resources\CkpnWorkpapers\CkpnWorkpaperResource;
 use App\Models\CkpnWorkpaper;
+use App\Models\GeneratedExport;
 use App\Models\User;
 use Filament\Actions\Action;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 
@@ -130,6 +135,57 @@ class EditCkpnWorkpaper extends EditRecord
                     $this->refreshWorkpaperData();
 
                     Notification::make()->success()->title('CKPN workpaper returned')->send();
+                }),
+            Action::make('createJournal')
+                ->label('Create CKPN journal')
+                ->visible(fn (): bool => (auth()->user()?->can('createJournal', $this->getRecord()) ?? false)
+                    && $this->getRecord()->status === CkpnWorkpaper::STATUS_APPROVED)
+                ->form([
+                    DatePicker::make('journal_date')
+                        ->default(now())
+                        ->required(),
+                    TextInput::make('debit_account')
+                        ->maxLength(255),
+                    TextInput::make('credit_account')
+                        ->maxLength(255),
+                    Textarea::make('debit_narrative')
+                        ->maxLength(65535),
+                    Textarea::make('credit_narrative')
+                        ->maxLength(65535),
+                    Textarea::make('description')
+                        ->maxLength(65535),
+                ])
+                ->action(function (array $data): void {
+                    $user = auth()->user();
+
+                    if (! $user instanceof User) {
+                        return;
+                    }
+
+                    app(CreateCkpnJournalFromWorkpaperAction::class)->handle($this->getRecord(), $user, $data);
+
+                    Notification::make()->success()->title('CKPN journal draft created')->send();
+                }),
+            Action::make('generateSakepExport')
+                ->label('Generate SAKEP XLSX')
+                ->visible(fn (): bool => (auth()->user()?->can('generateExport', $this->getRecord()) ?? false)
+                    && $this->getRecord()->status === CkpnWorkpaper::STATUS_APPROVED)
+                ->action(function (): void {
+                    $user = auth()->user();
+
+                    if (! $user instanceof User) {
+                        return;
+                    }
+
+                    $export = app(GenerateCkpnWorkpaperSakepExportAction::class)->handle($this->getRecord(), $user);
+
+                    if ($export->status === GeneratedExport::STATUS_FAILED) {
+                        Notification::make()->danger()->title('SAKEP export failed')->send();
+
+                        return;
+                    }
+
+                    Notification::make()->success()->title('SAKEP XLSX generated')->send();
                 }),
         ];
     }

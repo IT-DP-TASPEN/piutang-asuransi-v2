@@ -100,6 +100,16 @@ class CkpnWorkpaperPolicy
         return $this->can($user, 'Return') && $this->canAccessRecord($user, $ckpnWorkpaper);
     }
 
+    public function createJournal(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
+    {
+        return $this->can($user, 'CreateJournal') && $this->canAccessRecord($user, $ckpnWorkpaper);
+    }
+
+    public function generateExport(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
+    {
+        return $this->can($user, 'GenerateExport') && $this->canAccessRecord($user, $ckpnWorkpaper);
+    }
+
     private function can(User $user, string $action): bool
     {
         return $user->can("{$action}:".self::SUBJECT);

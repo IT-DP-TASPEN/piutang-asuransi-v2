@@ -9,20 +9,23 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 #[Fillable([
-    'period',
+    'ckpn_workpaper_id',
     'branch_office_id',
+    'journal_date',
+    'total_amount',
+    'debit_account',
+    'credit_account',
+    'debit_narrative',
+    'credit_narrative',
+    'description',
     'status',
     'created_by',
     'approved_by',
     'approved_at',
-    'total_receivable_amount',
-    'total_ckpn_amount',
 ])]
-class CkpnWorkpaper extends Model
+class CkpnJournal extends Model
 {
     public const STATUS_DRAFT = 'draft';
-
-    public const STATUS_GENERATED = 'generated';
 
     public const STATUS_SUBMITTED = 'submitted';
 
@@ -32,8 +35,6 @@ class CkpnWorkpaper extends Model
 
     public const STATUS_RETURNED = 'returned';
 
-    public const STATUS_LOCKED = 'locked';
-
     /**
      * @return array<string, string>
      */
@@ -41,13 +42,19 @@ class CkpnWorkpaper extends Model
     {
         return [
             self::STATUS_DRAFT => 'Draft',
-            self::STATUS_GENERATED => 'Generated',
             self::STATUS_SUBMITTED => 'Submitted',
             self::STATUS_APPROVED => 'Approved',
             self::STATUS_REJECTED => 'Rejected',
             self::STATUS_RETURNED => 'Returned',
-            self::STATUS_LOCKED => 'Locked',
         ];
+    }
+
+    /**
+     * @return BelongsTo<CkpnWorkpaper, $this>
+     */
+    public function ckpnWorkpaper(): BelongsTo
+    {
+        return $this->belongsTo(CkpnWorkpaper::class);
     }
 
     /**
@@ -75,43 +82,11 @@ class CkpnWorkpaper extends Model
     }
 
     /**
-     * @return HasMany<CkpnWorkpaperItem, $this>
-     */
-    public function items(): HasMany
-    {
-        return $this->hasMany(CkpnWorkpaperItem::class);
-    }
-
-    /**
-     * @return HasMany<CkpnAdjustment, $this>
-     */
-    public function adjustments(): HasMany
-    {
-        return $this->hasMany(CkpnAdjustment::class);
-    }
-
-    /**
-     * @return HasMany<CkpnJournal, $this>
-     */
-    public function journals(): HasMany
-    {
-        return $this->hasMany(CkpnJournal::class);
-    }
-
-    /**
      * @return HasMany<GlToGlTransaction, $this>
      */
     public function glToGlTransactions(): HasMany
     {
         return $this->hasMany(GlToGlTransaction::class);
-    }
-
-    /**
-     * @return MorphMany<GeneratedExport, $this>
-     */
-    public function generatedExports(): MorphMany
-    {
-        return $this->morphMany(GeneratedExport::class, 'exportable');
     }
 
     /**
@@ -130,10 +105,9 @@ class CkpnWorkpaper extends Model
     protected function casts(): array
     {
         return [
-            'period' => 'date',
+            'journal_date' => 'date',
+            'total_amount' => 'decimal:2',
             'approved_at' => 'datetime',
-            'total_receivable_amount' => 'decimal:2',
-            'total_ckpn_amount' => 'decimal:2',
         ];
     }
 }

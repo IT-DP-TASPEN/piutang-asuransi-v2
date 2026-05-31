@@ -51,6 +51,9 @@ class RolePermissionSeeder extends Seeder
             'CkpnWorkpaper',
             'CkpnWorkpaperItem',
             'CkpnAdjustment',
+            'CkpnJournal',
+            'GeneratedExport',
+            'GlToGlTransaction',
             'ApiIntegrationLog',
             'Role',
         ];
@@ -84,6 +87,13 @@ class RolePermissionSeeder extends Seeder
                 'Approve:CkpnAdjustment',
                 'Reject:CkpnAdjustment',
                 'Return:CkpnAdjustment',
+                'CreateJournal:CkpnWorkpaper',
+                'GenerateExport:CkpnWorkpaper',
+                'Submit:CkpnJournal',
+                'Approve:CkpnJournal',
+                'Reject:CkpnJournal',
+                'Return:CkpnJournal',
+                'ExecuteGlToGl:CkpnJournal',
             ]);
 
         $permissions->each(fn (string $permission): Permission => Permission::query()->firstOrCreate([
@@ -147,6 +157,12 @@ class RolePermissionSeeder extends Seeder
             'View:CkpnWorkpaperItem',
             'ViewAny:CkpnAdjustment',
             'View:CkpnAdjustment',
+            'ViewAny:CkpnJournal',
+            'View:CkpnJournal',
+            'ViewAny:GeneratedExport',
+            'View:GeneratedExport',
+            'ViewAny:GlToGlTransaction',
+            'View:GlToGlTransaction',
             'ViewAny:ApiIntegrationLog',
             'View:ApiIntegrationLog',
         ];
@@ -173,6 +189,8 @@ class RolePermissionSeeder extends Seeder
             'Update:ReceivableFormationJournal',
             'Create:EarlyTerminationTransaction',
             'Update:EarlyTerminationTransaction',
+            'Submit:CkpnJournal',
+            'Update:CkpnJournal',
         ]);
 
         $roles->get('business_maker')->syncPermissions([
@@ -191,6 +209,11 @@ class RolePermissionSeeder extends Seeder
             'Create:CkpnAdjustment',
             'Update:CkpnAdjustment',
             'Submit:CkpnAdjustment',
+            'CreateJournal:CkpnWorkpaper',
+            'GenerateExport:CkpnWorkpaper',
+            'Create:CkpnJournal',
+            'Update:CkpnJournal',
+            'Create:GeneratedExport',
         ]);
 
         $roles->get('business_approver')->syncPermissions([
@@ -207,6 +230,12 @@ class RolePermissionSeeder extends Seeder
             'Approve:CkpnAdjustment',
             'Reject:CkpnAdjustment',
             'Return:CkpnAdjustment',
+            'Approve:CkpnJournal',
+            'Reject:CkpnJournal',
+            'Return:CkpnJournal',
+            'ExecuteGlToGl:CkpnJournal',
+            'Create:GlToGlTransaction',
+            'Update:GlToGlTransaction',
         ]);
 
         $roles->get('branch_maker')->syncPermissions([
@@ -228,6 +257,12 @@ class RolePermissionSeeder extends Seeder
             'View:CkpnWorkpaperItem',
             'ViewAny:CkpnAdjustment',
             'View:CkpnAdjustment',
+            'ViewAny:CkpnJournal',
+            'View:CkpnJournal',
+            'ViewAny:GeneratedExport',
+            'View:GeneratedExport',
+            'ViewAny:GlToGlTransaction',
+            'View:GlToGlTransaction',
             'Create:InsuranceReceivableDocument',
             'Update:InsuranceReceivableDocument',
             'Delete:InsuranceReceivableDocument',
@@ -252,6 +287,12 @@ class RolePermissionSeeder extends Seeder
             'View:CkpnWorkpaperItem',
             'ViewAny:CkpnAdjustment',
             'View:CkpnAdjustment',
+            'ViewAny:CkpnJournal',
+            'View:CkpnJournal',
+            'ViewAny:GeneratedExport',
+            'View:GeneratedExport',
+            'ViewAny:GlToGlTransaction',
+            'View:GlToGlTransaction',
             'ViewAny:ApprovalRequest',
             'View:ApprovalRequest',
             'ViewAny:ApprovalStep',
