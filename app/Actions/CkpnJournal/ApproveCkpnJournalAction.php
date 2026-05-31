@@ -6,7 +6,6 @@ use App\Models\ApprovalRequest;
 use App\Models\CkpnJournal;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ApproveCkpnJournalAction
@@ -17,20 +16,9 @@ class ApproveCkpnJournalAction
 
     public function handle(CkpnJournal $journal, User $user, ?string $notes = null): CkpnJournal
     {
-        return DB::transaction(function () use ($journal, $user, $notes): CkpnJournal {
-            $approvalRequest = $this->activeApprovalRequestFor($journal);
-            $approvalRequest = $this->approvalService->approveCurrentStep($approvalRequest, $user, $notes);
+        $this->approvalService->approveCurrentStep($this->activeApprovalRequestFor($journal), $user, $notes);
 
-            if ($approvalRequest->status === ApprovalRequest::STATUS_APPROVED) {
-                $journal->forceFill([
-                    'status' => CkpnJournal::STATUS_APPROVED,
-                    'approved_by' => $user->id,
-                    'approved_at' => now(),
-                ])->save();
-            }
-
-            return $journal->refresh();
-        });
+        return $journal->refresh();
     }
 
     private function activeApprovalRequestFor(CkpnJournal $journal): ApprovalRequest

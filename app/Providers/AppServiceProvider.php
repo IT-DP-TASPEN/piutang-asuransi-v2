@@ -10,6 +10,7 @@ use App\Models\ClaimStatus;
 use App\Models\InsuranceCompany;
 use App\Models\InsuranceReceivable;
 use App\Models\InsuranceReceivableDocument;
+use App\Observers\InsuranceReceivableObserver;
 use App\Policies\ApiIntegrationLogPolicy;
 use App\Policies\BranchOfficePolicy;
 use App\Policies\CkpnAgeBucketPolicy;
@@ -47,5 +48,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(InsuranceReceivableDocument::class, InsuranceReceivableDocumentPolicy::class);
         Gate::policy(ApiIntegrationLog::class, ApiIntegrationLogPolicy::class);
         Gate::policy(Role::class, RolePolicy::class);
+
+        InsuranceReceivable::observe(InsuranceReceivableObserver::class);
     }
 }

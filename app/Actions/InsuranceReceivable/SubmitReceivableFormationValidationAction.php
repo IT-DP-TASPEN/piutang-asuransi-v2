@@ -7,6 +7,7 @@ use App\Models\InsuranceReceivable;
 use App\Models\ReceivableFormationJournal;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
+use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -14,6 +15,7 @@ class SubmitReceivableFormationValidationAction
 {
     public function __construct(
         private readonly ApprovalService $approvalService,
+        private readonly InsuranceReceivableStageLogger $stageLogger,
     ) {}
 
     /**
@@ -38,7 +40,7 @@ class SubmitReceivableFormationValidationAction
                 'created_by' => $user->id,
             ]);
 
-            $this->approvalService->submit(
+            $approvalRequest = $this->approvalService->submit(
                 approvable: $insuranceReceivable,
                 workflowCode: ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION,
                 actor: $user,
@@ -50,6 +52,16 @@ class SubmitReceivableFormationValidationAction
                 'receivable_amount' => $journal->amount,
                 'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
             ])->save();
+
+            $this->stageLogger->log(
+                receivable: $insuranceReceivable,
+                event: 'accounting_validation_submitted',
+                fromStatus: InsuranceReceivable::WORKFLOW_STATUS_BRANCH_APPROVED,
+                toStatus: InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
+                description: 'Accounting validation submitted.',
+                actor: $user,
+                approvalRequest: $approvalRequest,
+            );
 
             return $insuranceReceivable->refresh();
         });

@@ -101,6 +101,14 @@ class InsuranceReceivableForm
                             ->label('Workflow status')
                             ->disabled()
                             ->dehydrated(false),
+                        TextInput::make('system_status')
+                            ->label('System status')
+                            ->disabled()
+                            ->dehydrated(false),
+                        TextInput::make('last_error_message')
+                            ->label('Last error')
+                            ->disabled()
+                            ->dehydrated(false),
                     ])
                     ->columns(2),
             ]);

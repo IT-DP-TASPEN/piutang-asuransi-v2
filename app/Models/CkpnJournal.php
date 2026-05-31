@@ -35,6 +35,14 @@ class CkpnJournal extends Model
 
     public const STATUS_RETURNED = 'returned';
 
+    public const STATUS_GL_TO_GL_QUEUED = 'gl_to_gl_queued';
+
+    public const STATUS_GL_TO_GL_PROCESSING = 'gl_to_gl_processing';
+
+    public const STATUS_GL_TO_GL_EXECUTED = 'gl_to_gl_executed';
+
+    public const STATUS_GL_TO_GL_FAILED = 'gl_to_gl_failed';
+
     /**
      * @return array<string, string>
      */
@@ -46,6 +54,10 @@ class CkpnJournal extends Model
             self::STATUS_APPROVED => 'Approved',
             self::STATUS_REJECTED => 'Rejected',
             self::STATUS_RETURNED => 'Returned',
+            self::STATUS_GL_TO_GL_QUEUED => 'GL-to-GL queued',
+            self::STATUS_GL_TO_GL_PROCESSING => 'GL-to-GL processing',
+            self::STATUS_GL_TO_GL_EXECUTED => 'GL-to-GL executed',
+            self::STATUS_GL_TO_GL_FAILED => 'GL-to-GL failed',
         ];
     }
 

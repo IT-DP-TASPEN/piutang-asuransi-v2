@@ -141,12 +141,19 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
      */
     private function receivableFor(User $user, array $attributes = []): InsuranceReceivable
     {
-        return InsuranceReceivable::factory()->create([
+        $receivable = InsuranceReceivable::factory()->create([
             'branch_office_id' => $user->branch_office_id,
             'branch_code' => $user->branchOffice->branch_code,
             'created_by' => $user->id,
             ...$attributes,
         ]);
+
+        $receivable->forceFill([
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
+            'inquiry_completed_at' => now(),
+        ])->saveQuietly();
+
+        return $receivable->refresh();
     }
 
     private function userWithRole(string $role, string $branchCode): User

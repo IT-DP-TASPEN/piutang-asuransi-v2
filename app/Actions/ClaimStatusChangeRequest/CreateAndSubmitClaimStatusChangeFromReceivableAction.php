@@ -4,32 +4,26 @@ namespace App\Actions\ClaimStatusChangeRequest;
 
 use App\Models\ApprovalRequest;
 use App\Models\ClaimStatusChangeRequest;
+use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
-class SubmitClaimStatusChangeRequestAction
+class CreateAndSubmitClaimStatusChangeFromReceivableAction
 {
     public function __construct(
         private readonly ApprovalService $approvalService,
         private readonly InsuranceReceivableStageLogger $stageLogger,
     ) {}
 
-    public function handle(ClaimStatusChangeRequest $request, User $user, ?string $notes = null): ClaimStatusChangeRequest
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function handle(InsuranceReceivable $receivable, User $user, array $data): ClaimStatusChangeRequest
     {
-        if (! in_array($request->status, [
-            ClaimStatusChangeRequest::STATUS_DRAFT,
-            ClaimStatusChangeRequest::STATUS_RETURNED,
-        ], true)) {
-            throw ValidationException::withMessages([
-                'status' => 'Only draft or returned claim status requests can be submitted.',
-            ]);
-        }
-
-        if ($request->insuranceReceivable->claimStatusChangeRequests()
-            ->whereKeyNot($request->id)
+        if ($receivable->claimStatusChangeRequests()
             ->where('status', ClaimStatusChangeRequest::STATUS_SUBMITTED)
             ->exists()) {
             throw ValidationException::withMessages([
@@ -37,26 +31,29 @@ class SubmitClaimStatusChangeRequestAction
             ]);
         }
 
-        return DB::transaction(function () use ($request, $user, $notes): ClaimStatusChangeRequest {
-            $request->forceFill([
-                'from_claim_status_id' => $request->insuranceReceivable->claim_status_id,
-                'requested_by' => $request->requested_by ?? $user->id,
+        return DB::transaction(function () use ($receivable, $user, $data): ClaimStatusChangeRequest {
+            $request = $receivable->claimStatusChangeRequests()->create([
+                'from_claim_status_id' => $receivable->claim_status_id,
+                'to_claim_status_id' => $data['to_claim_status_id'] ?? null,
+                'reason' => $data['reason'] ?? null,
+                'supporting_document_path' => $data['supporting_document_path'] ?? null,
+                'requested_by' => $user->id,
                 'status' => ClaimStatusChangeRequest::STATUS_SUBMITTED,
-            ])->save();
+            ]);
 
             $approvalRequest = $this->approvalService->submit(
                 approvable: $request,
                 workflowCode: ApprovalRequest::WORKFLOW_CLAIM_STATUS_UPDATE,
                 actor: $user,
-                notes: $notes,
+                notes: $data['reason'] ?? null,
             );
 
             $this->stageLogger->log(
-                receivable: $request->insuranceReceivable,
+                receivable: $receivable,
                 event: 'claim_status_update_requested',
-                fromStatus: $request->fromClaimStatus?->code,
+                fromStatus: $receivable->claimStatus?->code,
                 toStatus: $request->toClaimStatus?->code,
-                description: $notes ?: ($request->reason ?: 'Claim status update requested.'),
+                description: $request->reason ?: 'Claim status update requested.',
                 actor: $user,
                 approvalRequest: $approvalRequest,
             );

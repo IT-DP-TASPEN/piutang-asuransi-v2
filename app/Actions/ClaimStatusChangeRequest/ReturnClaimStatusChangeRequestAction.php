@@ -6,6 +6,7 @@ use App\Models\ApprovalRequest;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
+use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -13,6 +14,7 @@ class ReturnClaimStatusChangeRequestAction
 {
     public function __construct(
         private readonly ApprovalService $approvalService,
+        private readonly InsuranceReceivableStageLogger $stageLogger,
     ) {}
 
     public function handle(ClaimStatusChangeRequest $claimStatusChangeRequest, User $user, ?string $notes = null): ClaimStatusChangeRequest
@@ -24,6 +26,16 @@ class ReturnClaimStatusChangeRequestAction
             $claimStatusChangeRequest->forceFill([
                 'status' => ClaimStatusChangeRequest::STATUS_RETURNED,
             ])->save();
+
+            $this->stageLogger->log(
+                receivable: $claimStatusChangeRequest->insuranceReceivable,
+                event: 'claim_status_update_returned',
+                fromStatus: $claimStatusChangeRequest->fromClaimStatus?->code,
+                toStatus: $claimStatusChangeRequest->toClaimStatus?->code,
+                description: $notes ?: 'Claim status update returned.',
+                actor: $user,
+                approvalRequest: $approvalRequest,
+            );
 
             return $claimStatusChangeRequest->refresh();
         });

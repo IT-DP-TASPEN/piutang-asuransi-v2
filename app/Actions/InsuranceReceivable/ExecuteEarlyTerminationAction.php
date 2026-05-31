@@ -16,9 +16,12 @@ class ExecuteEarlyTerminationAction
         private readonly CoreBankingClient $coreBankingClient,
     ) {}
 
-    public function handle(InsuranceReceivable $insuranceReceivable, User $user): EarlyTerminationTransaction
+    public function handle(InsuranceReceivable $insuranceReceivable, ?User $user = null): EarlyTerminationTransaction
     {
-        if ($insuranceReceivable->workflow_status !== InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED) {
+        if ($insuranceReceivable->workflow_status !== InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED
+            && $insuranceReceivable->system_status !== InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED
+            && $insuranceReceivable->system_status !== InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED
+            && $insuranceReceivable->system_status !== InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING) {
             throw ValidationException::withMessages([
                 'workflow_status' => 'Early termination requires receivable formed status.',
             ]);
@@ -52,7 +55,7 @@ class ExecuteEarlyTerminationAction
                 'core_trx_reference' => $this->stringValue($data['trxReference'] ?? null),
                 'alternate_number' => $this->stringValue($data['alternateNumber'] ?? null),
                 'status' => $isSuccess ? EarlyTerminationTransaction::STATUS_SUCCESS : EarlyTerminationTransaction::STATUS_FAILED,
-                'executed_by' => $user->id,
+                'executed_by' => $user?->id,
                 'executed_at' => now(),
             ])->save();
 
@@ -66,7 +69,7 @@ class ExecuteEarlyTerminationAction
         });
     }
 
-    private function findOrCreateTransaction(InsuranceReceivable $insuranceReceivable, User $user): EarlyTerminationTransaction
+    private function findOrCreateTransaction(InsuranceReceivable $insuranceReceivable, ?User $user): EarlyTerminationTransaction
     {
         $existing = $insuranceReceivable->earlyTerminationTransactions()
             ->where('status', '!=', EarlyTerminationTransaction::STATUS_SUCCESS)
@@ -85,7 +88,7 @@ class ExecuteEarlyTerminationAction
                     'trx_reference' => $reference,
                     'request_payload' => $this->payloadFor($insuranceReceivable, $reference),
                     'status' => EarlyTerminationTransaction::STATUS_PENDING,
-                    'executed_by' => $user->id,
+                    'executed_by' => $user?->id,
                 ]);
             } catch (QueryException $exception) {
                 if ($exception->getCode() !== '23000' && ! str_contains($exception->getMessage(), 'UNIQUE')) {

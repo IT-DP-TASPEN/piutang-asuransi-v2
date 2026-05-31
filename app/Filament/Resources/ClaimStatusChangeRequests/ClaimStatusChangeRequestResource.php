@@ -33,6 +33,11 @@ class ClaimStatusChangeRequestResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'id';
 
+    public static function shouldRegisterNavigation(): bool
+    {
+        return auth()->user()?->hasAnyRole(['super_admin', 'auditor']) ?? false;
+    }
+
     public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery();

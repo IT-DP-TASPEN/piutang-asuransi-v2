@@ -11,6 +11,10 @@ use Illuminate\Validation\ValidationException;
 
 class ApprovalService
 {
+    public function __construct(
+        private readonly ApprovalFinalizationService $finalizationService,
+    ) {}
+
     /**
      * @var array<string, list<array{role_name: string|null}>>
      */
@@ -99,6 +103,7 @@ class ApprovalService
                 ])->save();
 
                 $this->writeLog($request, $actor, 'approved', $notes);
+                $this->finalizationService->finalize($request, $actor, $notes);
             }
 
             return $request->refresh();

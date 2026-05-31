@@ -45,6 +45,10 @@ class InsuranceReceivablesTable
                     ->label('Workflow')
                     ->badge()
                     ->sortable(),
+                TextColumn::make('system_status')
+                    ->label('System')
+                    ->badge()
+                    ->sortable(),
                 TextColumn::make('created_at')
                     ->label('Created')
                     ->dateTime()
@@ -69,6 +73,9 @@ class InsuranceReceivablesTable
                 SelectFilter::make('workflow_status')
                     ->label('Workflow status')
                     ->options(InsuranceReceivable::workflowStatusOptions()),
+                SelectFilter::make('system_status')
+                    ->label('System status')
+                    ->options(InsuranceReceivable::systemStatusOptions()),
             ])
             ->recordActions([
                 ViewAction::make(),

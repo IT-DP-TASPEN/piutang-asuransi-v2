@@ -18,9 +18,14 @@ class ExecuteGlToGlTransferAction
         private readonly GlToGlPayloadBuilder $payloadBuilder,
     ) {}
 
-    public function handle(CkpnJournal $journal, User $user): GlToGlTransaction
+    public function handle(CkpnJournal $journal, ?User $user = null): GlToGlTransaction
     {
-        if ($journal->status !== CkpnJournal::STATUS_APPROVED) {
+        if (! in_array($journal->status, [
+            CkpnJournal::STATUS_APPROVED,
+            CkpnJournal::STATUS_GL_TO_GL_QUEUED,
+            CkpnJournal::STATUS_GL_TO_GL_PROCESSING,
+            CkpnJournal::STATUS_GL_TO_GL_FAILED,
+        ], true)) {
             throw ValidationException::withMessages([
                 'status' => 'GL-to-GL transfer requires an approved CKPN journal.',
             ]);
@@ -53,7 +58,7 @@ class ExecuteGlToGlTransferAction
                 'response_code' => $result['response_code'],
                 'response_description' => $result['description'],
                 'status' => $isSuccess ? GlToGlTransaction::STATUS_SUCCESS : GlToGlTransaction::STATUS_FAILED,
-                'executed_by' => $user->id,
+                'executed_by' => $user?->id,
                 'executed_at' => now(),
             ])->save();
 
@@ -61,7 +66,7 @@ class ExecuteGlToGlTransferAction
         });
     }
 
-    private function findOrCreateTransaction(CkpnJournal $journal, User $user): GlToGlTransaction
+    private function findOrCreateTransaction(CkpnJournal $journal, ?User $user): GlToGlTransaction
     {
         $existing = $journal->glToGlTransactions()
             ->where(fn ($query) => $query
@@ -86,7 +91,7 @@ class ExecuteGlToGlTransferAction
                     'receipt_number' => $receiptNumber,
                     'request_payload' => $this->payloadBuilder->build($journal, $referenceNumber, $receiptNumber),
                     'status' => GlToGlTransaction::STATUS_PENDING,
-                    'executed_by' => $user->id,
+                    'executed_by' => $user?->id,
                 ]);
             } catch (QueryException $exception) {
                 if ($exception->getCode() !== '23000' && ! str_contains($exception->getMessage(), 'UNIQUE')) {

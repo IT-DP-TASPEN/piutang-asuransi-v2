@@ -3,11 +3,11 @@
 namespace App\Filament\Resources\CkpnJournals\Pages;
 
 use App\Actions\CkpnJournal\ApproveCkpnJournalAction;
-use App\Actions\CkpnJournal\ExecuteGlToGlTransferAction;
 use App\Actions\CkpnJournal\RejectCkpnJournalAction;
 use App\Actions\CkpnJournal\ReturnCkpnJournalAction;
 use App\Actions\CkpnJournal\SubmitCkpnJournalAction;
 use App\Filament\Resources\CkpnJournals\CkpnJournalResource;
+use App\Jobs\ExecuteGlToGlJob;
 use App\Models\CkpnJournal;
 use App\Models\User;
 use Filament\Actions\Action;
@@ -102,11 +102,11 @@ class EditCkpnJournal extends EditRecord
                     Notification::make()->success()->title('CKPN journal returned')->send();
                 }),
             Action::make('executeGlToGl')
-                ->label('Execute GL-to-GL')
+                ->label('Retry GL-to-GL')
                 ->color('danger')
                 ->requiresConfirmation()
                 ->visible(fn (): bool => (auth()->user()?->can('executeGlToGl', $this->getRecord()) ?? false)
-                    && $this->getRecord()->status === CkpnJournal::STATUS_APPROVED)
+                    && $this->getRecord()->status === CkpnJournal::STATUS_GL_TO_GL_FAILED)
                 ->action(function (): void {
                     $user = auth()->user();
 
@@ -114,9 +114,10 @@ class EditCkpnJournal extends EditRecord
                         return;
                     }
 
-                    app(ExecuteGlToGlTransferAction::class)->handle($this->getRecord(), $user);
+                    $this->getRecord()->forceFill(['status' => CkpnJournal::STATUS_GL_TO_GL_QUEUED])->save();
+                    ExecuteGlToGlJob::dispatch($this->getRecord()->id, $user->id)->afterCommit();
 
-                    Notification::make()->success()->title('GL-to-GL request executed')->send();
+                    Notification::make()->success()->title('GL-to-GL retry queued')->send();
                 }),
         ];
     }

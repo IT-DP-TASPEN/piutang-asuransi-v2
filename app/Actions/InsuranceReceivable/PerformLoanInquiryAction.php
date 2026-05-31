@@ -6,7 +6,6 @@ use App\Models\BranchOffice;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\CoreBanking\CoreBankingClient;
-use App\Support\Access\RoleScope;
 use Carbon\CarbonImmutable;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -40,7 +39,7 @@ class PerformLoanInquiryAction
             ]);
         }
 
-        if (RoleScope::isBranchScoped($user) && $user->branchOffice?->branch_code !== $branchCode) {
+        if ($user->branchOffice?->branch_code !== $branchCode) {
             throw ValidationException::withMessages([
                 'loan_account_number' => "Loan branch {$branchCode} does not match your branch {$user->branchOffice?->branch_code}.",
             ]);

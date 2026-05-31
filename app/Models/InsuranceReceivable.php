@@ -33,10 +33,14 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'receivable_formation_date',
     'receivable_amount',
     'workflow_status',
+    'system_status',
+    'last_error_message',
     'stage',
     'created_by',
     'submitted_at',
     'approved_at',
+    'inquiry_completed_at',
+    'early_termination_executed_at',
 ])]
 class InsuranceReceivable extends Model
 {
@@ -59,6 +63,24 @@ class InsuranceReceivable extends Model
 
     public const WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED = 'early_termination_executed';
 
+    public const SYSTEM_STATUS_INQUIRY_QUEUED = 'inquiry_queued';
+
+    public const SYSTEM_STATUS_INQUIRY_PROCESSING = 'inquiry_processing';
+
+    public const SYSTEM_STATUS_INQUIRY_COMPLETED = 'inquiry_completed';
+
+    public const SYSTEM_STATUS_INQUIRY_FAILED = 'inquiry_failed';
+
+    public const SYSTEM_STATUS_BRANCH_VALIDATION_FAILED = 'branch_validation_failed';
+
+    public const SYSTEM_STATUS_EARLY_TERMINATION_QUEUED = 'early_termination_queued';
+
+    public const SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING = 'early_termination_processing';
+
+    public const SYSTEM_STATUS_EARLY_TERMINATION_EXECUTED = 'early_termination_executed';
+
+    public const SYSTEM_STATUS_EARLY_TERMINATION_FAILED = 'early_termination_failed';
+
     /**
      * @return array<string, string>
      */
@@ -73,6 +95,24 @@ class InsuranceReceivable extends Model
             self::WORKFLOW_STATUS_ACCOUNTING_VALIDATION => 'Accounting validation',
             self::WORKFLOW_STATUS_RECEIVABLE_FORMED => 'Receivable formed',
             self::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED => 'Early termination executed',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function systemStatusOptions(): array
+    {
+        return [
+            self::SYSTEM_STATUS_INQUIRY_QUEUED => 'Inquiry queued',
+            self::SYSTEM_STATUS_INQUIRY_PROCESSING => 'Inquiry processing',
+            self::SYSTEM_STATUS_INQUIRY_COMPLETED => 'Inquiry completed',
+            self::SYSTEM_STATUS_INQUIRY_FAILED => 'Inquiry failed',
+            self::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED => 'Branch validation failed',
+            self::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED => 'Early termination queued',
+            self::SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING => 'Early termination processing',
+            self::SYSTEM_STATUS_EARLY_TERMINATION_EXECUTED => 'Early termination executed',
+            self::SYSTEM_STATUS_EARLY_TERMINATION_FAILED => 'Early termination failed',
         ];
     }
 
@@ -181,6 +221,14 @@ class InsuranceReceivable extends Model
     }
 
     /**
+     * @return HasMany<InsuranceReceivableStageLog, $this>
+     */
+    public function stageLogs(): HasMany
+    {
+        return $this->hasMany(InsuranceReceivableStageLog::class)->latest('created_at')->latest('id');
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -198,6 +246,8 @@ class InsuranceReceivable extends Model
             'receivable_amount' => 'decimal:2',
             'submitted_at' => 'datetime',
             'approved_at' => 'datetime',
+            'inquiry_completed_at' => 'datetime',
+            'early_termination_executed_at' => 'datetime',
         ];
     }
 }

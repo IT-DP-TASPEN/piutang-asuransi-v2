@@ -7,6 +7,7 @@ use App\Models\InsuranceReceivable;
 use App\Models\ReceivableFormationJournal;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
+use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -14,6 +15,7 @@ class ReturnInsuranceReceivableApprovalAction
 {
     public function __construct(
         private readonly ApprovalService $approvalService,
+        private readonly InsuranceReceivableStageLogger $stageLogger,
     ) {}
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, ?string $notes = null): InsuranceReceivable
@@ -34,6 +36,18 @@ class ReturnInsuranceReceivableApprovalAction
             $insuranceReceivable->forceFill([
                 'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RETURNED,
             ])->save();
+
+            $this->stageLogger->log(
+                receivable: $insuranceReceivable,
+                event: $request->workflow_code === ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION
+                    ? 'accounting_validation_returned'
+                    : 'approval_returned',
+                fromStatus: null,
+                toStatus: InsuranceReceivable::WORKFLOW_STATUS_RETURNED,
+                description: $notes ?: 'Approval returned.',
+                actor: $user,
+                approvalRequest: $request,
+            );
 
             return $insuranceReceivable->refresh();
         });

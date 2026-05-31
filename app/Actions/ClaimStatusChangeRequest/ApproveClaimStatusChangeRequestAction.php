@@ -6,7 +6,6 @@ use App\Models\ApprovalRequest;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ApproveClaimStatusChangeRequestAction
@@ -17,26 +16,9 @@ class ApproveClaimStatusChangeRequestAction
 
     public function handle(ClaimStatusChangeRequest $claimStatusChangeRequest, User $user, ?string $notes = null): ClaimStatusChangeRequest
     {
-        return DB::transaction(function () use ($claimStatusChangeRequest, $user, $notes): ClaimStatusChangeRequest {
-            $approvalRequest = $this->activeApprovalRequestFor($claimStatusChangeRequest);
-            $approvalRequest = $this->approvalService->approveCurrentStep($approvalRequest, $user, $notes);
+        $this->approvalService->approveCurrentStep($this->activeApprovalRequestFor($claimStatusChangeRequest), $user, $notes);
 
-            if ($approvalRequest->status !== ApprovalRequest::STATUS_APPROVED) {
-                return $claimStatusChangeRequest->refresh();
-            }
-
-            $claimStatusChangeRequest->insuranceReceivable->forceFill([
-                'claim_status_id' => $claimStatusChangeRequest->to_claim_status_id,
-            ])->save();
-
-            $claimStatusChangeRequest->forceFill([
-                'status' => ClaimStatusChangeRequest::STATUS_APPROVED,
-                'approved_by' => $user->id,
-                'approved_at' => now(),
-            ])->save();
-
-            return $claimStatusChangeRequest->refresh();
-        });
+        return $claimStatusChangeRequest->refresh();
     }
 
     private function activeApprovalRequestFor(ClaimStatusChangeRequest $claimStatusChangeRequest): ApprovalRequest
