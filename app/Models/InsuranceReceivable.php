@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
@@ -43,6 +44,37 @@ class InsuranceReceivable extends Model
     use HasFactory, SoftDeletes;
 
     public const WORKFLOW_STATUS_DRAFT = 'draft';
+
+    public const WORKFLOW_STATUS_SUBMITTED = 'submitted';
+
+    public const WORKFLOW_STATUS_BRANCH_APPROVED = 'branch_approved';
+
+    public const WORKFLOW_STATUS_RETURNED = 'returned';
+
+    public const WORKFLOW_STATUS_REJECTED = 'rejected';
+
+    public const WORKFLOW_STATUS_ACCOUNTING_VALIDATION = 'accounting_validation';
+
+    public const WORKFLOW_STATUS_RECEIVABLE_FORMED = 'receivable_formed';
+
+    public const WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED = 'early_termination_executed';
+
+    /**
+     * @return array<string, string>
+     */
+    public static function workflowStatusOptions(): array
+    {
+        return [
+            self::WORKFLOW_STATUS_DRAFT => 'Draft',
+            self::WORKFLOW_STATUS_SUBMITTED => 'Submitted',
+            self::WORKFLOW_STATUS_BRANCH_APPROVED => 'Branch approved',
+            self::WORKFLOW_STATUS_RETURNED => 'Returned',
+            self::WORKFLOW_STATUS_REJECTED => 'Rejected',
+            self::WORKFLOW_STATUS_ACCOUNTING_VALIDATION => 'Accounting validation',
+            self::WORKFLOW_STATUS_RECEIVABLE_FORMED => 'Receivable formed',
+            self::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED => 'Early termination executed',
+        ];
+    }
 
     /**
      * @return BelongsTo<BranchOffice, $this>
@@ -82,6 +114,38 @@ class InsuranceReceivable extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(InsuranceReceivableDocument::class);
+    }
+
+    /**
+     * @return MorphMany<ApprovalRequest, $this>
+     */
+    public function approvalRequests(): MorphMany
+    {
+        return $this->morphMany(ApprovalRequest::class, 'approvable');
+    }
+
+    /**
+     * @return HasMany<InsuranceReceivableFieldChangeLog, $this>
+     */
+    public function fieldChangeLogs(): HasMany
+    {
+        return $this->hasMany(InsuranceReceivableFieldChangeLog::class);
+    }
+
+    /**
+     * @return HasMany<ReceivableFormationJournal, $this>
+     */
+    public function receivableFormationJournals(): HasMany
+    {
+        return $this->hasMany(ReceivableFormationJournal::class);
+    }
+
+    /**
+     * @return HasMany<EarlyTerminationTransaction, $this>
+     */
+    public function earlyTerminationTransactions(): HasMany
+    {
+        return $this->hasMany(EarlyTerminationTransaction::class);
     }
 
     /**

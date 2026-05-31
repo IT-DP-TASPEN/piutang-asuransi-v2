@@ -75,6 +75,41 @@ class InsuranceReceivablePolicy
         return $this->can($user, 'RunInquiry') && $this->canAccessRecord($user, $insuranceReceivable);
     }
 
+    public function submitForApproval(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'SubmitForApproval') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    public function approveApproval(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'ApproveApproval') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    public function rejectApproval(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'RejectApproval') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    public function returnApproval(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'ReturnApproval') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    public function updateCollectability(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'UpdateCollectability') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    public function submitAccountingValidation(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'SubmitAccountingValidation') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    public function executeEarlyTermination(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'ExecuteEarlyTermination') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
     private function can(User $user, string $action): bool
     {
         return $user->can("{$action}:".self::SUBJECT);

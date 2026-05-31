@@ -48,6 +48,28 @@ class CoreBankingClient
      *     log_id: int|null
      * }
      */
+    public function earlyTerminateLoan(array $payload, ?Model $related = null, ?User $requestedBy = null): array
+    {
+        return $this->post(
+            endpoint: '/loan/earlytermination/',
+            payload: $payload,
+            related: $related,
+            requestedBy: $requestedBy,
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{
+     *     ok: bool,
+     *     status: int|null,
+     *     response_code: string|null,
+     *     description: string|null,
+     *     data: array<string, mixed>,
+     *     raw_body: string|null,
+     *     log_id: int|null
+     * }
+     */
     private function post(string $endpoint, array $payload, ?Model $related, ?User $requestedBy): array
     {
         $rawBody = $this->encodePayload($payload);
@@ -75,7 +97,7 @@ class CoreBankingClient
             $decoded = $this->decodeResponse($responseBody);
             $responseCode = isset($decoded['responseCode']) ? (string) $decoded['responseCode'] : null;
             $description = isset($decoded['description']) ? (string) $decoded['description'] : null;
-            $data = is_array($decoded['data'] ?? null) ? $decoded['data'] : [];
+            $data = is_array($decoded['data'] ?? null) ? $decoded['data'] : $decoded;
         } catch (Throwable $exception) {
             $errorMessage = $exception->getMessage();
         }

@@ -38,8 +38,14 @@ class RolePermissionSeeder extends Seeder
             'ClaimStatus',
             'CkpnAgeBucket',
             'CkpnCalculationRule',
+            'ApprovalRequest',
+            'ApprovalStep',
+            'ApprovalLog',
             'InsuranceReceivable',
             'InsuranceReceivableDocument',
+            'InsuranceReceivableFieldChangeLog',
+            'ReceivableFormationJournal',
+            'EarlyTerminationTransaction',
             'ApiIntegrationLog',
             'Role',
         ];
@@ -51,6 +57,13 @@ class RolePermissionSeeder extends Seeder
             ))
             ->merge([
                 'RunInquiry:InsuranceReceivable',
+                'SubmitForApproval:InsuranceReceivable',
+                'ApproveApproval:InsuranceReceivable',
+                'RejectApproval:InsuranceReceivable',
+                'ReturnApproval:InsuranceReceivable',
+                'UpdateCollectability:InsuranceReceivable',
+                'SubmitAccountingValidation:InsuranceReceivable',
+                'ExecuteEarlyTermination:InsuranceReceivable',
             ]);
 
         $permissions->each(fn (string $permission): Permission => Permission::query()->firstOrCreate([
@@ -92,14 +105,47 @@ class RolePermissionSeeder extends Seeder
             'View:InsuranceReceivable',
             'ViewAny:InsuranceReceivableDocument',
             'View:InsuranceReceivableDocument',
+            'ViewAny:ApprovalRequest',
+            'View:ApprovalRequest',
+            'ViewAny:ApprovalStep',
+            'View:ApprovalStep',
+            'ViewAny:ApprovalLog',
+            'View:ApprovalLog',
+            'ViewAny:InsuranceReceivableFieldChangeLog',
+            'View:InsuranceReceivableFieldChangeLog',
+            'ViewAny:ReceivableFormationJournal',
+            'View:ReceivableFormationJournal',
+            'ViewAny:EarlyTerminationTransaction',
+            'View:EarlyTerminationTransaction',
             'ViewAny:ApiIntegrationLog',
             'View:ApiIntegrationLog',
         ];
 
+        $roles->get('it_user')->syncPermissions([
+            ...$centralViewPermissions,
+            'UpdateCollectability:InsuranceReceivable',
+            'Create:InsuranceReceivableFieldChangeLog',
+        ]);
+
+        $roles->get('accounting_maker')->syncPermissions([
+            ...$centralViewPermissions,
+            'SubmitAccountingValidation:InsuranceReceivable',
+            'Create:ReceivableFormationJournal',
+            'Update:ReceivableFormationJournal',
+        ]);
+
+        $roles->get('accounting_approver')->syncPermissions([
+            ...$centralViewPermissions,
+            'ApproveApproval:InsuranceReceivable',
+            'RejectApproval:InsuranceReceivable',
+            'ReturnApproval:InsuranceReceivable',
+            'ExecuteEarlyTermination:InsuranceReceivable',
+            'Update:ReceivableFormationJournal',
+            'Create:EarlyTerminationTransaction',
+            'Update:EarlyTerminationTransaction',
+        ]);
+
         collect([
-            'it_user',
-            'accounting_maker',
-            'accounting_approver',
             'business_maker',
             'business_approver',
         ])->each(fn (string $role) => $roles->get($role)->syncPermissions($centralViewPermissions));
@@ -110,6 +156,7 @@ class RolePermissionSeeder extends Seeder
             'Create:InsuranceReceivable',
             'Update:InsuranceReceivable',
             'RunInquiry:InsuranceReceivable',
+            'SubmitForApproval:InsuranceReceivable',
             'ViewAny:InsuranceReceivableDocument',
             'View:InsuranceReceivableDocument',
             'Create:InsuranceReceivableDocument',
@@ -121,8 +168,17 @@ class RolePermissionSeeder extends Seeder
         $roles->get('branch_approver')->syncPermissions([
             'ViewAny:InsuranceReceivable',
             'View:InsuranceReceivable',
+            'ApproveApproval:InsuranceReceivable',
+            'RejectApproval:InsuranceReceivable',
+            'ReturnApproval:InsuranceReceivable',
             'ViewAny:InsuranceReceivableDocument',
             'View:InsuranceReceivableDocument',
+            'ViewAny:ApprovalRequest',
+            'View:ApprovalRequest',
+            'ViewAny:ApprovalStep',
+            'View:ApprovalStep',
+            'ViewAny:ApprovalLog',
+            'View:ApprovalLog',
         ]);
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();

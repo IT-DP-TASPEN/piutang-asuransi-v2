@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\InsuranceReceivables\Tables;
 
+use App\Models\InsuranceReceivable;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -67,9 +68,7 @@ class InsuranceReceivablesTable
                     ->preload(),
                 SelectFilter::make('workflow_status')
                     ->label('Workflow status')
-                    ->options([
-                        'draft' => 'Draft',
-                    ]),
+                    ->options(InsuranceReceivable::workflowStatusOptions()),
             ])
             ->recordActions([
                 ViewAction::make(),
