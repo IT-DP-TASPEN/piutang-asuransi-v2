@@ -24,6 +24,12 @@ class ApprovalService
         ApprovalRequest::WORKFLOW_CLAIM_STATUS_UPDATE => [
             ['role_name' => 'business_approver'],
         ],
+        ApprovalRequest::WORKFLOW_MONTHLY_CKPN_WORKPAPER => [
+            ['role_name' => 'accounting_approver'],
+        ],
+        ApprovalRequest::WORKFLOW_CKPN_ADJUSTMENT => [
+            ['role_name' => 'accounting_approver'],
+        ],
     ];
 
     public function submit(Model $approvable, string $workflowCode, User $actor, ?string $notes = null): ApprovalRequest

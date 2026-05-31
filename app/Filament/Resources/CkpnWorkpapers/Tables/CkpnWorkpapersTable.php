@@ -1,0 +1,55 @@
+<?php
+
+namespace App\Filament\Resources\CkpnWorkpapers\Tables;
+
+use App\Models\CkpnWorkpaper;
+use Filament\Actions\EditAction;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Table;
+
+class CkpnWorkpapersTable
+{
+    public static function configure(Table $table): Table
+    {
+        return $table
+            ->columns([
+                TextColumn::make('period')
+                    ->date()
+                    ->sortable(),
+                TextColumn::make('branchOffice.branch_name')
+                    ->label('Branch')
+                    ->placeholder('All branches')
+                    ->sortable(),
+                TextColumn::make('status')
+                    ->badge()
+                    ->sortable(),
+                TextColumn::make('total_receivable_amount')
+                    ->label('Total receivable')
+                    ->numeric(2)
+                    ->sortable(),
+                TextColumn::make('total_ckpn_amount')
+                    ->label('Total CKPN')
+                    ->numeric(2)
+                    ->sortable(),
+                TextColumn::make('creator.name')
+                    ->label('Created by')
+                    ->sortable(),
+                TextColumn::make('approver.name')
+                    ->label('Approved by')
+                    ->sortable(),
+            ])
+            ->filters([
+                SelectFilter::make('branch_office_id')
+                    ->label('Branch')
+                    ->relationship('branchOffice', 'branch_name')
+                    ->searchable()
+                    ->preload(),
+                SelectFilter::make('status')
+                    ->options(CkpnWorkpaper::statusOptions()),
+            ])
+            ->recordActions([
+                EditAction::make(),
+            ]);
+    }
+}

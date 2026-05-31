@@ -165,6 +165,22 @@ class InsuranceReceivable extends Model
     }
 
     /**
+     * @return HasMany<CkpnWorkpaperItem, $this>
+     */
+    public function ckpnWorkpaperItems(): HasMany
+    {
+        return $this->hasMany(CkpnWorkpaperItem::class);
+    }
+
+    /**
+     * @return HasMany<CkpnAdjustment, $this>
+     */
+    public function ckpnAdjustments(): HasMany
+    {
+        return $this->hasMany(CkpnAdjustment::class);
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

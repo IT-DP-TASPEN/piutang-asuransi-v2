@@ -48,6 +48,9 @@ class RolePermissionSeeder extends Seeder
             'EarlyTerminationTransaction',
             'ClaimStatusChangeRequest',
             'InsuranceCoverLetter',
+            'CkpnWorkpaper',
+            'CkpnWorkpaperItem',
+            'CkpnAdjustment',
             'ApiIntegrationLog',
             'Role',
         ];
@@ -71,6 +74,16 @@ class RolePermissionSeeder extends Seeder
                 'Reject:ClaimStatusChangeRequest',
                 'Return:ClaimStatusChangeRequest',
                 'GenerateDraft:InsuranceCoverLetter',
+                'Generate:CkpnWorkpaper',
+                'Recalculate:CkpnWorkpaper',
+                'Submit:CkpnWorkpaper',
+                'Approve:CkpnWorkpaper',
+                'Reject:CkpnWorkpaper',
+                'Return:CkpnWorkpaper',
+                'Submit:CkpnAdjustment',
+                'Approve:CkpnAdjustment',
+                'Reject:CkpnAdjustment',
+                'Return:CkpnAdjustment',
             ]);
 
         $permissions->each(fn (string $permission): Permission => Permission::query()->firstOrCreate([
@@ -128,6 +141,12 @@ class RolePermissionSeeder extends Seeder
             'View:ClaimStatusChangeRequest',
             'ViewAny:InsuranceCoverLetter',
             'View:InsuranceCoverLetter',
+            'ViewAny:CkpnWorkpaper',
+            'View:CkpnWorkpaper',
+            'ViewAny:CkpnWorkpaperItem',
+            'View:CkpnWorkpaperItem',
+            'ViewAny:CkpnAdjustment',
+            'View:CkpnAdjustment',
             'ViewAny:ApiIntegrationLog',
             'View:ApiIntegrationLog',
         ];
@@ -164,6 +183,14 @@ class RolePermissionSeeder extends Seeder
             'Create:InsuranceCoverLetter',
             'Update:InsuranceCoverLetter',
             'GenerateDraft:InsuranceCoverLetter',
+            'Create:CkpnWorkpaper',
+            'Update:CkpnWorkpaper',
+            'Generate:CkpnWorkpaper',
+            'Recalculate:CkpnWorkpaper',
+            'Submit:CkpnWorkpaper',
+            'Create:CkpnAdjustment',
+            'Update:CkpnAdjustment',
+            'Submit:CkpnAdjustment',
         ]);
 
         $roles->get('business_approver')->syncPermissions([
@@ -171,6 +198,15 @@ class RolePermissionSeeder extends Seeder
             'Approve:ClaimStatusChangeRequest',
             'Reject:ClaimStatusChangeRequest',
             'Return:ClaimStatusChangeRequest',
+        ]);
+
+        $roles->get('accounting_approver')->givePermissionTo([
+            'Approve:CkpnWorkpaper',
+            'Reject:CkpnWorkpaper',
+            'Return:CkpnWorkpaper',
+            'Approve:CkpnAdjustment',
+            'Reject:CkpnAdjustment',
+            'Return:CkpnAdjustment',
         ]);
 
         $roles->get('branch_maker')->syncPermissions([
@@ -186,6 +222,12 @@ class RolePermissionSeeder extends Seeder
             'View:ClaimStatusChangeRequest',
             'ViewAny:InsuranceCoverLetter',
             'View:InsuranceCoverLetter',
+            'ViewAny:CkpnWorkpaper',
+            'View:CkpnWorkpaper',
+            'ViewAny:CkpnWorkpaperItem',
+            'View:CkpnWorkpaperItem',
+            'ViewAny:CkpnAdjustment',
+            'View:CkpnAdjustment',
             'Create:InsuranceReceivableDocument',
             'Update:InsuranceReceivableDocument',
             'Delete:InsuranceReceivableDocument',
@@ -204,6 +246,12 @@ class RolePermissionSeeder extends Seeder
             'View:ClaimStatusChangeRequest',
             'ViewAny:InsuranceCoverLetter',
             'View:InsuranceCoverLetter',
+            'ViewAny:CkpnWorkpaper',
+            'View:CkpnWorkpaper',
+            'ViewAny:CkpnWorkpaperItem',
+            'View:CkpnWorkpaperItem',
+            'ViewAny:CkpnAdjustment',
+            'View:CkpnAdjustment',
             'ViewAny:ApprovalRequest',
             'View:ApprovalRequest',
             'ViewAny:ApprovalStep',
