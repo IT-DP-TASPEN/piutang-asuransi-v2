@@ -1,0 +1,60 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+#[Fillable([
+    'insurance_receivable_id',
+    'letter_number',
+    'letter_date',
+    'insurance_company_id',
+    'recipient_name',
+    'subject',
+    'body',
+    'generated_file_path',
+    'status',
+    'created_by',
+])]
+class InsuranceCoverLetter extends Model
+{
+    public const STATUS_DRAFT = 'draft';
+
+    /**
+     * @return BelongsTo<InsuranceReceivable, $this>
+     */
+    public function insuranceReceivable(): BelongsTo
+    {
+        return $this->belongsTo(InsuranceReceivable::class);
+    }
+
+    /**
+     * @return BelongsTo<InsuranceCompany, $this>
+     */
+    public function insuranceCompany(): BelongsTo
+    {
+        return $this->belongsTo(InsuranceCompany::class);
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'letter_date' => 'date',
+        ];
+    }
+}

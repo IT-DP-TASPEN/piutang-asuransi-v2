@@ -46,6 +46,8 @@ class RolePermissionSeeder extends Seeder
             'InsuranceReceivableFieldChangeLog',
             'ReceivableFormationJournal',
             'EarlyTerminationTransaction',
+            'ClaimStatusChangeRequest',
+            'InsuranceCoverLetter',
             'ApiIntegrationLog',
             'Role',
         ];
@@ -64,6 +66,11 @@ class RolePermissionSeeder extends Seeder
                 'UpdateCollectability:InsuranceReceivable',
                 'SubmitAccountingValidation:InsuranceReceivable',
                 'ExecuteEarlyTermination:InsuranceReceivable',
+                'Submit:ClaimStatusChangeRequest',
+                'Approve:ClaimStatusChangeRequest',
+                'Reject:ClaimStatusChangeRequest',
+                'Return:ClaimStatusChangeRequest',
+                'GenerateDraft:InsuranceCoverLetter',
             ]);
 
         $permissions->each(fn (string $permission): Permission => Permission::query()->firstOrCreate([
@@ -117,6 +124,10 @@ class RolePermissionSeeder extends Seeder
             'View:ReceivableFormationJournal',
             'ViewAny:EarlyTerminationTransaction',
             'View:EarlyTerminationTransaction',
+            'ViewAny:ClaimStatusChangeRequest',
+            'View:ClaimStatusChangeRequest',
+            'ViewAny:InsuranceCoverLetter',
+            'View:InsuranceCoverLetter',
             'ViewAny:ApiIntegrationLog',
             'View:ApiIntegrationLog',
         ];
@@ -145,10 +156,22 @@ class RolePermissionSeeder extends Seeder
             'Update:EarlyTerminationTransaction',
         ]);
 
-        collect([
-            'business_maker',
-            'business_approver',
-        ])->each(fn (string $role) => $roles->get($role)->syncPermissions($centralViewPermissions));
+        $roles->get('business_maker')->syncPermissions([
+            ...$centralViewPermissions,
+            'Create:ClaimStatusChangeRequest',
+            'Update:ClaimStatusChangeRequest',
+            'Submit:ClaimStatusChangeRequest',
+            'Create:InsuranceCoverLetter',
+            'Update:InsuranceCoverLetter',
+            'GenerateDraft:InsuranceCoverLetter',
+        ]);
+
+        $roles->get('business_approver')->syncPermissions([
+            ...$centralViewPermissions,
+            'Approve:ClaimStatusChangeRequest',
+            'Reject:ClaimStatusChangeRequest',
+            'Return:ClaimStatusChangeRequest',
+        ]);
 
         $roles->get('branch_maker')->syncPermissions([
             'ViewAny:InsuranceReceivable',
@@ -159,6 +182,10 @@ class RolePermissionSeeder extends Seeder
             'SubmitForApproval:InsuranceReceivable',
             'ViewAny:InsuranceReceivableDocument',
             'View:InsuranceReceivableDocument',
+            'ViewAny:ClaimStatusChangeRequest',
+            'View:ClaimStatusChangeRequest',
+            'ViewAny:InsuranceCoverLetter',
+            'View:InsuranceCoverLetter',
             'Create:InsuranceReceivableDocument',
             'Update:InsuranceReceivableDocument',
             'Delete:InsuranceReceivableDocument',
@@ -173,6 +200,10 @@ class RolePermissionSeeder extends Seeder
             'ReturnApproval:InsuranceReceivable',
             'ViewAny:InsuranceReceivableDocument',
             'View:InsuranceReceivableDocument',
+            'ViewAny:ClaimStatusChangeRequest',
+            'View:ClaimStatusChangeRequest',
+            'ViewAny:InsuranceCoverLetter',
+            'View:InsuranceCoverLetter',
             'ViewAny:ApprovalRequest',
             'View:ApprovalRequest',
             'ViewAny:ApprovalStep',

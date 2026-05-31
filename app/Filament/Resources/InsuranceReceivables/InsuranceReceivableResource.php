@@ -6,7 +6,9 @@ use App\Filament\Resources\InsuranceReceivables\Pages\CreateInsuranceReceivable;
 use App\Filament\Resources\InsuranceReceivables\Pages\EditInsuranceReceivable;
 use App\Filament\Resources\InsuranceReceivables\Pages\ListInsuranceReceivables;
 use App\Filament\Resources\InsuranceReceivables\Pages\ViewInsuranceReceivable;
+use App\Filament\Resources\InsuranceReceivables\RelationManagers\ClaimStatusChangeRequestsRelationManager;
 use App\Filament\Resources\InsuranceReceivables\RelationManagers\DocumentsRelationManager;
+use App\Filament\Resources\InsuranceReceivables\RelationManagers\InsuranceCoverLettersRelationManager;
 use App\Filament\Resources\InsuranceReceivables\Schemas\InsuranceReceivableForm;
 use App\Filament\Resources\InsuranceReceivables\Schemas\InsuranceReceivableInfolist;
 use App\Filament\Resources\InsuranceReceivables\Tables\InsuranceReceivablesTable;
@@ -75,6 +77,8 @@ class InsuranceReceivableResource extends Resource
     {
         return [
             DocumentsRelationManager::class,
+            ClaimStatusChangeRequestsRelationManager::class,
+            InsuranceCoverLettersRelationManager::class,
         ];
     }
 

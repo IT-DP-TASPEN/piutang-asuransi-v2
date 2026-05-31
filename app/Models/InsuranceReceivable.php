@@ -149,6 +149,22 @@ class InsuranceReceivable extends Model
     }
 
     /**
+     * @return HasMany<ClaimStatusChangeRequest, $this>
+     */
+    public function claimStatusChangeRequests(): HasMany
+    {
+        return $this->hasMany(ClaimStatusChangeRequest::class);
+    }
+
+    /**
+     * @return HasMany<InsuranceCoverLetter, $this>
+     */
+    public function insuranceCoverLetters(): HasMany
+    {
+        return $this->hasMany(InsuranceCoverLetter::class);
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

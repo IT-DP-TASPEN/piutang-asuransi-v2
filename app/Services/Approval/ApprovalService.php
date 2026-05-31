@@ -21,6 +21,9 @@ class ApprovalService
         ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION => [
             ['role_name' => 'accounting_approver'],
         ],
+        ApprovalRequest::WORKFLOW_CLAIM_STATUS_UPDATE => [
+            ['role_name' => 'business_approver'],
+        ],
     ];
 
     public function submit(Model $approvable, string $workflowCode, User $actor, ?string $notes = null): ApprovalRequest
