@@ -38,6 +38,9 @@ class RolePermissionSeeder extends Seeder
             'ClaimStatus',
             'CkpnAgeBucket',
             'CkpnCalculationRule',
+            'InsuranceReceivable',
+            'InsuranceReceivableDocument',
+            'ApiIntegrationLog',
             'Role',
         ];
 
@@ -45,7 +48,10 @@ class RolePermissionSeeder extends Seeder
             ->flatMap(fn (string $subject): array => array_map(
                 fn (string $action): string => "{$action}:{$subject}",
                 $actions,
-            ));
+            ))
+            ->merge([
+                'RunInquiry:InsuranceReceivable',
+            ]);
 
         $permissions->each(fn (string $permission): Permission => Permission::query()->firstOrCreate([
             'name' => $permission,
@@ -81,9 +87,43 @@ class RolePermissionSeeder extends Seeder
 
         $roles->get('auditor')->syncPermissions($viewPermissions->values()->all());
 
-        $roles
-            ->except(['super_admin', 'auditor'])
-            ->each(fn (Role $role) => $role->syncPermissions([]));
+        $centralViewPermissions = [
+            'ViewAny:InsuranceReceivable',
+            'View:InsuranceReceivable',
+            'ViewAny:InsuranceReceivableDocument',
+            'View:InsuranceReceivableDocument',
+            'ViewAny:ApiIntegrationLog',
+            'View:ApiIntegrationLog',
+        ];
+
+        collect([
+            'it_user',
+            'accounting_maker',
+            'accounting_approver',
+            'business_maker',
+            'business_approver',
+        ])->each(fn (string $role) => $roles->get($role)->syncPermissions($centralViewPermissions));
+
+        $roles->get('branch_maker')->syncPermissions([
+            'ViewAny:InsuranceReceivable',
+            'View:InsuranceReceivable',
+            'Create:InsuranceReceivable',
+            'Update:InsuranceReceivable',
+            'RunInquiry:InsuranceReceivable',
+            'ViewAny:InsuranceReceivableDocument',
+            'View:InsuranceReceivableDocument',
+            'Create:InsuranceReceivableDocument',
+            'Update:InsuranceReceivableDocument',
+            'Delete:InsuranceReceivableDocument',
+            'DeleteAny:InsuranceReceivableDocument',
+        ]);
+
+        $roles->get('branch_approver')->syncPermissions([
+            'ViewAny:InsuranceReceivable',
+            'View:InsuranceReceivable',
+            'ViewAny:InsuranceReceivableDocument',
+            'View:InsuranceReceivableDocument',
+        ]);
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }

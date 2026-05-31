@@ -23,6 +23,14 @@ class BranchOffice extends Model
     }
 
     /**
+     * @return HasMany<InsuranceReceivable, $this>
+     */
+    public function insuranceReceivables(): HasMany
+    {
+        return $this->hasMany(InsuranceReceivable::class);
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

@@ -1,0 +1,95 @@
+<?php
+
+namespace App\Policies;
+
+use App\Models\InsuranceReceivable;
+use App\Models\User;
+use App\Support\Access\RoleScope;
+
+class InsuranceReceivablePolicy
+{
+    private const SUBJECT = 'InsuranceReceivable';
+
+    public function viewAny(User $user): bool
+    {
+        return $this->can($user, 'ViewAny');
+    }
+
+    public function view(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'View') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    public function create(User $user): bool
+    {
+        return $this->can($user, 'Create');
+    }
+
+    public function update(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'Update') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    public function delete(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'Delete') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    public function deleteAny(User $user): bool
+    {
+        return $this->can($user, 'DeleteAny');
+    }
+
+    public function restore(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'Restore') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    public function restoreAny(User $user): bool
+    {
+        return $this->can($user, 'RestoreAny');
+    }
+
+    public function forceDelete(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'ForceDelete') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    public function forceDeleteAny(User $user): bool
+    {
+        return $this->can($user, 'ForceDeleteAny');
+    }
+
+    public function replicate(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'Replicate') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    public function reorder(User $user): bool
+    {
+        return $this->can($user, 'Reorder');
+    }
+
+    public function runInquiry(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'RunInquiry') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
+    private function can(User $user, string $action): bool
+    {
+        return $user->can("{$action}:".self::SUBJECT);
+    }
+
+    private function canAccessRecord(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        if (RoleScope::canViewAllBranches($user)) {
+            return true;
+        }
+
+        if (! RoleScope::isBranchScoped($user)) {
+            return false;
+        }
+
+        return $user->branch_office_id === $insuranceReceivable->branch_office_id;
+    }
+}
