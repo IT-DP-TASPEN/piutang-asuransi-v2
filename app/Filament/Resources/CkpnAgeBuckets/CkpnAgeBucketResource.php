@@ -1,0 +1,58 @@
+<?php
+
+namespace App\Filament\Resources\CkpnAgeBuckets;
+
+use App\Filament\Resources\CkpnAgeBuckets\Pages\CreateCkpnAgeBucket;
+use App\Filament\Resources\CkpnAgeBuckets\Pages\EditCkpnAgeBucket;
+use App\Filament\Resources\CkpnAgeBuckets\Pages\ListCkpnAgeBuckets;
+use App\Filament\Resources\CkpnAgeBuckets\Schemas\CkpnAgeBucketForm;
+use App\Filament\Resources\CkpnAgeBuckets\Tables\CkpnAgeBucketsTable;
+use App\Models\CkpnAgeBucket;
+use BackedEnum;
+use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Table;
+
+class CkpnAgeBucketResource extends Resource
+{
+    protected static ?string $model = CkpnAgeBucket::class;
+
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+    protected static string|\UnitEnum|null $navigationGroup = 'Master Data';
+
+    protected static ?int $navigationSort = 40;
+
+    protected static ?string $modelLabel = 'CKPN age bucket';
+
+    protected static ?string $pluralModelLabel = 'CKPN age buckets';
+
+    protected static ?string $recordTitleAttribute = 'name';
+
+    public static function form(Schema $schema): Schema
+    {
+        return CkpnAgeBucketForm::configure($schema);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return CkpnAgeBucketsTable::configure($table);
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            //
+        ];
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => ListCkpnAgeBuckets::route('/'),
+            'create' => CreateCkpnAgeBucket::route('/create'),
+            'edit' => EditCkpnAgeBucket::route('/{record}/edit'),
+        ];
+    }
+}

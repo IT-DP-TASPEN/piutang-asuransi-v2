@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\BranchOffice;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -25,6 +26,10 @@ class UserFactory extends Factory
     public function definition(): array
     {
         return [
+            'branch_office_id' => BranchOffice::query()->firstOrCreate(
+                ['branch_code' => '000'],
+                ['branch_name' => 'Cabang 000', 'is_active' => true],
+            )->id,
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
