@@ -29,6 +29,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Validation\ValidationException;
 
 class ViewCkpnWorkpaper extends ViewRecord
 {
@@ -212,7 +213,8 @@ class ViewCkpnWorkpaper extends ViewRecord
     {
         return Action::make('createJournal')
             ->label('Create CKPN journal')
-            ->visible(fn (): bool => $this->canCreateJournal())
+            ->visible(fn (): bool => $this->canAttemptCreateJournal())
+            ->modalDescription(fn (): ?string => $this->journalBlockingMessage())
             ->form([
                 DatePicker::make('journal_date')
                     ->default(now())
@@ -235,7 +237,13 @@ class ViewCkpnWorkpaper extends ViewRecord
                     return;
                 }
 
-                app(CreateCkpnJournalFromWorkpaperAction::class)->handle($this->workpaper(), $user, $data);
+                try {
+                    app(CreateCkpnJournalFromWorkpaperAction::class)->handle($this->workpaper(), $user, $data);
+                } catch (ValidationException $exception) {
+                    $this->notifyValidationFailure($exception);
+                    $this->halt(true);
+                }
+
                 $this->refreshWorkpaperData();
 
                 Notification::make()->success()->title('CKPN journal draft created')->send();
@@ -326,7 +334,7 @@ class ViewCkpnWorkpaper extends ViewRecord
 
     private function hasVisibleOutputActions(): bool
     {
-        return $this->canCreateJournal() || $this->canGenerateExport();
+        return $this->canAttemptCreateJournal() || $this->canGenerateExport();
     }
 
     private function hasVisibleSystemActions(): bool
@@ -380,12 +388,11 @@ class ViewCkpnWorkpaper extends ViewRecord
             && $this->workpaper()->status === CkpnWorkpaper::STATUS_SUBMITTED;
     }
 
-    private function canCreateJournal(): bool
+    private function canAttemptCreateJournal(): bool
     {
         return (auth()->user()?->can('createJournal', $this->workpaper()) ?? false)
             && $this->workpaper()->status === CkpnWorkpaper::STATUS_APPROVED
-            && ! $this->workpaper()->journals()->exists()
-            && app(ValidateCkpnJournalCreationAction::class)->pendingCount($this->workpaper()) === 0;
+            && ! $this->workpaper()->journals()->exists();
     }
 
     private function canGenerateExport(): bool
@@ -433,5 +440,42 @@ class ViewCkpnWorkpaper extends ViewRecord
     private function refreshWorkpaperData(): void
     {
         $this->record = $this->workpaper()->refresh();
+    }
+
+    private function journalBlockingMessage(): ?string
+    {
+        $pending = $this->workpaper()
+            ->adjustments()
+            ->whereIn('status', ValidateCkpnJournalCreationAction::pendingAdjustmentStatuses())
+            ->orderBy('id')
+            ->get(['id', 'status']);
+
+        if ($pending->isEmpty()) {
+            return null;
+        }
+
+        $summary = $pending
+            ->take(10)
+            ->map(fn ($adjustment): string => "#{$adjustment->id} ({$adjustment->status})")
+            ->join(', ');
+
+        $suffix = $pending->count() > 10 ? ', ...' : '';
+
+        return "Cannot create CKPN Journal because {$pending->count()} CKPN Adjustments are still pending: {$summary}{$suffix}.";
+    }
+
+    private function notifyValidationFailure(ValidationException $exception): void
+    {
+        Notification::make()
+            ->danger()
+            ->title($this->validationMessage($exception))
+            ->send();
+    }
+
+    private function validationMessage(ValidationException $exception): string
+    {
+        return collect($exception->errors())
+            ->flatten()
+            ->first() ?: $exception->getMessage();
     }
 }

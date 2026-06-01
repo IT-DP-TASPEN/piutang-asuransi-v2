@@ -12,12 +12,24 @@ class BranchOfficeSeeder extends Seeder
      */
     public function run(): void
     {
-        foreach (range(0, 8) as $number) {
-            $branchCode = str_pad((string) $number, 3, '0', STR_PAD_LEFT);
-
+        $branchOffices = [
+            ['branch_code' => '000', 'branch_name' => 'Kantor Pusat Manajemen', 'is_active' => true],
+            ['branch_code' => '001', 'branch_name' => 'Kantor Pusat Operasional', 'is_active' => true],
+            ['branch_code' => '002', 'branch_name' => 'KC Bogor', 'is_active' => true],
+            ['branch_code' => '003', 'branch_name' => 'KC Depok', 'is_active' => true],
+            ['branch_code' => '004', 'branch_name' => 'KC Tangerang', 'is_active' => true],
+            ['branch_code' => '005', 'branch_name' => 'KC Jaktim', 'is_active' => true],
+            ['branch_code' => '006', 'branch_name' => 'KC Karawang', 'is_active' => true],
+            ['branch_code' => '007', 'branch_name' => 'KC Cikarang', 'is_active' => true],
+            ['branch_code' => '008', 'branch_name' => 'KC Purwokerto', 'is_active' => true],
+        ];
+        foreach ($branchOffices as $branchOffice) {
             BranchOffice::query()->updateOrCreate(
-                ['branch_code' => $branchCode],
-                ['branch_name' => "Cabang {$branchCode}", 'is_active' => true],
+                ['branch_code' => $branchOffice['branch_code']],
+                [
+                    'branch_name' => $branchOffice['branch_name'],
+                    'is_active' => $branchOffice['is_active']
+                ]
             );
         }
     }

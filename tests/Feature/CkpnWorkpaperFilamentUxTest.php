@@ -11,9 +11,11 @@ use App\Filament\Resources\CkpnWorkpapers\Pages\ViewCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\RelationManagers\ItemsRelationManager;
 use App\Jobs\GenerateCkpnWorkpaperJob;
 use App\Models\BranchOffice;
+use App\Models\CkpnAdjustment;
 use App\Models\CkpnJournal;
 use App\Models\CkpnWorkpaper;
 use App\Models\CkpnWorkpaperItem;
+use App\Models\InsuranceReceivable;
 use App\Models\User;
 use Database\Seeders\BranchOfficeSeeder;
 use Database\Seeders\RolePermissionSeeder;
@@ -56,6 +58,33 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
         Queue::assertPushed(GenerateCkpnWorkpaperJob::class, fn (GenerateCkpnWorkpaperJob $job): bool => $job->ckpnWorkpaperId === $workpaper->id);
         $component->assertRedirect(CkpnWorkpaperResource::getUrl('view', ['record' => $workpaper]));
+    }
+
+    public function test_create_page_notifies_when_pending_receivables_block_workpaper_creation(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $maker = $this->userWithRole('business_maker', '000');
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        InsuranceReceivable::factory()->create([
+            'branch_office_id' => $branch->id,
+            'branch_code' => $branch->branch_code,
+            'date_of_death' => '2026-04-15',
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
+        ]);
+
+        Livewire::actingAs($maker)
+            ->test(CreateCkpnWorkpaper::class)
+            ->fillForm([
+                'period' => '2026-04-30',
+                'branch_office_id' => $branch->id,
+            ])
+            ->call('create')
+            ->assertNoRedirect()
+            ->assertNotified('Cannot create CKPN Workpaper because 1 Insurance Receivables are still pending.');
+
+        $this->assertSame(0, CkpnWorkpaper::query()->count());
+        Queue::assertNotPushed(GenerateCkpnWorkpaperJob::class);
     }
 
     public function test_list_page_uses_view_as_primary_action_and_hides_edit_when_not_editable(): void
@@ -139,6 +168,35 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
         Livewire::actingAs($maker)
             ->test(ViewCkpnWorkpaper::class, ['record' => $workpaper->id])
             ->assertActionHidden('createJournal');
+    }
+
+    public function test_create_journal_action_notifies_when_pending_adjustments_block_creation(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('business_maker', '000');
+        $workpaper = $this->workpaper(CkpnWorkpaper::STATUS_APPROVED);
+        $item = $this->workpaperItem($workpaper);
+        $adjustment = CkpnAdjustment::query()->create([
+            'ckpn_workpaper_id' => $workpaper->id,
+            'ckpn_workpaper_item_id' => $item->id,
+            'adjustment_type' => CkpnAdjustment::TYPE_OVERRIDE_FINAL_CKPN_AMOUNT,
+            'calculated_ckpn_rate' => '10.0000',
+            'calculated_ckpn_amount' => '100.00',
+            'requested_adjusted_ckpn_amount' => '200.00',
+            'reason' => 'Pending blocker',
+            'status' => CkpnAdjustment::STATUS_DRAFT,
+            'requested_by' => $maker->id,
+        ]);
+
+        Livewire::actingAs($maker)
+            ->test(ViewCkpnWorkpaper::class, ['record' => $workpaper->id])
+            ->assertActionVisible('createJournal')
+            ->callAction('createJournal', [
+                'journal_date' => '2026-06-30',
+            ])
+            ->assertNotified("Cannot create CKPN Journal because 1 CKPN Adjustments are still pending: #{$adjustment->id} (draft).");
+
+        $this->assertSame(0, CkpnJournal::query()->count());
     }
 
     public function test_view_page_exposes_retry_gl_to_gl_for_failed_related_journal(): void

@@ -8,6 +8,7 @@ use App\Models\User;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Validation\ValidationException;
 
 class CreateCkpnWorkpaper extends CreateRecord
 {
@@ -25,7 +26,16 @@ class CreateCkpnWorkpaper extends CreateRecord
             abort(403);
         }
 
-        return app(CreateCkpnWorkpaperAction::class)->handle($data, $user);
+        try {
+            return app(CreateCkpnWorkpaperAction::class)->handle($data, $user);
+        } catch (ValidationException $exception) {
+            Notification::make()
+                ->danger()
+                ->title($this->validationMessage($exception))
+                ->send();
+
+            $this->halt(true);
+        }
     }
 
     protected function getCreatedNotification(): ?Notification
@@ -38,5 +48,12 @@ class CreateCkpnWorkpaper extends CreateRecord
     protected function getRedirectUrl(): string
     {
         return static::getResource()::getUrl('view', ['record' => $this->getRecord()]);
+    }
+
+    private function validationMessage(ValidationException $exception): string
+    {
+        return collect($exception->errors())
+            ->flatten()
+            ->first() ?: $exception->getMessage();
     }
 }
