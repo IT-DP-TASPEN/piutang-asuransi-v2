@@ -26,7 +26,7 @@ class GlToGlPayloadBuilder
 
         return [
             'referenceNumber' => $referenceNumber,
-            'trxType' => 'CKPN-JOURNAL',
+            'trxType' => 'SAKEP CKPN',
             'termType' => '',
             'termId' => 'FINCLOUD',
             'receiptNumber' => $receiptNumber,
