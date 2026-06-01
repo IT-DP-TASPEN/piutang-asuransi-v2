@@ -27,6 +27,10 @@ class UserForm
                             ->required()
                             ->maxLength(255)
                             ->unique(ignoreRecord: true),
+                        TextInput::make('username')
+                            ->required()
+                            ->maxLength(255)
+                            ->unique(ignoreRecord: true),
                         Select::make('branch_office_id')
                             ->relationship(
                                 'branchOffice',
@@ -34,10 +38,6 @@ class UserForm
                                 fn($query) => $query->where('is_active', true)->orderBy('branch_code'),
                             )
                             ->required(),
-                        // TextInput::make('username')
-                        //     ->required()
-                        //     ->maxLength(255)
-                        //     ->unique(ignoreRecord: true),
                         Select::make('roles')
                             ->relationship('roles', 'name')
                             ->multiple()

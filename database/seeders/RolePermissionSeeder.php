@@ -58,11 +58,12 @@ class RolePermissionSeeder extends Seeder
             'GlToGlTransaction',
             'ApiIntegrationLog',
             'Role',
+            'User',
         ];
 
         $permissions = collect($subjects)
-            ->flatMap(fn (string $subject): array => array_map(
-                fn (string $action): string => "{$action}:{$subject}",
+            ->flatMap(fn(string $subject): array => array_map(
+                fn(string $action): string => "{$action}:{$subject}",
                 $actions,
             ))
             ->merge([
@@ -100,7 +101,7 @@ class RolePermissionSeeder extends Seeder
                 'ExecuteGlToGl:CkpnJournal',
             ]);
 
-        $permissions->each(fn (string $permission): Permission => Permission::query()->firstOrCreate([
+        $permissions->each(fn(string $permission): Permission => Permission::query()->firstOrCreate([
             'name' => $permission,
             'guard_name' => $guardName,
         ]));
@@ -115,7 +116,7 @@ class RolePermissionSeeder extends Seeder
             'business_maker',
             'business_approver',
             'auditor',
-        ])->mapWithKeys(fn (string $role): array => [
+        ])->mapWithKeys(fn(string $role): array => [
             $role => Role::query()->firstOrCreate(['name' => $role, 'guard_name' => $guardName]),
         ]);
 
@@ -128,7 +129,7 @@ class RolePermissionSeeder extends Seeder
 
         /** @var Collection<int, string> $viewPermissions */
         $viewPermissions = $permissions->filter(
-            fn (string $permission): bool => str_starts_with($permission, 'ViewAny:')
+            fn(string $permission): bool => str_starts_with($permission, 'ViewAny:')
                 || str_starts_with($permission, 'View:'),
         );
 

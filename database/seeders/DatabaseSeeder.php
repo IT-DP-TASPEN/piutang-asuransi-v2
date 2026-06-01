@@ -34,6 +34,7 @@ class DatabaseSeeder extends Seeder
             [
                 'branch_office_id' => $centralBranch->id,
                 'name' => 'Test User',
+                'username' => 'test',
                 'password' => 'password',
             ],
         );

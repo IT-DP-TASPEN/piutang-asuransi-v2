@@ -16,6 +16,7 @@ return new class extends Migration
             $table->foreignId('branch_office_id')->constrained()->restrictOnDelete();
             $table->string('name');
             $table->string('email')->unique();
+            $table->string('username')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();
