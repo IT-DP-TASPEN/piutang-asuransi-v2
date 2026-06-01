@@ -7,6 +7,8 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\FontFamily;
+use Filament\Infolists\Components\CodeEntry;
+use Phiki\Grammar\Grammar;
 
 class ApiIntegrationLogInfolist
 {
@@ -31,48 +33,31 @@ class ApiIntegrationLogInfolist
                         IconEntry::make('is_success')
                             ->label('Success')
                             ->boolean(),
-                        TextEntry::make('request_headers')
+                        CodeEntry::make('request_headers')
                             ->label('Request headers')
-                            ->formatStateUsing(fn($state) => self::formatJson($state))
-                            ->fontFamily(FontFamily::Mono)
+                            ->grammar(Grammar::Json)
                             ->copyable()
                             ->placeholder('-')
                             ->columnSpanFull(),
-                        TextEntry::make('request_body')
+                        CodeEntry::make('request_body')
                             ->label('Request body')
-                            ->formatStateUsing(fn($state) => self::formatJson($state))
-                            ->fontFamily(FontFamily::Mono)
+                            ->grammar(Grammar::Json)
                             ->copyable()
                             ->placeholder('-')
                             ->columnSpanFull(),
-                        TextEntry::make('response_body')
+                        CodeEntry::make('response_body')
                             ->label('Response body')
-                            ->formatStateUsing(fn($state) => self::formatJson($state))
-                            ->fontFamily(FontFamily::Mono)
+                            ->grammar(Grammar::Json)
                             ->copyable()
                             ->placeholder('-')
                             ->columnSpanFull(),
-                        TextEntry::make('error_message')
+                        CodeEntry::make('error_message')
                             ->label('Error')
-                            ->formatStateUsing(fn($state) => self::formatJson($state))
-                            ->fontFamily(FontFamily::Mono)
+                            ->grammar(Grammar::Json)
                             ->copyable()
                             ->placeholder('-')
                             ->columnSpanFull(),
                     ]),
             ]);
-    }
-
-    private static function formatJson(mixed $state): ?string
-    {
-        if (blank($state)) {
-            return null;
-        }
-
-        if (is_string($state)) {
-            return $state;
-        }
-
-        return json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: null;
     }
 }

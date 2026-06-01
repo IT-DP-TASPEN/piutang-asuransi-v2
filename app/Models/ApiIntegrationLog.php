@@ -51,6 +51,8 @@ class ApiIntegrationLog extends Model
     {
         return [
             'request_headers' => 'array',
+            'request_body' => 'array',
+            'response_body' => 'array',
             'response_status' => 'integer',
             'is_success' => 'boolean',
             'requested_at' => 'datetime',

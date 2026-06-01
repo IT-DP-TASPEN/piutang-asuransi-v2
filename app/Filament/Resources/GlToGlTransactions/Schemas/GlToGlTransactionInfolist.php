@@ -2,10 +2,12 @@
 
 namespace App\Filament\Resources\GlToGlTransactions\Schemas;
 
+use Filament\Infolists\Components\CodeEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\FontFamily;
+use Phiki\Grammar\Grammar;
 
 class GlToGlTransactionInfolist
 {
@@ -30,32 +32,17 @@ class GlToGlTransactionInfolist
                         TextEntry::make('response_description')->label('Response description'),
                         TextEntry::make('executor.name')->label('Executed by'),
                         TextEntry::make('executed_at')->dateTime(),
-                        TextEntry::make('request_payload')
-                            ->formatStateUsing(fn($state) => self::formatJson($state))
-                            ->fontFamily(FontFamily::Mono)
+                        CodeEntry::make('request_payload')
+                            ->grammar(Grammar::Json)
                             ->copyable()
                             ->placeholder('-')
                             ->columnSpanFull(),
-                        TextEntry::make('response_payload')
-                            ->formatStateUsing(fn($state) => self::formatJson($state))
-                            ->fontFamily(FontFamily::Mono)
+                        CodeEntry::make('response_payload')
+                            ->grammar(Grammar::Json)
                             ->copyable()
                             ->placeholder('-')
                             ->columnSpanFull(),
                     ]),
             ]);
-    }
-
-    private static function formatJson(mixed $state): ?string
-    {
-        if (blank($state)) {
-            return null;
-        }
-
-        if (is_string($state)) {
-            return $state;
-        }
-
-        return json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: null;
     }
 }
