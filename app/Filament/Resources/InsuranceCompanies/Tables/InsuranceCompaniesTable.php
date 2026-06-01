@@ -20,13 +20,13 @@ class InsuranceCompaniesTable
                 TextColumn::make('code')
                     ->searchable()
                     ->sortable()
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('name')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('ckpn_weight')
                     ->label('CKPN weight')
-                    ->numeric(4)
+                    ->numeric(2)
                     ->suffix('%')
                     ->sortable(),
                 IconColumn::make('is_active')
