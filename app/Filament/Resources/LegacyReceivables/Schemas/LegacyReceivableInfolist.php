@@ -31,7 +31,7 @@ class LegacyReceivableInfolist
                         TextEntry::make('remaining_receivable_amount')->numeric(2),
                         TextEntry::make('total_paid_amount')
                             ->label('Total paid')
-                            ->state(fn(LegacyReceivable $record): string => (string) $record->payments()->sum('amount'))
+                            ->state(fn (LegacyReceivable $record): string => (string) $record->payments()->sum('amount'))
                             ->numeric(2),
                     ]),
             ]);

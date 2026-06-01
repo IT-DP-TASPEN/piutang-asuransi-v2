@@ -50,7 +50,7 @@ class GeneratedExportResource extends Resource
             return $query->whereHasMorph(
                 'exportable',
                 [CkpnWorkpaper::class],
-                fn(Builder $query) => $query->where('branch_office_id', $user->branch_office_id),
+                fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id),
             );
         }
 

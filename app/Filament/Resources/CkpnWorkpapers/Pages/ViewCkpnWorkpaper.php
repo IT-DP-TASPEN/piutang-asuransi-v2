@@ -1,0 +1,430 @@
+<?php
+
+namespace App\Filament\Resources\CkpnWorkpapers\Pages;
+
+use App\Actions\Ckpn\GenerateMonthlyCkpnWorkpaperAction;
+use App\Actions\Ckpn\RecalculateCkpnWorkpaperAction;
+use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
+use App\Actions\CkpnWorkpaper\ApproveCkpnWorkpaperAction;
+use App\Actions\CkpnWorkpaper\RejectCkpnWorkpaperAction;
+use App\Actions\CkpnWorkpaper\ReturnCkpnWorkpaperAction;
+use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
+use App\Actions\GeneratedExport\GenerateCkpnWorkpaperSakepExportAction;
+use App\Filament\Resources\ApiIntegrationLogs\ApiIntegrationLogResource;
+use App\Filament\Resources\CkpnWorkpapers\CkpnWorkpaperResource;
+use App\Filament\Resources\GeneratedExports\GeneratedExportResource;
+use App\Filament\Resources\GlToGlTransactions\GlToGlTransactionResource;
+use App\Jobs\ExecuteGlToGlJob;
+use App\Models\CkpnJournal;
+use App\Models\CkpnWorkpaper;
+use App\Models\GeneratedExport;
+use App\Models\User;
+use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
+use Filament\Actions\EditAction;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
+use Filament\Resources\Pages\ViewRecord;
+use Filament\Support\Icons\Heroicon;
+
+class ViewCkpnWorkpaper extends ViewRecord
+{
+    protected static string $resource = CkpnWorkpaperResource::class;
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            EditAction::make()
+                ->visible(fn (): bool => $this->isEditable()
+                    && (auth()->user()?->can('update', $this->workpaper()) ?? false)),
+            ActionGroup::make([
+                $this->generateAction(),
+                $this->recalculateAction(),
+                $this->submitAction(),
+            ])
+                ->label('Workpaper')
+                ->icon(Heroicon::OutlinedDocumentText)
+                ->button()
+                ->color('primary')
+                ->visible(fn (): bool => $this->hasVisibleWorkpaperActions()),
+            ActionGroup::make([
+                $this->approveAction(),
+                $this->rejectAction(),
+                $this->returnAction(),
+            ])
+                ->label('Approval')
+                ->icon(Heroicon::OutlinedCheckCircle)
+                ->button()
+                ->color('success')
+                ->visible(fn (): bool => $this->hasVisibleApprovalActions()),
+            ActionGroup::make([
+                $this->createJournalAction(),
+                $this->generateSakepExportAction(),
+            ])
+                ->label('Output')
+                ->icon(Heroicon::OutlinedDocumentArrowDown)
+                ->button()
+                ->color('warning')
+                ->visible(fn (): bool => $this->hasVisibleOutputActions()),
+            ActionGroup::make([
+                $this->retryGlToGlAction(),
+                $this->viewGeneratedExportsAction(),
+                $this->viewGlToGlTransactionsAction(),
+                $this->viewApiLogsAction(),
+            ])
+                ->label('System')
+                ->icon(Heroicon::OutlinedCog6Tooth)
+                ->button()
+                ->color('gray')
+                ->visible(fn (): bool => $this->hasVisibleSystemActions()),
+        ];
+    }
+
+    private function generateAction(): Action
+    {
+        return Action::make('generate')
+            ->label('Generate Items')
+            ->requiresConfirmation()
+            ->visible(fn (): bool => $this->canGenerate())
+            ->action(function (): void {
+                app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($this->workpaper());
+                $this->refreshWorkpaperData();
+
+                Notification::make()->success()->title('CKPN workpaper generated')->send();
+            });
+    }
+
+    private function recalculateAction(): Action
+    {
+        return Action::make('recalculate')
+            ->requiresConfirmation()
+            ->visible(fn (): bool => $this->canRecalculate())
+            ->action(function (): void {
+                app(RecalculateCkpnWorkpaperAction::class)->handle($this->workpaper());
+                $this->refreshWorkpaperData();
+
+                Notification::make()->success()->title('CKPN workpaper recalculated')->send();
+            });
+    }
+
+    private function submitAction(): Action
+    {
+        return Action::make('submit')
+            ->requiresConfirmation()
+            ->visible(fn (): bool => $this->canSubmit())
+            ->form([
+                Textarea::make('notes')->maxLength(65535),
+            ])
+            ->action(function (array $data): void {
+                $user = auth()->user();
+
+                if (! $user instanceof User) {
+                    return;
+                }
+
+                app(SubmitCkpnWorkpaperAction::class)->handle($this->workpaper(), $user, $data['notes'] ?? null);
+                $this->refreshWorkpaperData();
+
+                Notification::make()->success()->title('CKPN workpaper submitted')->send();
+            });
+    }
+
+    private function approveAction(): Action
+    {
+        return Action::make('approve')
+            ->requiresConfirmation()
+            ->visible(fn (): bool => $this->canApprove())
+            ->form([
+                Textarea::make('notes')->maxLength(65535),
+            ])
+            ->action(function (array $data): void {
+                $user = auth()->user();
+
+                if (! $user instanceof User) {
+                    return;
+                }
+
+                app(ApproveCkpnWorkpaperAction::class)->handle($this->workpaper(), $user, $data['notes'] ?? null);
+                $this->refreshWorkpaperData();
+
+                Notification::make()->success()->title('CKPN workpaper approved')->send();
+            });
+    }
+
+    private function rejectAction(): Action
+    {
+        return Action::make('reject')
+            ->color('danger')
+            ->requiresConfirmation()
+            ->visible(fn (): bool => $this->canReject())
+            ->form([
+                Textarea::make('notes')->required()->maxLength(65535),
+            ])
+            ->action(function (array $data): void {
+                $user = auth()->user();
+
+                if (! $user instanceof User) {
+                    return;
+                }
+
+                app(RejectCkpnWorkpaperAction::class)->handle($this->workpaper(), $user, $data['notes'] ?? null);
+                $this->refreshWorkpaperData();
+
+                Notification::make()->success()->title('CKPN workpaper rejected')->send();
+            });
+    }
+
+    private function returnAction(): Action
+    {
+        return Action::make('returnRequest')
+            ->label('Return')
+            ->color('warning')
+            ->requiresConfirmation()
+            ->visible(fn (): bool => $this->canReturn())
+            ->form([
+                Textarea::make('notes')->required()->maxLength(65535),
+            ])
+            ->action(function (array $data): void {
+                $user = auth()->user();
+
+                if (! $user instanceof User) {
+                    return;
+                }
+
+                app(ReturnCkpnWorkpaperAction::class)->handle($this->workpaper(), $user, $data['notes'] ?? null);
+                $this->refreshWorkpaperData();
+
+                Notification::make()->success()->title('CKPN workpaper returned')->send();
+            });
+    }
+
+    private function createJournalAction(): Action
+    {
+        return Action::make('createJournal')
+            ->label('Create CKPN journal')
+            ->visible(fn (): bool => $this->canCreateJournal())
+            ->form([
+                DatePicker::make('journal_date')
+                    ->default(now())
+                    ->required(),
+                TextInput::make('debit_account')
+                    ->maxLength(255),
+                TextInput::make('credit_account')
+                    ->maxLength(255),
+                Textarea::make('debit_narrative')
+                    ->maxLength(65535),
+                Textarea::make('credit_narrative')
+                    ->maxLength(65535),
+                Textarea::make('description')
+                    ->maxLength(65535),
+            ])
+            ->action(function (array $data): void {
+                $user = auth()->user();
+
+                if (! $user instanceof User) {
+                    return;
+                }
+
+                app(CreateCkpnJournalFromWorkpaperAction::class)->handle($this->workpaper(), $user, $data);
+                $this->refreshWorkpaperData();
+
+                Notification::make()->success()->title('CKPN journal draft created')->send();
+            });
+    }
+
+    private function generateSakepExportAction(): Action
+    {
+        return Action::make('generateSakepExport')
+            ->label('Generate SAKEP XLSX')
+            ->visible(fn (): bool => $this->canGenerateExport())
+            ->action(function (): void {
+                $user = auth()->user();
+
+                if (! $user instanceof User) {
+                    return;
+                }
+
+                $export = app(GenerateCkpnWorkpaperSakepExportAction::class)->handle($this->workpaper(), $user);
+                $this->refreshWorkpaperData();
+
+                if ($export->status === GeneratedExport::STATUS_FAILED) {
+                    Notification::make()->danger()->title('SAKEP export failed')->send();
+
+                    return;
+                }
+
+                Notification::make()->success()->title('SAKEP XLSX generated')->send();
+            });
+    }
+
+    private function retryGlToGlAction(): Action
+    {
+        return Action::make('retryGlToGl')
+            ->label('Retry GL-to-GL')
+            ->color('danger')
+            ->requiresConfirmation()
+            ->visible(fn (): bool => $this->canRetryGlToGl())
+            ->action(function (): void {
+                $user = auth()->user();
+                $journal = $this->latestFailedGlJournal();
+
+                if (! $user instanceof User || ! $journal instanceof CkpnJournal) {
+                    return;
+                }
+
+                $journal->forceFill(['status' => CkpnJournal::STATUS_GL_TO_GL_QUEUED])->save();
+                ExecuteGlToGlJob::dispatch($journal->id, $user->id)->afterCommit();
+                $this->refreshWorkpaperData();
+
+                Notification::make()->success()->title('GL-to-GL retry queued')->send();
+            });
+    }
+
+    private function viewGeneratedExportsAction(): Action
+    {
+        return Action::make('viewGeneratedExports')
+            ->label('View Export Logs')
+            ->visible(fn (): bool => auth()->user()?->can('ViewAny:GeneratedExport') ?? false)
+            ->url(fn (): string => GeneratedExportResource::getUrl('index'));
+    }
+
+    private function viewGlToGlTransactionsAction(): Action
+    {
+        return Action::make('viewGlToGlTransactions')
+            ->label('View GL-to-GL Logs')
+            ->visible(fn (): bool => auth()->user()?->can('ViewAny:GlToGlTransaction') ?? false)
+            ->url(fn (): string => GlToGlTransactionResource::getUrl('index'));
+    }
+
+    private function viewApiLogsAction(): Action
+    {
+        return Action::make('viewApiLogs')
+            ->label('View API Logs')
+            ->visible(fn (): bool => auth()->user()?->can('ViewAny:ApiIntegrationLog') ?? false)
+            ->url(fn (): string => ApiIntegrationLogResource::getUrl('index'));
+    }
+
+    private function hasVisibleWorkpaperActions(): bool
+    {
+        return $this->canGenerate() || $this->canRecalculate() || $this->canSubmit();
+    }
+
+    private function hasVisibleApprovalActions(): bool
+    {
+        return $this->canApprove() || $this->canReject() || $this->canReturn();
+    }
+
+    private function hasVisibleOutputActions(): bool
+    {
+        return $this->canCreateJournal() || $this->canGenerateExport();
+    }
+
+    private function hasVisibleSystemActions(): bool
+    {
+        return $this->canRetryGlToGl()
+            || (auth()->user()?->can('ViewAny:GeneratedExport') ?? false)
+            || (auth()->user()?->can('ViewAny:GlToGlTransaction') ?? false)
+            || (auth()->user()?->can('ViewAny:ApiIntegrationLog') ?? false);
+    }
+
+    private function canGenerate(): bool
+    {
+        return (auth()->user()?->can('generate', $this->workpaper()) ?? false)
+            && in_array($this->workpaper()->status, [
+                CkpnWorkpaper::STATUS_DRAFT,
+                CkpnWorkpaper::STATUS_GENERATED,
+            ], true);
+    }
+
+    private function canRecalculate(): bool
+    {
+        return (auth()->user()?->can('recalculate', $this->workpaper()) ?? false)
+            && in_array($this->workpaper()->status, [
+                CkpnWorkpaper::STATUS_DRAFT,
+                CkpnWorkpaper::STATUS_GENERATED,
+            ], true);
+    }
+
+    private function canSubmit(): bool
+    {
+        return (auth()->user()?->can('submit', $this->workpaper()) ?? false)
+            && in_array($this->workpaper()->status, [
+                CkpnWorkpaper::STATUS_GENERATED,
+                CkpnWorkpaper::STATUS_RETURNED,
+            ], true);
+    }
+
+    private function canApprove(): bool
+    {
+        return (auth()->user()?->can('approve', $this->workpaper()) ?? false)
+            && $this->workpaper()->status === CkpnWorkpaper::STATUS_SUBMITTED;
+    }
+
+    private function canReject(): bool
+    {
+        return (auth()->user()?->can('reject', $this->workpaper()) ?? false)
+            && $this->workpaper()->status === CkpnWorkpaper::STATUS_SUBMITTED;
+    }
+
+    private function canReturn(): bool
+    {
+        return (auth()->user()?->can('returnRequest', $this->workpaper()) ?? false)
+            && $this->workpaper()->status === CkpnWorkpaper::STATUS_SUBMITTED;
+    }
+
+    private function canCreateJournal(): bool
+    {
+        return (auth()->user()?->can('createJournal', $this->workpaper()) ?? false)
+            && $this->workpaper()->status === CkpnWorkpaper::STATUS_APPROVED
+            && ! $this->workpaper()->journals()->exists();
+    }
+
+    private function canGenerateExport(): bool
+    {
+        return (auth()->user()?->can('generateExport', $this->workpaper()) ?? false)
+            && $this->workpaper()->status === CkpnWorkpaper::STATUS_APPROVED;
+    }
+
+    private function canRetryGlToGl(): bool
+    {
+        $journal = $this->latestFailedGlJournal();
+
+        return $journal instanceof CkpnJournal
+            && (auth()->user()?->can('executeGlToGl', $journal) ?? false);
+    }
+
+    private function isEditable(): bool
+    {
+        return in_array($this->workpaper()->status, [
+            CkpnWorkpaper::STATUS_DRAFT,
+            CkpnWorkpaper::STATUS_RETURNED,
+        ], true);
+    }
+
+    private function latestFailedGlJournal(): ?CkpnJournal
+    {
+        return $this->workpaper()
+            ->journals()
+            ->where('status', CkpnJournal::STATUS_GL_TO_GL_FAILED)
+            ->latest('id')
+            ->first();
+    }
+
+    private function workpaper(): CkpnWorkpaper
+    {
+        $record = $this->getRecord();
+
+        if (! $record instanceof CkpnWorkpaper) {
+            abort(404);
+        }
+
+        return $record;
+    }
+
+    private function refreshWorkpaperData(): void
+    {
+        $this->record = $this->workpaper()->refresh();
+    }
+}

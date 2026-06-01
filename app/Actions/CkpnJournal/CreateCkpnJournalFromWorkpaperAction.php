@@ -21,17 +21,30 @@ class CreateCkpnJournalFromWorkpaperAction
             ]);
         }
 
-        return DB::transaction(fn (): CkpnJournal => $workpaper->journals()->create([
-            'branch_office_id' => $workpaper->branch_office_id,
-            'journal_date' => $data['journal_date'] ?? now()->toDateString(),
-            'total_amount' => $workpaper->total_ckpn_amount,
-            'debit_account' => $data['debit_account'] ?? null,
-            'credit_account' => $data['credit_account'] ?? null,
-            'debit_narrative' => $data['debit_narrative'] ?? null,
-            'credit_narrative' => $data['credit_narrative'] ?? null,
-            'description' => $data['description'] ?? null,
-            'status' => CkpnJournal::STATUS_DRAFT,
-            'created_by' => $user->id,
-        ]));
+        return DB::transaction(function () use ($workpaper, $user, $data): CkpnJournal {
+            $workpaper->newQuery()
+                ->where('id', $workpaper->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($workpaper->journals()->exists()) {
+                throw ValidationException::withMessages([
+                    'ckpn_journal' => 'CKPN journal already exists for this workpaper.',
+                ]);
+            }
+
+            return $workpaper->journals()->create([
+                'branch_office_id' => $workpaper->branch_office_id,
+                'journal_date' => $data['journal_date'] ?? now()->toDateString(),
+                'total_amount' => $workpaper->total_ckpn_amount,
+                'debit_account' => $data['debit_account'] ?? null,
+                'credit_account' => $data['credit_account'] ?? null,
+                'debit_narrative' => $data['debit_narrative'] ?? null,
+                'credit_narrative' => $data['credit_narrative'] ?? null,
+                'description' => $data['description'] ?? null,
+                'status' => CkpnJournal::STATUS_DRAFT,
+                'created_by' => $user->id,
+            ]);
+        });
     }
 }

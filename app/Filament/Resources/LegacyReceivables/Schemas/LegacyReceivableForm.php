@@ -43,7 +43,7 @@ class LegacyReceivableForm
                             ->required(),
                         Select::make('claim_status_id')
                             ->relationship('claimStatus', 'name')
-                            ->default(fn(): ?int => ClaimStatus::query()
+                            ->default(fn (): ?int => ClaimStatus::query()
                                 ->where('code', ClaimStatus::DEFAULT_CODE)
                                 ->value('id'))
                             ->searchable()

@@ -26,16 +26,16 @@ class CkpnAdjustmentForm
                             ->relationship(
                                 'ckpnWorkpaper',
                                 'period',
-                                fn($query) => $query->where('status', CkpnWorkpaper::STATUS_GENERATED)
+                                fn ($query) => $query->where('status', CkpnWorkpaper::STATUS_GENERATED)
                             )
                             ->searchable()
                             ->preload(),
                         Select::make('ckpn_workpaper_item_id')
                             ->label('Workpaper item')
-                            ->options(fn(): array => CkpnWorkpaperItem::query()
+                            ->options(fn (): array => CkpnWorkpaperItem::query()
                                 ->orderBy('id')
                                 ->get()
-                                ->mapWithKeys(fn(CkpnWorkpaperItem $item): array => [
+                                ->mapWithKeys(fn (CkpnWorkpaperItem $item): array => [
                                     $item->id => "{$item->source_label} - {$item->branch_code} - {$item->loan_account_number} - {$item->customer_name}",
                                 ])
                                 ->all())

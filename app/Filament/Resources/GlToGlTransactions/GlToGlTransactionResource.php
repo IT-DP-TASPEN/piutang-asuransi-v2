@@ -46,9 +46,9 @@ class GlToGlTransactionResource extends Resource
         }
 
         if (RoleScope::isBranchScoped($user)) {
-            return $query->where(fn(Builder $query) => $query
-                ->whereHas('ckpnJournal', fn(Builder $query) => $query->where('branch_office_id', $user->branch_office_id))
-                ->orWhereHas('ckpnWorkpaper', fn(Builder $query) => $query->where('branch_office_id', $user->branch_office_id)));
+            return $query->where(fn (Builder $query) => $query
+                ->whereHas('ckpnJournal', fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id))
+                ->orWhereHas('ckpnWorkpaper', fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id)));
         }
 
         return $query->whereRaw('1 = 0');

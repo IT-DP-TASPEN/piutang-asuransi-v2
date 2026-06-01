@@ -25,7 +25,7 @@ class ClaimStatusChangeRequestForm
                         Select::make('insurance_receivable_id')
                             ->label('Insurance receivable')
                             ->relationship('insuranceReceivable', 'loan_account_number')
-                            ->getOptionLabelFromRecordUsing(fn(InsuranceReceivable $record): string => collect([
+                            ->getOptionLabelFromRecordUsing(fn (InsuranceReceivable $record): string => collect([
                                 $record->branch_code,
                                 $record->loan_account_number,
                                 $record->customer_name,
@@ -33,7 +33,7 @@ class ClaimStatusChangeRequestForm
                             ->searchable()
                             ->preload()
                             ->live()
-                            ->afterStateUpdated(fn(Set $set, ?int $state): mixed => $set(
+                            ->afterStateUpdated(fn (Set $set, ?int $state): mixed => $set(
                                 'from_claim_status_id',
                                 InsuranceReceivable::query()->whereKey($state)->value('claim_status_id'),
                             ))
@@ -45,7 +45,7 @@ class ClaimStatusChangeRequestForm
                             ->dehydrated(false),
                         Select::make('to_claim_status_id')
                             ->label('Target claim status')
-                            ->options(fn(): array => ClaimStatus::query()
+                            ->options(fn (): array => ClaimStatus::query()
                                 ->where('is_active', true)
                                 ->orderBy('name')
                                 ->pluck('name', 'id')

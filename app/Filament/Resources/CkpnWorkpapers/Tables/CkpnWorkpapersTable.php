@@ -3,7 +3,9 @@
 namespace App\Filament\Resources\CkpnWorkpapers\Tables;
 
 use App\Models\CkpnWorkpaper;
+use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -49,7 +51,16 @@ class CkpnWorkpapersTable
                     ->options(CkpnWorkpaper::statusOptions()),
             ])
             ->recordActions([
-                EditAction::make(),
+                ViewAction::make(),
+                EditAction::make()
+                    ->visible(fn (CkpnWorkpaper $record): bool => (auth()->user()?->can('update', $record) ?? false)
+                        && in_array($record->status, [
+                            CkpnWorkpaper::STATUS_DRAFT,
+                            CkpnWorkpaper::STATUS_RETURNED,
+                        ], true)),
+                DeleteAction::make()
+                    ->visible(fn (CkpnWorkpaper $record): bool => (auth()->user()?->can('delete', $record) ?? false)
+                        && $record->status === CkpnWorkpaper::STATUS_DRAFT),
             ]);
     }
 }

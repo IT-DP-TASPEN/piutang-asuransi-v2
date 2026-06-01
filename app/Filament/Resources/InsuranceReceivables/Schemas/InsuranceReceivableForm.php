@@ -16,6 +16,8 @@ class InsuranceReceivableForm
         return $schema
             ->components([
                 Section::make('Draft')
+                    ->inlineLabel()
+                    ->columnSpanFull()
                     ->schema([
                         TextInput::make('loan_account_number')
                             ->label('Loan account number')
@@ -36,15 +38,16 @@ class InsuranceReceivableForm
                         Select::make('claim_status_id')
                             ->label('Claim status')
                             ->relationship('claimStatus', 'name')
-                            ->default(fn (): ?int => ClaimStatus::query()
+                            ->default(fn(): ?int => ClaimStatus::query()
                                 ->where('code', ClaimStatus::DEFAULT_CODE)
                                 ->value('id'))
                             ->disabled()
                             ->dehydrated()
                             ->required(),
-                    ])
-                    ->columns(2),
+                    ]),
                 Section::make('Inquiry snapshot')
+                    ->inlineLabel()
+                    ->columnSpanFull()
                     ->schema([
                         TextInput::make('branch_code')
                             ->label('Branch code')
@@ -110,7 +113,8 @@ class InsuranceReceivableForm
                             ->disabled()
                             ->dehydrated(false),
                     ])
-                    ->columns(2),
+                    ->columns(2)
+                    ->visibleOn('edit'),
             ]);
     }
 }

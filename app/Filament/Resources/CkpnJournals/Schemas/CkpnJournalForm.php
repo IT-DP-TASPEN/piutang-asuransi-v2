@@ -17,6 +17,8 @@ class CkpnJournalForm
         return $schema
             ->components([
                 Section::make('Journal')
+                    ->inlineLabel()
+                    ->columnSpanFull()
                     ->schema([
                         Select::make('ckpn_workpaper_id')
                             ->label('Workpaper')
@@ -51,8 +53,7 @@ class CkpnJournalForm
                         Textarea::make('description')
                             ->maxLength(65535)
                             ->columnSpanFull(),
-                    ])
-                    ->columns(2),
+                    ]),
             ]);
     }
 }
