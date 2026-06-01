@@ -111,6 +111,37 @@ class InsuranceReceivableInquiryTest extends TestCase
         app(PerformLoanInquiryAction::class)->handle($receivable, $user);
     }
 
+    public function test_super_admin_can_inquire_different_branch(): void
+    {
+        config([
+            'core_banking.base_url' => 'http://core.test',
+            'core_banking.signature_secret' => 'secret-key',
+        ]);
+        $this->seedPhaseTwoDependencies();
+        $user = $this->superAdminUser();
+        $receivable = $this->draftReceivableFor($user);
+
+        Http::fake([
+            'http://core.test/inquiry/detail/loan' => Http::response([
+                'responseCode' => '00',
+                'description' => 'Success',
+                'data' => [
+                    'branchCode' => '002',
+                    'loanOutStanding' => '230929055.00',
+                    'accountNumber' => '3010001000054745',
+                    'customerName' => 'Jane Customer',
+                ],
+            ]),
+        ]);
+
+        $result = app(PerformLoanInquiryAction::class)->handle($receivable, $user);
+
+        $expectedBranch = BranchOffice::query()->where('branch_code', '002')->firstOrFail();
+        $this->assertSame('002', $result->branch_code);
+        $this->assertSame($expectedBranch->id, $result->branch_office_id);
+        $this->assertSame('Jane Customer', $result->customer_name);
+    }
+
     public function test_draft_defaults_claim_status_to_on_process(): void
     {
         $this->seedPhaseTwoDependencies();
@@ -137,6 +168,15 @@ class InsuranceReceivableInquiryTest extends TestCase
         $branchOffice = BranchOffice::query()->where('branch_code', $branchCode)->firstOrFail();
         $user = User::factory()->create(['branch_office_id' => $branchOffice->id]);
         $user->assignRole('branch_maker');
+
+        return $user;
+    }
+
+    private function superAdminUser(): User
+    {
+        $branchOffice = BranchOffice::query()->where('branch_code', '000')->firstOrFail();
+        $user = User::factory()->create(['branch_office_id' => $branchOffice->id]);
+        $user->assignRole('super_admin');
 
         return $user;
     }

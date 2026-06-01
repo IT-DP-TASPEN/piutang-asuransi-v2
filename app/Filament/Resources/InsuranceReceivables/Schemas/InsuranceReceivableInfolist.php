@@ -5,7 +5,6 @@ namespace App\Filament\Resources\InsuranceReceivables\Schemas;
 use App\Models\ApprovalRequest;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceReceivable;
-use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -79,22 +78,6 @@ class InsuranceReceivableInfolist
                                     $request->reason ? "Reason: {$request->reason}" : null,
                                 ])->filter()->join("\n");
                             })
-                            ->columnSpanFull(),
-                    ]),
-                Section::make('Stage timeline')
-                    ->schema([
-                        RepeatableEntry::make('stageLogs')
-                            ->label('')
-                            ->schema([
-                                TextEntry::make('created_at')->label('Time')->dateTime(),
-                                TextEntry::make('event')->badge(),
-                                TextEntry::make('triggered_by_type')->label('Triggered by')->badge(),
-                                TextEntry::make('from_status')->label('From'),
-                                TextEntry::make('to_status')->label('To'),
-                                TextEntry::make('description')->columnSpanFull(),
-                            ])
-                            ->columns(5)
-                            ->contained(false)
                             ->columnSpanFull(),
                     ]),
             ]);

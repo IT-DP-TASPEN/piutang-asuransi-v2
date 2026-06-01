@@ -10,8 +10,10 @@ use App\Actions\InsuranceReceivable\ExecuteEarlyTerminationAction;
 use App\Actions\InsuranceReceivable\PerformLoanInquiryAction;
 use App\Actions\InsuranceReceivable\SubmitInsuranceReceivableForApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
+use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
 use App\Filament\Resources\InsuranceReceivables\Pages\EditInsuranceReceivable;
 use App\Filament\Resources\InsuranceReceivables\Pages\ViewInsuranceReceivable;
+use App\Filament\Resources\InsuranceReceivables\RelationManagers\StageLogsRelationManager;
 use App\Jobs\ExecuteEarlyTerminationJob;
 use App\Jobs\ExecuteGlToGlJob;
 use App\Jobs\RunLoanInquiryJob;
@@ -251,6 +253,24 @@ class WorkflowQueueAutomationTest extends TestCase
             ->assertActionDoesNotExist('returnApproval')
             ->assertActionDoesNotExist('retryInquiry')
             ->assertActionDoesNotExist('retryEarlyTermination');
+    }
+
+    public function test_stage_logs_relation_manager_is_registered(): void
+    {
+        $this->assertContains(StageLogsRelationManager::class, InsuranceReceivableResource::getRelations());
+    }
+
+    public function test_view_page_renders_labeled_action_group_buttons(): void
+    {
+        $this->seedDependencies();
+        $superAdmin = $this->userWithRole('super_admin', '000');
+        $receivable = $this->receivableReadyForSubmit($this->userWithRole('branch_maker', '001'));
+
+        Livewire::actingAs($superAdmin)
+            ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
+            ->assertSee('Approval')
+            ->assertSee('System')
+            ->assertSee('Claim Status');
     }
 
     public function test_claim_status_update_can_be_submitted_and_approved_from_receivable_view(): void

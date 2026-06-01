@@ -31,6 +31,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
+use Filament\Support\Icons\Heroicon;
 
 class ViewInsuranceReceivable extends ViewRecord
 {
@@ -46,21 +47,37 @@ class ViewInsuranceReceivable extends ViewRecord
                 $this->approveAction(),
                 $this->rejectAction(),
                 $this->returnAction(),
-            ])->label('Approval Actions'),
+            ])
+                ->label('Approval')
+                ->icon(Heroicon::OutlinedCheckCircle)
+                ->button()
+                ->color('primary')
+                ->visible(fn (): bool => $this->hasVisibleApprovalActions()),
             ActionGroup::make([
                 $this->retryInquiryAction(),
                 $this->retryEarlyTerminationAction(),
                 $this->updateCollectabilityAction(),
                 Action::make('viewApiLogs')
                     ->label('View API Logs')
+                    ->visible(fn (): bool => auth()->user()?->can('ViewAny:ApiIntegrationLog') ?? false)
                     ->url(ApiIntegrationLogResource::getUrl('index')),
-            ])->label('System Actions'),
+            ])
+                ->label('System')
+                ->icon(Heroicon::OutlinedCog6Tooth)
+                ->button()
+                ->color('gray')
+                ->visible(fn (): bool => $this->hasVisibleSystemActions()),
             ActionGroup::make([
                 $this->updateClaimStatusAction(),
                 $this->approveClaimStatusAction(),
                 $this->rejectClaimStatusAction(),
                 $this->returnClaimStatusAction(),
-            ])->label('Claim Actions'),
+            ])
+                ->label('Claim Status')
+                ->icon(Heroicon::OutlinedTag)
+                ->button()
+                ->color('warning')
+                ->visible(fn (): bool => $this->hasVisibleClaimActions()),
         ];
     }
 
@@ -364,6 +381,66 @@ class ViewInsuranceReceivable extends ViewRecord
 
                 Notification::make()->success()->title('Claim status update returned')->send();
             });
+    }
+
+    private function hasVisibleApprovalActions(): bool
+    {
+        $user = auth()->user();
+        $record = $this->getRecord();
+        $approvalPending = in_array($record->workflow_status, [
+            InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
+            InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
+        ], true);
+
+        $canSubmit = ($user?->can('submitForApproval', $record) ?? false)
+            && in_array($record->workflow_status, [
+                InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
+                InsuranceReceivable::WORKFLOW_STATUS_RETURNED,
+            ], true)
+            && $record->system_status === InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED;
+
+        $canSubmitAccounting = ($user?->can('submitAccountingValidation', $record) ?? false)
+            && $record->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_BRANCH_APPROVED;
+
+        $canApprove = ($user?->can('approveApproval', $record) ?? false) && $approvalPending;
+        $canReject = ($user?->can('rejectApproval', $record) ?? false) && $approvalPending;
+        $canReturn = ($user?->can('returnApproval', $record) ?? false) && $approvalPending;
+
+        return $canSubmit || $canSubmitAccounting || $canApprove || $canReject || $canReturn;
+    }
+
+    private function hasVisibleSystemActions(): bool
+    {
+        $user = auth()->user();
+        $record = $this->getRecord();
+
+        $canRetryInquiry = ($user?->can('runInquiry', $record) ?? false)
+            && in_array($record->system_status, [
+                InsuranceReceivable::SYSTEM_STATUS_INQUIRY_FAILED,
+                InsuranceReceivable::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED,
+            ], true);
+
+        $canRetryEarlyTermination = ($user?->can('executeEarlyTermination', $record) ?? false)
+            && $record->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED;
+
+        return $canRetryInquiry
+            || $canRetryEarlyTermination
+            || ($user?->can('updateCollectability', $record) ?? false)
+            || ($user?->can('ViewAny:ApiIntegrationLog') ?? false);
+    }
+
+    private function hasVisibleClaimActions(): bool
+    {
+        $user = auth()->user();
+
+        $canCreateRequest = ($user?->can('Create:ClaimStatusChangeRequest') ?? false)
+            && ($user?->can('Submit:ClaimStatusChangeRequest') ?? false)
+            && ! $this->pendingClaimStatusRequest() instanceof ClaimStatusChangeRequest;
+
+        return $canCreateRequest
+            || $this->canActOnPendingClaimStatus('approve')
+            || $this->canActOnPendingClaimStatus('reject')
+            || $this->canActOnPendingClaimStatus('returnRequest');
     }
 
     private function pendingClaimStatusRequest(): ?ClaimStatusChangeRequest

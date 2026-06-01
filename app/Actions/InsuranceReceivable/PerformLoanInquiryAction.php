@@ -39,7 +39,7 @@ class PerformLoanInquiryAction
             ]);
         }
 
-        if ($user->branchOffice?->branch_code !== $branchCode) {
+        if (! $user->hasRole('super_admin') && $user->branchOffice?->branch_code !== $branchCode) {
             throw ValidationException::withMessages([
                 'loan_account_number' => "Loan branch {$branchCode} does not match your branch {$user->branchOffice?->branch_code}.",
             ]);
