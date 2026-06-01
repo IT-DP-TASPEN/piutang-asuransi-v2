@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\CkpnAdjustments\Schemas;
 
 use App\Models\CkpnAdjustment;
-use App\Models\CkpnWorkpaper;
 use App\Models\CkpnWorkpaperItem;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -23,11 +22,7 @@ class CkpnAdjustmentForm
                     ->schema([
                         Select::make('ckpn_workpaper_id')
                             ->label('Workpaper')
-                            ->relationship(
-                                'ckpnWorkpaper',
-                                'period',
-                                fn ($query) => $query->where('status', CkpnWorkpaper::STATUS_GENERATED)
-                            )
+                            ->relationship('ckpnWorkpaper', 'period')
                             ->searchable()
                             ->preload(),
                         Select::make('ckpn_workpaper_item_id')
@@ -42,19 +37,35 @@ class CkpnAdjustmentForm
                             ->searchable()
                             ->required(),
                         TextInput::make('adjustment_type')
+                            ->default(CkpnAdjustment::TYPE_OVERRIDE_FINAL_CKPN_AMOUNT)
                             ->required()
                             ->maxLength(255),
-                        TextInput::make('original_rate')
+                        TextInput::make('calculated_ckpn_rate')
                             ->numeric()
+                            ->disabled()
+                            ->dehydrated(false)
                             ->step('0.0001'),
-                        TextInput::make('adjusted_rate')
+                        TextInput::make('calculated_ckpn_amount')
                             ->numeric()
-                            ->step('0.0001'),
-                        TextInput::make('original_amount')
-                            ->numeric()
+                            ->disabled()
+                            ->dehydrated(false)
                             ->step('0.01'),
-                        TextInput::make('adjusted_amount')
+                        TextInput::make('requested_adjusted_ckpn_rate')
                             ->numeric()
+                            ->step('0.0001'),
+                        TextInput::make('requested_adjusted_ckpn_amount')
+                            ->numeric()
+                            ->required()
+                            ->step('0.01'),
+                        TextInput::make('approved_adjusted_ckpn_rate')
+                            ->numeric()
+                            ->disabled()
+                            ->dehydrated(false)
+                            ->step('0.0001'),
+                        TextInput::make('approved_adjusted_ckpn_amount')
+                            ->numeric()
+                            ->disabled()
+                            ->dehydrated(false)
                             ->step('0.01'),
                         Select::make('status')
                             ->options(CkpnAdjustment::statusOptions())

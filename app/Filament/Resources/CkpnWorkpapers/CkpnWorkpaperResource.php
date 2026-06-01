@@ -6,6 +6,7 @@ use App\Filament\Resources\CkpnWorkpapers\Pages\CreateCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\Pages\EditCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ListCkpnWorkpapers;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ViewCkpnWorkpaper;
+use App\Filament\Resources\CkpnWorkpapers\RelationManagers\AdjustmentsRelationManager;
 use App\Filament\Resources\CkpnWorkpapers\RelationManagers\ItemsRelationManager;
 use App\Filament\Resources\CkpnWorkpapers\Schemas\CkpnWorkpaperForm;
 use App\Filament\Resources\CkpnWorkpapers\Schemas\CkpnWorkpaperInfolist;
@@ -75,6 +76,7 @@ class CkpnWorkpaperResource extends Resource
     {
         return [
             ItemsRelationManager::class,
+            AdjustmentsRelationManager::class,
         ];
     }
 

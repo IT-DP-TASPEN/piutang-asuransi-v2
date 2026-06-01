@@ -27,8 +27,17 @@ class CkpnWorkpaperInfolist
                         TextEntry::make('total_receivable_amount')
                             ->label('Total receivable')
                             ->numeric(2),
+                        TextEntry::make('total_calculated_ckpn_amount')
+                            ->label('Total calculated CKPN')
+                            ->numeric(2),
+                        TextEntry::make('total_adjustment_delta')
+                            ->label('Total adjustment delta')
+                            ->numeric(2),
+                        TextEntry::make('total_effective_ckpn_amount')
+                            ->label('Total effective CKPN')
+                            ->numeric(2),
                         TextEntry::make('total_ckpn_amount')
-                            ->label('Total CKPN')
+                            ->label('Final CKPN')
                             ->numeric(2),
                         TextEntry::make('creator.name')->label('Created by'),
                         TextEntry::make('approver.name')->label('Approved by'),

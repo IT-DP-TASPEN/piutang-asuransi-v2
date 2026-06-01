@@ -2,9 +2,11 @@
 
 namespace App\Services\Approval;
 
+use App\Actions\CkpnAdjustment\ApplyApprovedCkpnAdjustmentAction;
 use App\Jobs\ExecuteEarlyTerminationJob;
 use App\Jobs\ExecuteGlToGlJob;
 use App\Models\ApprovalRequest;
+use App\Models\CkpnAdjustment;
 use App\Models\CkpnJournal;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceReceivable;
@@ -18,6 +20,7 @@ class ApprovalFinalizationService
 {
     public function __construct(
         private readonly InsuranceReceivableStageLogger $stageLogger,
+        private readonly ApplyApprovedCkpnAdjustmentAction $applyApprovedCkpnAdjustmentAction,
     ) {}
 
     public function finalize(ApprovalRequest $approvalRequest, User $actor, ?string $notes = null): void
@@ -27,6 +30,7 @@ class ApprovalFinalizationService
             ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION => $this->finalizeAccountingValidation($approvalRequest, $actor, $notes),
             ApprovalRequest::WORKFLOW_CLAIM_STATUS_UPDATE => $this->finalizeClaimStatusUpdate($approvalRequest, $actor, $notes),
             ApprovalRequest::WORKFLOW_CKPN_JOURNAL_APPROVAL => $this->finalizeCkpnJournal($approvalRequest, $actor),
+            ApprovalRequest::WORKFLOW_CKPN_ADJUSTMENT => $this->finalizeCkpnAdjustment($approvalRequest, $actor),
             default => null,
         };
     }
@@ -165,5 +169,16 @@ class ApprovalFinalizationService
         ])->save();
 
         ExecuteGlToGlJob::dispatch($journal->id, $actor->id)->afterCommit();
+    }
+
+    private function finalizeCkpnAdjustment(ApprovalRequest $approvalRequest, User $actor): void
+    {
+        $adjustment = $approvalRequest->approvable;
+
+        if (! $adjustment instanceof CkpnAdjustment) {
+            return;
+        }
+
+        $this->applyApprovedCkpnAdjustmentAction->handle($adjustment, $actor);
     }
 }

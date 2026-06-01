@@ -6,6 +6,7 @@ use App\Actions\Ckpn\GenerateMonthlyCkpnWorkpaperAction;
 use App\Actions\Ckpn\RecalculateCkpnWorkpaperAction;
 use App\Actions\CkpnAdjustment\ApproveCkpnAdjustmentAction;
 use App\Actions\CkpnAdjustment\PrepareCkpnAdjustmentDataAction;
+use App\Actions\CkpnAdjustment\RejectCkpnAdjustmentAction;
 use App\Actions\CkpnAdjustment\SubmitCkpnAdjustmentAction;
 use App\Actions\CkpnWorkpaper\ApproveCkpnWorkpaperAction;
 use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
@@ -14,6 +15,7 @@ use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\BranchOffice;
 use App\Models\CkpnAdjustment;
+use App\Models\CkpnJournal;
 use App\Models\CkpnWorkpaper;
 use App\Models\InsuranceCompany;
 use App\Models\InsuranceReceivable;
@@ -55,13 +57,18 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $workpaper->status);
         $this->assertSame('10000.00', $workpaper->total_receivable_amount);
+        $this->assertSame('100.00', $workpaper->total_calculated_ckpn_amount);
+        $this->assertSame('0.00', $workpaper->total_adjustment_delta);
+        $this->assertSame('100.00', $workpaper->total_effective_ckpn_amount);
         $this->assertSame('100.00', $workpaper->total_ckpn_amount);
         $this->assertSame(InsuranceReceivable::class, $item->receivable_type);
         $this->assertSame($receivable->id, $item->receivable_id);
         $this->assertSame('Snapshot Customer', $item->customer_name);
         $this->assertSame('TEST SNAPSHOT', $item->insurance_company_name);
-        $this->assertSame('1.0000', $item->final_ckpn_rate);
-        $this->assertSame('100.00', $item->ckpn_amount);
+        $this->assertSame('1.0000', $item->calculated_ckpn_rate);
+        $this->assertSame('100.00', $item->calculated_ckpn_amount);
+        $this->assertSame('1.0000', $item->effective_ckpn_rate);
+        $this->assertSame('100.00', $item->effective_ckpn_amount);
         $this->assertSame('TEST SNAPSHOT', $item->snapshot['insurance_company']['name']);
     }
 
@@ -90,7 +97,8 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame('IMMUTABLE', $item->insurance_company_name);
         $this->assertSame('3.0000', $item->insurance_company_weight);
         $this->assertSame('IMMUTABLE', $item->snapshot['insurance_company']['name']);
-        $this->assertSame('1.0000', $item->final_ckpn_rate);
+        $this->assertSame('1.0000', $item->calculated_ckpn_rate);
+        $this->assertSame('1.0000', $item->effective_ckpn_rate);
     }
 
     public function test_branch_workpaper_only_includes_matching_branch_and_central_includes_all(): void
@@ -164,6 +172,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         $this->assertSame(0, $workpaper->items()->count());
         $this->assertSame('0.00', $workpaper->total_receivable_amount);
+        $this->assertSame('0.00', $workpaper->total_effective_ckpn_amount);
     }
 
     public function test_recalculate_is_blocked_after_submit(): void
@@ -219,12 +228,11 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->expectException(ValidationException::class);
         app(PrepareCkpnAdjustmentDataAction::class)->handle([
             'ckpn_workpaper_item_id' => $item->id,
-            'adjustment_type' => 'manual',
-            'adjusted_rate' => '2.0000',
+            'requested_adjusted_ckpn_amount' => '200.00',
         ], $maker);
     }
 
-    public function test_adjustment_submit_and_approve_keeps_workpaper_item_immutable(): void
+    public function test_pending_rejected_and_approved_adjustments_update_only_effective_values(): void
     {
         $this->seedDependencies();
         $maker = $this->userWithRole('business_maker', '000');
@@ -237,9 +245,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         $payload = app(PrepareCkpnAdjustmentDataAction::class)->handle([
             'ckpn_workpaper_item_id' => $item->id,
-            'adjustment_type' => 'manual',
-            'adjusted_rate' => '2.0000',
-            'adjusted_amount' => '200.00',
+            'requested_adjusted_ckpn_amount' => '200.00',
             'reason' => 'Management adjustment',
         ], $maker);
         $adjustment = CkpnAdjustment::query()->create($payload);
@@ -247,15 +253,92 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         $this->assertSame(CkpnAdjustment::STATUS_SUBMITTED, $adjustment->status);
         $this->assertSame(ApprovalRequest::WORKFLOW_CKPN_ADJUSTMENT, ApprovalRequest::query()->sole()->workflow_code);
+        $this->assertSame('0.00', $item->refresh()->effective_ckpn_amount);
 
         $adjustment = app(ApproveCkpnAdjustmentAction::class)->handle($adjustment, $approver);
         $item = $item->refresh();
+        $workpaper = $workpaper->refresh();
 
         $this->assertSame(CkpnAdjustment::STATUS_APPROVED, $adjustment->status);
-        $this->assertSame('0.0000', $item->final_ckpn_rate);
-        $this->assertSame('0.00', $item->ckpn_amount);
-        $this->assertSame('2.0000', $adjustment->adjusted_rate);
-        $this->assertSame('200.00', $adjustment->adjusted_amount);
+        $this->assertSame('0.0000', $item->calculated_ckpn_rate);
+        $this->assertSame('0.00', $item->calculated_ckpn_amount);
+        $this->assertSame('2.0000', $item->effective_ckpn_rate);
+        $this->assertSame('200.00', $item->effective_ckpn_amount);
+        $this->assertSame('2.0000', $adjustment->approved_adjusted_ckpn_rate);
+        $this->assertSame('200.00', $adjustment->approved_adjusted_ckpn_amount);
+        $this->assertSame('0.00', $workpaper->total_calculated_ckpn_amount);
+        $this->assertSame('200.00', $workpaper->total_adjustment_delta);
+        $this->assertSame('200.00', $workpaper->total_effective_ckpn_amount);
+        $this->assertSame('200.00', $workpaper->total_ckpn_amount);
+
+        $secondPayload = app(PrepareCkpnAdjustmentDataAction::class)->handle([
+            'ckpn_workpaper_item_id' => $item->id,
+            'requested_adjusted_ckpn_amount' => '300.00',
+            'reason' => 'Superseding adjustment',
+        ], $maker);
+        $secondAdjustment = CkpnAdjustment::query()->create($secondPayload);
+        $secondAdjustment = app(SubmitCkpnAdjustmentAction::class)->handle($secondAdjustment, $maker);
+        $secondAdjustment = app(ApproveCkpnAdjustmentAction::class)->handle($secondAdjustment, $approver);
+
+        $this->assertSame(CkpnAdjustment::STATUS_APPROVED, $secondAdjustment->status);
+        $this->assertSame('300.00', $item->refresh()->effective_ckpn_amount);
+        $this->assertSame('300.00', $workpaper->refresh()->total_effective_ckpn_amount);
+    }
+
+    public function test_rejected_adjustment_does_not_change_effective_values(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('business_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $this->receivable($branch, ['receivable_formation_date' => '2026-01-01', 'receivable_amount' => '10000.00']);
+        $workpaper = CkpnWorkpaper::query()->create(['period' => '2026-06-30', 'branch_office_id' => $branch->id]);
+        $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
+        $item = $workpaper->items()->sole();
+
+        $payload = app(PrepareCkpnAdjustmentDataAction::class)->handle([
+            'ckpn_workpaper_item_id' => $item->id,
+            'requested_adjusted_ckpn_amount' => '200.00',
+            'reason' => 'Rejected adjustment',
+        ], $maker);
+        $adjustment = CkpnAdjustment::query()->create($payload);
+        $adjustment = app(SubmitCkpnAdjustmentAction::class)->handle($adjustment, $maker);
+        app(RejectCkpnAdjustmentAction::class)->handle($adjustment, $approver, 'No');
+
+        $this->assertSame('0.00', $item->refresh()->effective_ckpn_amount);
+        $this->assertSame('0.00', $workpaper->refresh()->total_effective_ckpn_amount);
+    }
+
+    public function test_adjustment_approval_is_blocked_after_financial_output_exists(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('business_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $this->receivable($branch, ['receivable_formation_date' => '2026-01-01', 'receivable_amount' => '10000.00']);
+        $workpaper = CkpnWorkpaper::query()->create(['period' => '2026-06-30', 'branch_office_id' => $branch->id]);
+        $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
+        $item = $workpaper->items()->sole();
+
+        $payload = app(PrepareCkpnAdjustmentDataAction::class)->handle([
+            'ckpn_workpaper_item_id' => $item->id,
+            'requested_adjusted_ckpn_amount' => '200.00',
+            'reason' => 'Late adjustment',
+        ], $maker);
+        $adjustment = CkpnAdjustment::query()->create($payload);
+        $adjustment = app(SubmitCkpnAdjustmentAction::class)->handle($adjustment, $maker);
+
+        CkpnJournal::query()->create([
+            'ckpn_workpaper_id' => $workpaper->id,
+            'branch_office_id' => $branch->id,
+            'journal_date' => '2026-06-30',
+            'total_amount' => $workpaper->total_effective_ckpn_amount,
+            'status' => CkpnJournal::STATUS_DRAFT,
+        ]);
+
+        $this->expectException(ValidationException::class);
+
+        app(ApproveCkpnAdjustmentAction::class)->handle($adjustment, $approver);
     }
 
     private function seedDependencies(): void

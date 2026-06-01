@@ -38,7 +38,7 @@ class InsuranceReceivableForm
                         Select::make('claim_status_id')
                             ->label('Claim status')
                             ->relationship('claimStatus', 'name')
-                            ->default(fn(): ?int => ClaimStatus::query()
+                            ->default(fn (): ?int => ClaimStatus::query()
                                 ->where('code', ClaimStatus::DEFAULT_CODE)
                                 ->value('id'))
                             ->disabled()

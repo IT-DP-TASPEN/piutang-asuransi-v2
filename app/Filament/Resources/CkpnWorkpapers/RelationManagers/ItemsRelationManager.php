@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\CkpnWorkpapers\RelationManagers;
 
 use App\Actions\CkpnAdjustment\PrepareCkpnAdjustmentDataAction;
+use App\Actions\CkpnAdjustment\SubmitCkpnAdjustmentAction;
+use App\Models\CkpnAdjustment;
 use App\Models\CkpnWorkpaperItem;
 use App\Models\InsuranceReceivable;
 use App\Models\LegacyReceivable;
@@ -44,8 +46,13 @@ class ItemsRelationManager extends RelationManager
                 TextColumn::make('age_days')->label('Age days')->sortable(),
                 TextColumn::make('age_bucket_name')->label('Age bucket'),
                 TextColumn::make('receivable_amount')->numeric(2)->sortable(),
-                TextColumn::make('final_ckpn_rate')->label('CKPN rate')->numeric(4)->suffix('%')->sortable(),
-                TextColumn::make('ckpn_amount')->label('CKPN amount')->numeric(2)->sortable(),
+                TextColumn::make('calculated_ckpn_rate')->label('Calculated rate')->numeric(4)->suffix('%')->sortable(),
+                TextColumn::make('calculated_ckpn_amount')->label('Calculated CKPN')->numeric(2)->sortable(),
+                TextColumn::make('adjusted_ckpn_rate')->label('Adjusted rate')->numeric(4)->suffix('%')->placeholder('-')->sortable(),
+                TextColumn::make('adjusted_ckpn_amount')->label('Adjusted CKPN')->numeric(2)->placeholder('-')->sortable(),
+                TextColumn::make('effective_ckpn_rate')->label('Effective rate')->numeric(4)->suffix('%')->sortable(),
+                TextColumn::make('effective_ckpn_amount')->label('Effective CKPN')->numeric(2)->sortable(),
+                TextColumn::make('adjustment_applied_at')->label('Adjusted at')->dateTime()->placeholder('-')->toggleable(),
             ])
             ->filters([
                 SelectFilter::make('receivable_type')
@@ -81,18 +88,29 @@ class ItemsRelationManager extends RelationManager
             ])
             ->recordActions([
                 Action::make('createAdjustment')
-                    ->label('Create adjustment')
+                    ->label('Request CKPN Adjustment')
                     ->visible(fn (): bool => auth()->user()?->can('Create:CkpnAdjustment') ?? false)
                     ->form([
                         TextInput::make('adjustment_type')
-                            ->default('manual')
+                            ->default(CkpnAdjustment::TYPE_OVERRIDE_FINAL_CKPN_AMOUNT)
                             ->required()
                             ->maxLength(255),
-                        TextInput::make('adjusted_rate')
+                        TextInput::make('calculated_ckpn_amount')
+                            ->default(fn (CkpnWorkpaperItem $record): string => $record->calculated_ckpn_amount)
                             ->numeric()
-                            ->step('0.0001'),
-                        TextInput::make('adjusted_amount')
+                            ->disabled()
+                            ->dehydrated(false)
+                            ->step('0.01'),
+                        TextInput::make('effective_ckpn_amount')
+                            ->default(fn (CkpnWorkpaperItem $record): string => $record->effective_ckpn_amount)
                             ->numeric()
+                            ->disabled()
+                            ->dehydrated(false)
+                            ->step('0.01'),
+                        TextInput::make('requested_adjusted_ckpn_amount')
+                            ->label('Requested final CKPN amount')
+                            ->numeric()
+                            ->required()
                             ->step('0.01'),
                         Textarea::make('reason')
                             ->required()
@@ -110,9 +128,10 @@ class ItemsRelationManager extends RelationManager
                             'ckpn_workpaper_item_id' => $record->id,
                         ], $user);
 
-                        $record->adjustments()->create($payload);
+                        $adjustment = $record->adjustments()->create($payload);
+                        app(SubmitCkpnAdjustmentAction::class)->handle($adjustment, $user);
 
-                        Notification::make()->success()->title('CKPN adjustment draft created')->send();
+                        Notification::make()->success()->title('CKPN adjustment submitted')->send();
                     }),
             ]);
     }

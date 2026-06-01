@@ -19,15 +19,7 @@ class ApproveCkpnAdjustmentAction
     {
         return DB::transaction(function () use ($adjustment, $user, $notes): CkpnAdjustment {
             $approvalRequest = $this->activeApprovalRequestFor($adjustment);
-            $approvalRequest = $this->approvalService->approveCurrentStep($approvalRequest, $user, $notes);
-
-            if ($approvalRequest->status === ApprovalRequest::STATUS_APPROVED) {
-                $adjustment->forceFill([
-                    'status' => CkpnAdjustment::STATUS_APPROVED,
-                    'approved_by' => $user->id,
-                    'approved_at' => now(),
-                ])->save();
-            }
+            $this->approvalService->approveCurrentStep($approvalRequest, $user, $notes);
 
             return $adjustment->refresh();
         });

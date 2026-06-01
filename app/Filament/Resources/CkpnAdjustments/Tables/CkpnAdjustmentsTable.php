@@ -30,10 +30,12 @@ class CkpnAdjustmentsTable
                 TextColumn::make('adjustment_type')
                     ->searchable()
                     ->sortable(),
-                TextColumn::make('original_rate')->numeric(4)->suffix('%'),
-                TextColumn::make('adjusted_rate')->numeric(4)->suffix('%'),
-                TextColumn::make('original_amount')->numeric(2),
-                TextColumn::make('adjusted_amount')->numeric(2),
+                TextColumn::make('calculated_ckpn_rate')->numeric(4)->suffix('%'),
+                TextColumn::make('calculated_ckpn_amount')->numeric(2),
+                TextColumn::make('requested_adjusted_ckpn_rate')->numeric(4)->suffix('%'),
+                TextColumn::make('requested_adjusted_ckpn_amount')->numeric(2),
+                TextColumn::make('approved_adjusted_ckpn_rate')->numeric(4)->suffix('%')->toggleable(),
+                TextColumn::make('approved_adjusted_ckpn_amount')->numeric(2)->toggleable(),
                 TextColumn::make('status')->badge()->sortable(),
                 TextColumn::make('requester.name')->label('Requested by')->sortable(),
                 TextColumn::make('approver.name')->label('Approved by')->sortable(),

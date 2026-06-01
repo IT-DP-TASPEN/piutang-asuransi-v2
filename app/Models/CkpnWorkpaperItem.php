@@ -26,8 +26,15 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
     'insurance_company_weight',
     'age_weight',
     'claim_status_weight',
-    'final_ckpn_rate',
-    'ckpn_amount',
+    'calculated_ckpn_rate',
+    'calculated_ckpn_amount',
+    'adjusted_ckpn_rate',
+    'adjusted_ckpn_amount',
+    'adjustment_applied_at',
+    'adjustment_applied_by',
+    'adjustment_reason',
+    'effective_ckpn_rate',
+    'effective_ckpn_amount',
     'calculation_rule_code',
     'calculation_explanation',
     'snapshot',
@@ -59,6 +66,14 @@ class CkpnWorkpaperItem extends Model
     }
 
     /**
+     * @return BelongsTo<User, $this>
+     */
+    public function adjustmentApplier(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'adjustment_applied_by');
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -72,8 +87,13 @@ class CkpnWorkpaperItem extends Model
             'insurance_company_weight' => 'decimal:4',
             'age_weight' => 'decimal:4',
             'claim_status_weight' => 'decimal:4',
-            'final_ckpn_rate' => 'decimal:4',
-            'ckpn_amount' => 'decimal:2',
+            'calculated_ckpn_rate' => 'decimal:4',
+            'calculated_ckpn_amount' => 'decimal:2',
+            'adjusted_ckpn_rate' => 'decimal:4',
+            'adjusted_ckpn_amount' => 'decimal:2',
+            'adjustment_applied_at' => 'datetime',
+            'effective_ckpn_rate' => 'decimal:4',
+            'effective_ckpn_amount' => 'decimal:2',
             'snapshot' => 'array',
         ];
     }

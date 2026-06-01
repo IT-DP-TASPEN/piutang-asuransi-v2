@@ -33,15 +33,25 @@ class CreateCkpnJournalFromWorkpaperAction
                 ]);
             }
 
+            $hasAdjustments = $workpaper->items()->whereNotNull('adjusted_ckpn_amount')->exists();
+            $description = $data['description'] ?? null;
+
+            if ($hasAdjustments) {
+                $description = collect([
+                    $description,
+                    'Includes approved CKPN adjustments.',
+                ])->filter()->join("\n");
+            }
+
             return $workpaper->journals()->create([
                 'branch_office_id' => $workpaper->branch_office_id,
                 'journal_date' => $data['journal_date'] ?? now()->toDateString(),
-                'total_amount' => $workpaper->total_ckpn_amount,
+                'total_amount' => $workpaper->total_effective_ckpn_amount,
                 'debit_account' => $data['debit_account'] ?? null,
                 'credit_account' => $data['credit_account'] ?? null,
                 'debit_narrative' => $data['debit_narrative'] ?? null,
                 'credit_narrative' => $data['credit_narrative'] ?? null,
-                'description' => $data['description'] ?? null,
+                'description' => $description,
                 'status' => CkpnJournal::STATUS_DRAFT,
                 'created_by' => $user->id,
             ]);

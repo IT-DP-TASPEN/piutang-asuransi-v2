@@ -359,6 +359,9 @@ class WorkflowQueueAutomationTest extends TestCase
             'branch_office_id' => $branch->id,
             'status' => CkpnWorkpaper::STATUS_APPROVED,
             'total_receivable_amount' => '1000000.00',
+            'total_calculated_ckpn_amount' => '1000.00',
+            'total_adjustment_delta' => '0.00',
+            'total_effective_ckpn_amount' => '1000.00',
             'total_ckpn_amount' => '1000.00',
         ]);
         $journal = CkpnJournal::query()->create([

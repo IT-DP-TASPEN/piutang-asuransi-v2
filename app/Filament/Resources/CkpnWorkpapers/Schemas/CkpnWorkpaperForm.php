@@ -34,8 +34,20 @@ class CkpnWorkpaperForm
                             ->label('Total receivable')
                             ->disabled()
                             ->dehydrated(false),
+                        TextInput::make('total_calculated_ckpn_amount')
+                            ->label('Total calculated CKPN')
+                            ->disabled()
+                            ->dehydrated(false),
+                        TextInput::make('total_adjustment_delta')
+                            ->label('Total adjustment delta')
+                            ->disabled()
+                            ->dehydrated(false),
+                        TextInput::make('total_effective_ckpn_amount')
+                            ->label('Total effective CKPN')
+                            ->disabled()
+                            ->dehydrated(false),
                         TextInput::make('total_ckpn_amount')
-                            ->label('Total CKPN')
+                            ->label('Final CKPN')
                             ->disabled()
                             ->dehydrated(false),
                     ]),

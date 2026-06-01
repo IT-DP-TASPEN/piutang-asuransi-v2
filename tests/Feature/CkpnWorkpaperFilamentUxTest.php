@@ -172,6 +172,9 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
             'period' => '2026-06-30',
             'status' => $status,
             'total_receivable_amount' => '1000.00',
+            'total_calculated_ckpn_amount' => '100.00',
+            'total_adjustment_delta' => '0.00',
+            'total_effective_ckpn_amount' => '100.00',
             'total_ckpn_amount' => '100.00',
         ]);
     }

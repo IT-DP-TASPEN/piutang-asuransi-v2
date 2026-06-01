@@ -20,6 +20,9 @@ return new class extends Migration
             $table->foreignId('approved_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('approved_at')->nullable();
             $table->decimal('total_receivable_amount', 20, 2)->default(0);
+            $table->decimal('total_calculated_ckpn_amount', 20, 2)->default(0);
+            $table->decimal('total_adjustment_delta', 20, 2)->default(0);
+            $table->decimal('total_effective_ckpn_amount', 20, 2)->default(0);
             $table->decimal('total_ckpn_amount', 20, 2)->default(0);
             $table->timestamps();
 

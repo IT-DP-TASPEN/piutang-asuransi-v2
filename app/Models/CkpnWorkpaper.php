@@ -16,6 +16,9 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
     'approved_by',
     'approved_at',
     'total_receivable_amount',
+    'total_calculated_ckpn_amount',
+    'total_adjustment_delta',
+    'total_effective_ckpn_amount',
     'total_ckpn_amount',
 ])]
 class CkpnWorkpaper extends Model
@@ -133,6 +136,9 @@ class CkpnWorkpaper extends Model
             'period' => 'date',
             'approved_at' => 'datetime',
             'total_receivable_amount' => 'decimal:2',
+            'total_calculated_ckpn_amount' => 'decimal:2',
+            'total_adjustment_delta' => 'decimal:2',
+            'total_effective_ckpn_amount' => 'decimal:2',
             'total_ckpn_amount' => 'decimal:2',
         ];
     }

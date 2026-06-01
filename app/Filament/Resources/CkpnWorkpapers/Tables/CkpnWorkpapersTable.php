@@ -30,8 +30,20 @@ class CkpnWorkpapersTable
                     ->label('Total receivable')
                     ->numeric(2)
                     ->sortable(),
+                TextColumn::make('total_calculated_ckpn_amount')
+                    ->label('Calculated CKPN')
+                    ->numeric(2)
+                    ->sortable(),
+                TextColumn::make('total_adjustment_delta')
+                    ->label('Adjustment delta')
+                    ->numeric(2)
+                    ->sortable(),
+                TextColumn::make('total_effective_ckpn_amount')
+                    ->label('Effective CKPN')
+                    ->numeric(2)
+                    ->sortable(),
                 TextColumn::make('total_ckpn_amount')
-                    ->label('Total CKPN')
+                    ->label('Final CKPN')
                     ->numeric(2)
                     ->sortable(),
                 TextColumn::make('creator.name')

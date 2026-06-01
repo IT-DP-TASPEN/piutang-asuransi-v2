@@ -35,7 +35,7 @@ class GenerateMonthlyCkpnWorkpaperAction
             $workpaper->items()->delete();
 
             $totalReceivable = BigDecimal::of('0');
-            $totalCkpn = BigDecimal::of('0');
+            $totalCalculatedCkpn = BigDecimal::of('0');
 
             $candidates = $this->collectCurrentReceivableCandidatesAction->handle($workpaper)
                 ->concat($this->collectLegacyReceivableCandidatesAction->handle($workpaper))
@@ -65,21 +65,33 @@ class GenerateMonthlyCkpnWorkpaperAction
                     'insurance_company_weight' => $result->insuranceCompanyWeight,
                     'age_weight' => $result->ageWeight,
                     'claim_status_weight' => $result->claimStatusWeight,
-                    'final_ckpn_rate' => $result->finalCkpnRate,
-                    'ckpn_amount' => $result->ckpnAmount,
+                    'calculated_ckpn_rate' => $result->finalCkpnRate,
+                    'calculated_ckpn_amount' => $result->ckpnAmount,
+                    'adjusted_ckpn_rate' => null,
+                    'adjusted_ckpn_amount' => null,
+                    'adjustment_applied_at' => null,
+                    'adjustment_applied_by' => null,
+                    'adjustment_reason' => null,
+                    'effective_ckpn_rate' => $result->finalCkpnRate,
+                    'effective_ckpn_amount' => $result->ckpnAmount,
                     'calculation_rule_code' => $result->appliedRuleCode,
                     'calculation_explanation' => $result->calculationExplanation,
                     'snapshot' => $this->snapshot($candidate, $result),
                 ]);
 
                 $totalReceivable = $totalReceivable->plus($candidate->receivableAmount);
-                $totalCkpn = $totalCkpn->plus($result->ckpnAmount);
+                $totalCalculatedCkpn = $totalCalculatedCkpn->plus($result->ckpnAmount);
             }
+
+            $totalCalculatedCkpn = (string) $totalCalculatedCkpn->toScale(2, RoundingMode::HALF_UP);
 
             $workpaper->forceFill([
                 'status' => CkpnWorkpaper::STATUS_GENERATED,
                 'total_receivable_amount' => (string) $totalReceivable->toScale(2, RoundingMode::HALF_UP),
-                'total_ckpn_amount' => (string) $totalCkpn->toScale(2, RoundingMode::HALF_UP),
+                'total_calculated_ckpn_amount' => $totalCalculatedCkpn,
+                'total_adjustment_delta' => '0.00',
+                'total_effective_ckpn_amount' => $totalCalculatedCkpn,
+                'total_ckpn_amount' => $totalCalculatedCkpn,
             ])->save();
 
             return $workpaper->refresh();
@@ -125,8 +137,10 @@ class GenerateMonthlyCkpnWorkpaperAction
                 'name' => $result->ageBucketName,
                 'ckpn_weight' => $result->ageWeight,
             ],
-            'final_ckpn_rate' => $result->finalCkpnRate,
-            'ckpn_amount' => $result->ckpnAmount,
+            'calculated_ckpn_rate' => $result->finalCkpnRate,
+            'calculated_ckpn_amount' => $result->ckpnAmount,
+            'effective_ckpn_rate' => $result->finalCkpnRate,
+            'effective_ckpn_amount' => $result->ckpnAmount,
             'calculation_rule_code' => $result->appliedRuleCode,
         ];
     }

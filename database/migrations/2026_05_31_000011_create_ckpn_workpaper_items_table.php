@@ -30,8 +30,15 @@ return new class extends Migration
             $table->decimal('insurance_company_weight', 8, 4);
             $table->decimal('age_weight', 8, 4);
             $table->decimal('claim_status_weight', 8, 4);
-            $table->decimal('final_ckpn_rate', 8, 4);
-            $table->decimal('ckpn_amount', 20, 2);
+            $table->decimal('calculated_ckpn_rate', 8, 4);
+            $table->decimal('calculated_ckpn_amount', 20, 2);
+            $table->decimal('adjusted_ckpn_rate', 8, 4)->nullable();
+            $table->decimal('adjusted_ckpn_amount', 20, 2)->nullable();
+            $table->timestamp('adjustment_applied_at')->nullable();
+            $table->foreignId('adjustment_applied_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->text('adjustment_reason')->nullable();
+            $table->decimal('effective_ckpn_rate', 8, 4);
+            $table->decimal('effective_ckpn_amount', 20, 2);
             $table->string('calculation_rule_code');
             $table->text('calculation_explanation')->nullable();
             $table->json('snapshot')->nullable();

@@ -2,11 +2,11 @@
 
 namespace App\Filament\Resources\ApiIntegrationLogs\Schemas;
 
+use Filament\Infolists\Components\CodeEntry;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Filament\Infolists\Components\CodeEntry;
 use Phiki\Grammar\Grammar;
 
 class ApiIntegrationLogInfolist

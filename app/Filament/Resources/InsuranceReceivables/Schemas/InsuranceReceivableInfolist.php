@@ -42,19 +42,19 @@ class InsuranceReceivableInfolist
                     ])
                     ->columns(3),
                 Section::make('Pending approval')
-                    ->visible(fn(InsuranceReceivable $record): bool => $record->approvalRequests()
+                    ->visible(fn (InsuranceReceivable $record): bool => $record->approvalRequests()
                         ->where('status', ApprovalRequest::STATUS_SUBMITTED)
                         ->exists() && false)
                     ->schema([
                         TextEntry::make('pending_approval')
                             ->label('Request')
-                            ->state(fn(InsuranceReceivable $record): ?string => $record->approvalRequests()
+                            ->state(fn (InsuranceReceivable $record): ?string => $record->approvalRequests()
                                 ->where('status', ApprovalRequest::STATUS_SUBMITTED)
                                 ->latest('id')
                                 ->first()?->workflow_code),
                     ]),
                 Section::make('Pending claim status update')
-                    ->visible(fn(InsuranceReceivable $record): bool => $record->claimStatusChangeRequests()
+                    ->visible(fn (InsuranceReceivable $record): bool => $record->claimStatusChangeRequests()
                         ->where('status', ClaimStatusChangeRequest::STATUS_SUBMITTED)
                         ->exists() && false)
                     ->schema([

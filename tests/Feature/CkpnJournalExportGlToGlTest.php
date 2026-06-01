@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
 use App\Actions\CkpnJournal\ExecuteGlToGlTransferAction;
 use App\Actions\GeneratedExport\GenerateCkpnWorkpaperSakepExportAction;
 use App\Models\ApiIntegrationLog;
@@ -49,7 +50,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_approver', '000');
         $journal = $this->approvedJournal(totalAmount: '3077644.00');
-        $expectedRawBody = '{"referenceNumber":"CKPN-GL20260531102030","trxType":"CKPN-JOURNAL","termType":"","termId":"FINCLOUD","receiptNumber":"CKPN-RC20260531102030","debitAccount":"D-1","creditAccount":"C-1","amount":"3077644.00","fee":"0","creditFee":"0","branchCode":"001","debitNarrative":"Debit narrative","creditNarrative":"Credit narrative","customerId":"","dateTime":"20260531102030","description":"CKPN journal","debitFee":"0","destAccount":"","currency":"IDR","srcAccType":"10","totalBill":"","type":"G2"}';
+        $expectedRawBody = '{"referenceNumber":"CKPN-GL20260531102030","trxType":"SAKEP CKPN","termType":"","termId":"FINCLOUD","receiptNumber":"CKPN-RC20260531102030","debitAccount":"D-1","creditAccount":"C-1","amount":"3077644.00","fee":"0","creditFee":"0","branchCode":"001","debitNarrative":"Debit narrative","creditNarrative":"Credit narrative","customerId":"","dateTime":"20260531102030","description":"CKPN journal","debitFee":"0","destAccount":"","currency":"IDR","srcAccType":"10","totalBill":"","type":"G2"}';
 
         Http::fake([
             'http://core.test/trx/transfer/gl-to-gl' => Http::sequence()
@@ -144,7 +145,9 @@ class CkpnJournalExportGlToGlTest extends TestCase
             'status' => GeneratedExport::STATUS_GENERATED,
         ]);
 
-        $headers = $this->firstRowFromXlsx(Storage::disk('public')->path($export->file_path));
+        $rows = $this->rowsFromXlsx(Storage::disk('public')->path($export->file_path));
+        $headers = $rows[0];
+        $dataRow = $rows[1];
 
         $this->assertSame([
             'no',
@@ -160,12 +163,34 @@ class CkpnJournalExportGlToGlTest extends TestCase
             'receivable formation date',
             'insurance company',
             'claim status',
-            'CKPN rate',
-            'CKPN amount',
+            'calculated CKPN amount',
+            'adjusted CKPN amount',
+            'effective CKPN rate',
+            'effective CKPN amount',
+            'final CKPN amount',
             'maker',
             'checker',
             'approver',
         ], $headers);
+        $this->assertSame('100000.00', $dataRow[13]);
+        $this->assertSame('120000.00', $dataRow[14]);
+        $this->assertSame('12.0000', $dataRow[15]);
+        $this->assertSame('120000.00', $dataRow[16]);
+        $this->assertSame('120000.00', $dataRow[17]);
+    }
+
+    public function test_ckpn_journal_uses_effective_total_from_workpaper(): void
+    {
+        $this->seedDependencies();
+        $user = $this->userWithRole('business_maker', '000');
+        $workpaper = $this->approvedWorkpaperWithItem();
+
+        $journal = app(CreateCkpnJournalFromWorkpaperAction::class)->handle($workpaper, $user, [
+            'description' => 'Monthly CKPN',
+        ]);
+
+        $this->assertSame('120000.00', $journal->total_amount);
+        $this->assertStringContainsString('Includes approved CKPN adjustments.', $journal->description);
     }
 
     public function test_branch_user_cannot_view_other_branch_phase_six_records_and_auditor_cannot_execute(): void
@@ -236,13 +261,22 @@ class CkpnJournalExportGlToGlTest extends TestCase
             'branch_office_id' => $branch->id,
             'status' => CkpnWorkpaper::STATUS_APPROVED,
             'total_receivable_amount' => '10000000.00',
+            'total_calculated_ckpn_amount' => $totalAmount,
+            'total_adjustment_delta' => '0.00',
+            'total_effective_ckpn_amount' => $totalAmount,
             'total_ckpn_amount' => $totalAmount,
         ]);
     }
 
     private function approvedWorkpaperWithItem(): CkpnWorkpaper
     {
-        $workpaper = $this->approvedWorkpaper('001', '100.00');
+        $workpaper = $this->approvedWorkpaper('001', '120000.00');
+        $workpaper->forceFill([
+            'total_calculated_ckpn_amount' => '100000.00',
+            'total_adjustment_delta' => '20000.00',
+            'total_effective_ckpn_amount' => '120000.00',
+            'total_ckpn_amount' => '120000.00',
+        ])->save();
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $receivable = InsuranceReceivable::factory()->create([
             'branch_office_id' => $branch->id,
@@ -277,8 +311,13 @@ class CkpnJournalExportGlToGlTest extends TestCase
             'insurance_company_weight' => '0.0000',
             'age_weight' => '0.0000',
             'claim_status_weight' => '0.0000',
-            'final_ckpn_rate' => '0.0000',
-            'ckpn_amount' => '0.00',
+            'calculated_ckpn_rate' => '10.0000',
+            'calculated_ckpn_amount' => '100000.00',
+            'adjusted_ckpn_rate' => '12.0000',
+            'adjusted_ckpn_amount' => '120000.00',
+            'adjustment_applied_at' => now(),
+            'effective_ckpn_rate' => '12.0000',
+            'effective_ckpn_amount' => '120000.00',
             'calculation_rule_code' => 'average_three_factors_with_reject_loss_override',
             'calculation_explanation' => 'Snapshot',
             'snapshot' => [
@@ -300,7 +339,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
             'ckpn_workpaper_id' => $workpaper->id,
             'branch_office_id' => $workpaper->branch_office_id,
             'journal_date' => '2026-05-31',
-            'total_amount' => $workpaper->total_ckpn_amount,
+            'total_amount' => $workpaper->total_effective_ckpn_amount,
             'debit_account' => 'D-1',
             'credit_account' => 'C-1',
             'debit_narrative' => 'Debit narrative',
@@ -311,28 +350,26 @@ class CkpnJournalExportGlToGlTest extends TestCase
     }
 
     /**
-     * @return list<string|null>
+     * @return list<list<bool|\DateInterval|\DateTimeInterface|float|int|string|null>>
      */
-    private function firstRowFromXlsx(string $path): array
+    private function rowsFromXlsx(string $path): array
     {
         $reader = new Reader;
         $reader->open($path);
+        $rows = [];
 
         foreach ($reader->getSheetIterator() as $sheet) {
             foreach ($sheet->getRowIterator() as $row) {
-                $values = array_map(
+                $rows[] = array_map(
                     fn ($cell): bool|\DateInterval|\DateTimeInterface|float|int|string|null => $cell->getValue(),
                     $row->getCells(),
                 );
-                $reader->close();
-
-                return $values;
             }
         }
 
         $reader->close();
 
-        return [];
+        return $rows;
     }
 
     private function userWithRole(string $role, string $branchCode): User

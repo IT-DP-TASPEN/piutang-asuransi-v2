@@ -14,10 +14,12 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
     'ckpn_workpaper_id',
     'ckpn_workpaper_item_id',
     'adjustment_type',
-    'original_rate',
-    'adjusted_rate',
-    'original_amount',
-    'adjusted_amount',
+    'calculated_ckpn_rate',
+    'calculated_ckpn_amount',
+    'requested_adjusted_ckpn_rate',
+    'requested_adjusted_ckpn_amount',
+    'approved_adjusted_ckpn_rate',
+    'approved_adjusted_ckpn_amount',
     'reason',
     'status',
     'requested_by',
@@ -26,6 +28,8 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 ])]
 class CkpnAdjustment extends Model
 {
+    public const TYPE_OVERRIDE_FINAL_CKPN_AMOUNT = 'override_final_ckpn_amount';
+
     public const STATUS_DRAFT = 'draft';
 
     public const STATUS_SUBMITTED = 'submitted';
@@ -106,10 +110,12 @@ class CkpnAdjustment extends Model
     protected function casts(): array
     {
         return [
-            'original_rate' => 'decimal:4',
-            'adjusted_rate' => 'decimal:4',
-            'original_amount' => 'decimal:2',
-            'adjusted_amount' => 'decimal:2',
+            'calculated_ckpn_rate' => 'decimal:4',
+            'calculated_ckpn_amount' => 'decimal:2',
+            'requested_adjusted_ckpn_rate' => 'decimal:4',
+            'requested_adjusted_ckpn_amount' => 'decimal:2',
+            'approved_adjusted_ckpn_rate' => 'decimal:4',
+            'approved_adjusted_ckpn_amount' => 'decimal:2',
             'approved_at' => 'datetime',
         ];
     }
