@@ -65,22 +65,21 @@ class GenerateCkpnWorkpaperSakepExportAction
         $writer->addRow(Row::fromValues($this->headers()));
 
         $workpaper->items()
-            ->with(['insuranceReceivable'])
             ->orderBy('id')
             ->each(function (CkpnWorkpaperItem $item, int $index) use ($writer): void {
-                $receivable = $item->insuranceReceivable;
+                $snapshot = $item->snapshot ?? [];
 
                 $writer->addRow(Row::fromValues([
                     $index + 1,
                     $item->cif_no,
                     $item->loan_account_number,
                     $item->customer_name,
-                    $receivable?->credit_limit,
-                    $this->dateValue($receivable?->start_period),
+                    $snapshot['credit_limit'] ?? null,
+                    $this->dateValue($snapshot['start_period'] ?? null),
                     '',
-                    $this->dateValue($receivable?->end_period),
-                    $this->dateValue($receivable?->date_of_death),
-                    $receivable?->loan_outstanding,
+                    $this->dateValue($snapshot['end_period'] ?? null),
+                    $this->dateValue($snapshot['date_of_death'] ?? null),
+                    $snapshot['loan_outstanding'] ?? $item->receivable_amount,
                     $this->dateValue($item->receivable_formation_date),
                     $item->insurance_company_name,
                     $item->claim_status_name,

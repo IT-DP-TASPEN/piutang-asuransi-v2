@@ -95,9 +95,9 @@ class InsuranceReceivablePolicy
         return $this->can($user, 'ReturnApproval') && $this->canAccessRecord($user, $insuranceReceivable);
     }
 
-    public function updateCollectability(User $user, InsuranceReceivable $insuranceReceivable): bool
+    public function confirmCollectabilityChange(User $user, InsuranceReceivable $insuranceReceivable): bool
     {
-        return $this->can($user, 'UpdateCollectability') && $this->canAccessRecord($user, $insuranceReceivable);
+        return $this->can($user, 'ConfirmCollectabilityChange') && $this->canAccessRecord($user, $insuranceReceivable);
     }
 
     public function submitAccountingValidation(User $user, InsuranceReceivable $insuranceReceivable): bool

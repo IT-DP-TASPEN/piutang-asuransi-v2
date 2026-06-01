@@ -6,7 +6,6 @@ use App\Data\CkpnCalculationInput;
 use App\Data\CkpnCalculationResult;
 use App\Models\CkpnAgeBucket;
 use App\Models\CkpnCalculationRule;
-use App\Models\ClaimStatus;
 use App\Services\Ckpn\Contracts\CkpnCalculationStrategy;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -17,27 +16,27 @@ class AverageThreeFactorsWithRejectLossOverrideStrategy implements CkpnCalculati
 {
     public function calculate(CkpnCalculationInput $input, CkpnCalculationRule $rule): CkpnCalculationResult
     {
-        $receivable = $input->insuranceReceivable->loadMissing(['insuranceCompany', 'claimStatus']);
+        $candidate = $input->candidate;
 
-        if (! $receivable->claimStatus instanceof ClaimStatus) {
+        if (blank($candidate->claimStatusCode)) {
             throw ValidationException::withMessages([
                 'claim_status_id' => 'Claim status is required for CKPN calculation.',
             ]);
         }
 
-        if ($receivable->receivable_formation_date === null) {
+        if (blank($candidate->receivableFormationDate)) {
             throw ValidationException::withMessages([
                 'receivable_formation_date' => 'Receivable formation date is required for CKPN calculation.',
             ]);
         }
 
-        if ($receivable->receivable_amount === null) {
+        if (blank($candidate->receivableAmount)) {
             throw ValidationException::withMessages([
                 'receivable_amount' => 'Receivable amount is required for CKPN calculation.',
             ]);
         }
 
-        $formationDate = CarbonImmutable::parse($receivable->receivable_formation_date)->startOfDay();
+        $formationDate = CarbonImmutable::parse($candidate->receivableFormationDate)->startOfDay();
         $asOfDate = CarbonImmutable::parse($input->asOfDate)->startOfDay();
         $ageDays = (int) $formationDate->diffInDays($asOfDate, false);
 
@@ -48,11 +47,11 @@ class AverageThreeFactorsWithRejectLossOverrideStrategy implements CkpnCalculati
         }
 
         $ageBucket = $this->ageBucketFor($ageDays);
-        $insuranceCompanyWeight = $this->scale4($receivable->insuranceCompany->ckpn_weight);
+        $insuranceCompanyWeight = $this->scale4($candidate->insuranceCompanyWeight);
         $ageWeight = $this->scale4($ageBucket->ckpn_weight);
-        $claimStatusWeight = $this->scale4($receivable->claimStatus->ckpn_weight);
+        $claimStatusWeight = $this->scale4($candidate->claimStatusWeight);
 
-        $isRejectLossOverride = $ageDays > 365 && $receivable->claimStatus->code === 'reject_loss';
+        $isRejectLossOverride = $ageDays > 365 && $candidate->claimStatusCode === 'reject_loss';
 
         if ($isRejectLossOverride) {
             $finalRate = BigDecimal::of('100')->toScale(4, RoundingMode::HALF_UP);
@@ -65,7 +64,7 @@ class AverageThreeFactorsWithRejectLossOverrideStrategy implements CkpnCalculati
             $explanation = 'Average of insurance company, age bucket, and claim status weights divided by 3.';
         }
 
-        $ckpnAmount = BigDecimal::of($receivable->receivable_amount)
+        $ckpnAmount = BigDecimal::of($candidate->receivableAmount)
             ->multipliedBy($finalRate)
             ->dividedBy('100', 2, RoundingMode::HALF_UP);
 

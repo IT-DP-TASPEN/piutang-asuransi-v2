@@ -3,17 +3,16 @@
 namespace Tests\Feature;
 
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
+use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
 use App\Actions\InsuranceReceivable\RejectInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitInsuranceReceivableForApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
-use App\Actions\InsuranceReceivable\UpdateCollectabilityAction;
 use App\Models\ApprovalLog;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\BranchOffice;
 use App\Models\InsuranceReceivable;
-use App\Models\InsuranceReceivableFieldChangeLog;
 use App\Models\ReceivableFormationJournal;
 use App\Models\User;
 use Database\Seeders\BranchOfficeSeeder;
@@ -63,7 +62,11 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         app(SubmitInsuranceReceivableForApprovalAction::class)->handle($receivable, $maker);
         $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $branchApprover);
 
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_BRANCH_APPROVED, $receivable->workflow_status);
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING, $receivable->workflow_status);
+
+        $receivable = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $this->userWithRole('it_user', '000'));
+
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING, $receivable->workflow_status);
 
         $receivable = app(SubmitReceivableFormationValidationAction::class)->handle($receivable, $accountingMaker, [
             'journal_date' => '2026-05-31',
@@ -107,23 +110,20 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         $this->assertSame(ApprovalRequest::STATUS_REJECTED, ApprovalRequest::query()->latest('id')->firstOrFail()->status);
     }
 
-    public function test_collectability_update_writes_field_change_log(): void
+    public function test_it_collectability_confirmation_does_not_change_collectability_and_writes_stage_log(): void
     {
         $this->seedDependencies();
         $itUser = $this->userWithRole('it_user', '000');
         $receivable = InsuranceReceivable::factory()->create([
             'collectability' => '1',
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
         ]);
 
-        $result = app(UpdateCollectabilityAction::class)->handle($receivable, $itUser, '2', 'manual correction');
-        $log = InsuranceReceivableFieldChangeLog::query()->sole();
+        $result = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $itUser);
 
-        $this->assertSame('2', $result->collectability);
-        $this->assertSame('collectability', $log->field_name);
-        $this->assertSame('1', $log->old_value);
-        $this->assertSame('2', $log->new_value);
-        $this->assertSame($itUser->id, $log->changed_by);
-        $this->assertSame('manual correction', $log->reason);
+        $this->assertSame('1', $result->collectability);
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING, $result->workflow_status);
+        $this->assertTrue($result->stageLogs()->where('event', 'collectability_change_confirmed')->exists());
     }
 
     private function seedDependencies(): void

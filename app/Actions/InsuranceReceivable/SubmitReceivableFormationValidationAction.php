@@ -23,9 +23,9 @@ class SubmitReceivableFormationValidationAction
      */
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, array $data = [], ?string $notes = null): InsuranceReceivable
     {
-        if ($insuranceReceivable->workflow_status !== InsuranceReceivable::WORKFLOW_STATUS_BRANCH_APPROVED) {
+        if ($insuranceReceivable->workflow_status !== InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING) {
             throw ValidationException::withMessages([
-                'workflow_status' => 'Only branch approved receivables can be submitted for accounting validation.',
+                'workflow_status' => 'Only receivables pending accounting validation can be submitted for accounting validation.',
             ]);
         }
 
@@ -56,7 +56,7 @@ class SubmitReceivableFormationValidationAction
             $this->stageLogger->log(
                 receivable: $insuranceReceivable,
                 event: 'accounting_validation_submitted',
-                fromStatus: InsuranceReceivable::WORKFLOW_STATUS_BRANCH_APPROVED,
+                fromStatus: InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING,
                 toStatus: InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
                 description: 'Accounting validation submitted.',
                 actor: $user,

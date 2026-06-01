@@ -9,6 +9,7 @@ use App\Actions\CkpnAdjustment\PrepareCkpnAdjustmentDataAction;
 use App\Actions\CkpnAdjustment\SubmitCkpnAdjustmentAction;
 use App\Actions\CkpnWorkpaper\ApproveCkpnWorkpaperAction;
 use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
+use App\Actions\LegacyReceivable\RecordLegacyReceivablePaymentAction;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\BranchOffice;
@@ -16,6 +17,7 @@ use App\Models\CkpnAdjustment;
 use App\Models\CkpnWorkpaper;
 use App\Models\InsuranceCompany;
 use App\Models\InsuranceReceivable;
+use App\Models\LegacyReceivable;
 use App\Models\User;
 use Database\Seeders\BranchOfficeSeeder;
 use Database\Seeders\CkpnAgeBucketSeeder;
@@ -54,7 +56,8 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $workpaper->status);
         $this->assertSame('10000.00', $workpaper->total_receivable_amount);
         $this->assertSame('100.00', $workpaper->total_ckpn_amount);
-        $this->assertSame($receivable->id, $item->insurance_receivable_id);
+        $this->assertSame(InsuranceReceivable::class, $item->receivable_type);
+        $this->assertSame($receivable->id, $item->receivable_id);
         $this->assertSame('Snapshot Customer', $item->customer_name);
         $this->assertSame('TEST SNAPSHOT', $item->insurance_company_name);
         $this->assertSame('1.0000', $item->final_ckpn_rate);
@@ -106,6 +109,61 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         $this->assertSame(1, $branchWorkpaper->refresh()->items()->count());
         $this->assertSame(2, $centralWorkpaper->refresh()->items()->count());
+    }
+
+    public function test_workpaper_generation_includes_legacy_receivables_with_period_end_outstanding(): void
+    {
+        $this->seedDependencies();
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $legacy = $this->legacyReceivable($branch, [
+            'customer_name' => 'Legacy Customer',
+            'original_receivable_amount' => '10000.00',
+            'remaining_receivable_amount' => '10000.00',
+            'receivable_formation_date' => '2026-01-01',
+        ]);
+        $maker = $this->userWithRole('accounting_maker', '000');
+
+        app(RecordLegacyReceivablePaymentAction::class)->handle($legacy, [
+            'amount' => '3000.00',
+            'paid_at' => '2026-06-30',
+        ], $maker);
+        app(RecordLegacyReceivablePaymentAction::class)->handle($legacy->refresh(), [
+            'amount' => '2000.00',
+            'paid_at' => '2026-07-01',
+        ], $maker);
+
+        $workpaper = CkpnWorkpaper::query()->create(['period' => '2026-06-30', 'branch_office_id' => $branch->id]);
+        $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
+        $item = $workpaper->items()->sole();
+
+        $this->assertSame(LegacyReceivable::class, $item->receivable_type);
+        $this->assertSame($legacy->id, $item->receivable_id);
+        $this->assertSame('Legacy', $item->source_label);
+        $this->assertSame('7000.00', $item->receivable_amount);
+        $this->assertSame('7000.00', $workpaper->total_receivable_amount);
+    }
+
+    public function test_workpaper_generation_excludes_fully_paid_legacy_as_of_period(): void
+    {
+        $this->seedDependencies();
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $legacy = $this->legacyReceivable($branch, [
+            'original_receivable_amount' => '10000.00',
+            'remaining_receivable_amount' => '10000.00',
+            'receivable_formation_date' => '2026-01-01',
+        ]);
+        $maker = $this->userWithRole('accounting_maker', '000');
+
+        app(RecordLegacyReceivablePaymentAction::class)->handle($legacy, [
+            'amount' => '10000.00',
+            'paid_at' => '2026-06-30',
+        ], $maker);
+
+        $workpaper = CkpnWorkpaper::query()->create(['period' => '2026-06-30', 'branch_office_id' => $branch->id]);
+        $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
+
+        $this->assertSame(0, $workpaper->items()->count());
+        $this->assertSame('0.00', $workpaper->total_receivable_amount);
     }
 
     public function test_recalculate_is_blocked_after_submit(): void
@@ -232,6 +290,18 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
             'branch_office_id' => $branch->id,
             'branch_code' => $branch->branch_code,
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
+            ...$attributes,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function legacyReceivable(BranchOffice $branch, array $attributes = []): LegacyReceivable
+    {
+        return LegacyReceivable::factory()->create([
+            'branch_office_id' => $branch->id,
+            'date_of_death' => '2026-01-01',
             ...$attributes,
         ]);
     }

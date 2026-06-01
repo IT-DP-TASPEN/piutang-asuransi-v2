@@ -4,12 +4,11 @@ namespace App\Actions\Ckpn;
 
 use App\Data\CkpnCalculationInput;
 use App\Data\CkpnCalculationResult;
+use App\Data\CkpnReceivableCandidate;
 use App\Models\CkpnWorkpaper;
-use App\Models\InsuranceReceivable;
 use App\Services\Ckpn\CkpnCalculationService;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -17,6 +16,8 @@ class GenerateMonthlyCkpnWorkpaperAction
 {
     public function __construct(
         private readonly CkpnCalculationService $calculationService,
+        private readonly CollectCurrentReceivableCandidatesAction $collectCurrentReceivableCandidatesAction,
+        private readonly CollectLegacyReceivableCandidatesAction $collectLegacyReceivableCandidatesAction,
     ) {}
 
     public function handle(CkpnWorkpaper $workpaper): CkpnWorkpaper
@@ -36,42 +37,44 @@ class GenerateMonthlyCkpnWorkpaperAction
             $totalReceivable = BigDecimal::of('0');
             $totalCkpn = BigDecimal::of('0');
 
-            $this->eligibleReceivables($workpaper)
-                ->with(['insuranceCompany', 'claimStatus'])
-                ->orderBy('id')
-                ->chunkById(100, function ($receivables) use ($workpaper, &$totalReceivable, &$totalCkpn): void {
-                    foreach ($receivables as $receivable) {
-                        $result = $this->calculationService->calculate(new CkpnCalculationInput(
-                            insuranceReceivable: $receivable,
-                            asOfDate: $workpaper->period,
-                        ));
+            $candidates = $this->collectCurrentReceivableCandidatesAction->handle($workpaper)
+                ->concat($this->collectLegacyReceivableCandidatesAction->handle($workpaper))
+                ->sortBy(fn (CkpnReceivableCandidate $candidate): string => "{$candidate->receivableType}:{$candidate->receivableId}")
+                ->values();
 
-                        $workpaper->items()->create([
-                            'insurance_receivable_id' => $receivable->id,
-                            'branch_code' => $receivable->branch_code,
-                            'cif_no' => $receivable->cif_no,
-                            'loan_account_number' => $receivable->loan_account_number,
-                            'customer_name' => $receivable->customer_name,
-                            'insurance_company_name' => $receivable->insuranceCompany->name,
-                            'claim_status_name' => $receivable->claimStatus->name,
-                            'receivable_formation_date' => $receivable->receivable_formation_date,
-                            'receivable_amount' => $receivable->receivable_amount,
-                            'age_days' => $result->ageDays,
-                            'age_bucket_name' => $result->ageBucketName,
-                            'insurance_company_weight' => $result->insuranceCompanyWeight,
-                            'age_weight' => $result->ageWeight,
-                            'claim_status_weight' => $result->claimStatusWeight,
-                            'final_ckpn_rate' => $result->finalCkpnRate,
-                            'ckpn_amount' => $result->ckpnAmount,
-                            'calculation_rule_code' => $result->appliedRuleCode,
-                            'calculation_explanation' => $result->calculationExplanation,
-                            'snapshot' => $this->snapshot($receivable, $result),
-                        ]);
+            foreach ($candidates as $candidate) {
+                $result = $this->calculationService->calculate(new CkpnCalculationInput(
+                    candidate: $candidate,
+                    asOfDate: $workpaper->period,
+                ));
 
-                        $totalReceivable = $totalReceivable->plus($receivable->receivable_amount);
-                        $totalCkpn = $totalCkpn->plus($result->ckpnAmount);
-                    }
-                });
+                $workpaper->items()->create([
+                    'receivable_type' => $candidate->receivableType,
+                    'receivable_id' => $candidate->receivableId,
+                    'branch_code' => $candidate->branchCode,
+                    'branch_name' => $candidate->branchName,
+                    'cif_no' => $candidate->cif,
+                    'loan_account_number' => $candidate->loanAccountNumber,
+                    'customer_name' => $candidate->customerName,
+                    'insurance_company_name' => $candidate->insuranceCompanyName,
+                    'claim_status_name' => $candidate->claimStatusName,
+                    'receivable_formation_date' => $candidate->receivableFormationDate,
+                    'receivable_amount' => $candidate->receivableAmount,
+                    'age_days' => $result->ageDays,
+                    'age_bucket_name' => $result->ageBucketName,
+                    'insurance_company_weight' => $result->insuranceCompanyWeight,
+                    'age_weight' => $result->ageWeight,
+                    'claim_status_weight' => $result->claimStatusWeight,
+                    'final_ckpn_rate' => $result->finalCkpnRate,
+                    'ckpn_amount' => $result->ckpnAmount,
+                    'calculation_rule_code' => $result->appliedRuleCode,
+                    'calculation_explanation' => $result->calculationExplanation,
+                    'snapshot' => $this->snapshot($candidate, $result),
+                ]);
+
+                $totalReceivable = $totalReceivable->plus($candidate->receivableAmount);
+                $totalCkpn = $totalCkpn->plus($result->ckpnAmount);
+            }
 
             $workpaper->forceFill([
                 'status' => CkpnWorkpaper::STATUS_GENERATED,
@@ -83,43 +86,39 @@ class GenerateMonthlyCkpnWorkpaperAction
         });
     }
 
-    public function eligibleReceivables(CkpnWorkpaper $workpaper): Builder
-    {
-        return InsuranceReceivable::query()
-            ->whereNotNull('receivable_formation_date')
-            ->whereDate('receivable_formation_date', '<=', $workpaper->period)
-            ->where('receivable_amount', '>', 0)
-            ->whereNotIn('workflow_status', [
-                InsuranceReceivable::WORKFLOW_STATUS_REJECTED,
-                'cancelled',
-            ])
-            ->when($workpaper->branch_office_id !== null, fn (Builder $query) => $query->where('branch_office_id', $workpaper->branch_office_id));
-    }
-
     /**
      * @return array<string, mixed>
      */
-    private function snapshot(InsuranceReceivable $receivable, CkpnCalculationResult $result): array
+    private function snapshot(CkpnReceivableCandidate $candidate, CkpnCalculationResult $result): array
     {
         return [
-            'insurance_receivable_id' => $receivable->id,
-            'branch_code' => $receivable->branch_code,
-            'cif_no' => $receivable->cif_no,
-            'loan_account_number' => $receivable->loan_account_number,
-            'customer_name' => $receivable->customer_name,
+            'source' => $candidate->sourceLabel(),
+            'receivable_type' => $candidate->receivableType,
+            'receivable_id' => $candidate->receivableId,
+            'branch_office_id' => $candidate->branchOfficeId,
+            'branch_code' => $candidate->branchCode,
+            'branch_name' => $candidate->branchName,
+            'cif_no' => $candidate->cif,
+            'loan_account_number' => $candidate->loanAccountNumber,
+            'customer_name' => $candidate->customerName,
+            'date_of_death' => $candidate->dateOfDeath,
+            'credit_limit' => $candidate->creditLimit,
+            'loan_outstanding' => $candidate->loanOutstanding,
+            'start_period' => $candidate->startPeriod,
+            'end_period' => $candidate->endPeriod,
             'insurance_company' => [
-                'id' => $receivable->insuranceCompany->id,
-                'name' => $receivable->insuranceCompany->name,
+                'id' => $candidate->insuranceCompanyId,
+                'name' => $candidate->insuranceCompanyName,
                 'ckpn_weight' => $result->insuranceCompanyWeight,
             ],
             'claim_status' => [
-                'id' => $receivable->claimStatus->id,
-                'code' => $receivable->claimStatus->code,
-                'name' => $receivable->claimStatus->name,
+                'id' => $candidate->claimStatusId,
+                'code' => $candidate->claimStatusCode,
+                'name' => $candidate->claimStatusName,
                 'ckpn_weight' => $result->claimStatusWeight,
             ],
-            'receivable_formation_date' => $receivable->receivable_formation_date?->toDateString(),
-            'receivable_amount' => $receivable->receivable_amount,
+            'receivable_formation_date' => $candidate->receivableFormationDate,
+            'receivable_amount' => $candidate->receivableAmount,
             'age_days' => $result->ageDays,
             'age_bucket' => [
                 'id' => $result->ageBucketId,

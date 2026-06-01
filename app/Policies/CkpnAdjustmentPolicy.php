@@ -105,6 +105,7 @@ class CkpnAdjustmentPolicy
             return false;
         }
 
-        return $user->branch_office_id === $ckpnAdjustment->insuranceReceivable->branch_office_id;
+        return $ckpnAdjustment->ckpnWorkpaper?->branch_office_id !== null
+            && $user->branch_office_id === $ckpnAdjustment->ckpnWorkpaper->branch_office_id;
     }
 }

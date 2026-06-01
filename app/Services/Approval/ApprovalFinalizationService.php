@@ -42,7 +42,7 @@ class ApprovalFinalizationService
         $fromStatus = $receivable->workflow_status;
 
         $receivable->forceFill([
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_BRANCH_APPROVED,
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
             'approved_at' => now(),
         ])->save();
 
@@ -50,8 +50,8 @@ class ApprovalFinalizationService
             receivable: $receivable,
             event: 'branch_approval_approved',
             fromStatus: $fromStatus,
-            toStatus: InsuranceReceivable::WORKFLOW_STATUS_BRANCH_APPROVED,
-            description: $notes ?: 'Branch approval completed.',
+            toStatus: InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
+            description: $notes ?: 'Branch approval completed. Awaiting IT collectability confirmation.',
             actor: $actor,
             approvalRequest: $approvalRequest,
         );

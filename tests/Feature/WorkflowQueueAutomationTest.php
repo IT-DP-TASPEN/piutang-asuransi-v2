@@ -6,6 +6,7 @@ use App\Actions\CkpnJournal\ApproveCkpnJournalAction;
 use App\Actions\CkpnJournal\ExecuteGlToGlTransferAction;
 use App\Actions\CkpnJournal\SubmitCkpnJournalAction;
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
+use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
 use App\Actions\InsuranceReceivable\ExecuteEarlyTerminationAction;
 use App\Actions\InsuranceReceivable\PerformLoanInquiryAction;
 use App\Actions\InsuranceReceivable\SubmitInsuranceReceivableForApprovalAction;
@@ -135,6 +136,7 @@ class WorkflowQueueAutomationTest extends TestCase
 
         app(SubmitInsuranceReceivableForApprovalAction::class)->handle($receivable, $maker);
         $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $branchApprover);
+        $receivable = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $this->userWithRole('it_user', '000'));
         app(SubmitReceivableFormationValidationAction::class)->handle($receivable, $accountingMaker, [
             'journal_date' => '2026-05-31',
             'amount' => '230929055.00',

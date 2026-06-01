@@ -261,8 +261,10 @@ class CkpnJournalExportGlToGlTest extends TestCase
 
         CkpnWorkpaperItem::query()->create([
             'ckpn_workpaper_id' => $workpaper->id,
-            'insurance_receivable_id' => $receivable->id,
+            'receivable_type' => InsuranceReceivable::class,
+            'receivable_id' => $receivable->id,
             'branch_code' => '001',
+            'branch_name' => 'Cabang 001',
             'cif_no' => 'CIF-1',
             'loan_account_number' => '3010001000054745',
             'customer_name' => 'Customer One',
@@ -279,7 +281,14 @@ class CkpnJournalExportGlToGlTest extends TestCase
             'ckpn_amount' => '0.00',
             'calculation_rule_code' => 'average_three_factors_with_reject_loss_override',
             'calculation_explanation' => 'Snapshot',
-            'snapshot' => ['source' => 'test'],
+            'snapshot' => [
+                'source' => 'Current',
+                'date_of_death' => '2026-01-15',
+                'credit_limit' => '5000000.00',
+                'loan_outstanding' => '1000000.00',
+                'start_period' => '2025-01-01',
+                'end_period' => '2027-01-01',
+            ],
         ]);
 
         return $workpaper->refresh();

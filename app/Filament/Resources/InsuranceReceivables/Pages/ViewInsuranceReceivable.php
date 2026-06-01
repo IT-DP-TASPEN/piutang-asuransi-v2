@@ -7,11 +7,11 @@ use App\Actions\ClaimStatusChangeRequest\CreateAndSubmitClaimStatusChangeFromRec
 use App\Actions\ClaimStatusChangeRequest\RejectClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\ReturnClaimStatusChangeRequestAction;
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
+use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
 use App\Actions\InsuranceReceivable\RejectInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitInsuranceReceivableForApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
-use App\Actions\InsuranceReceivable\UpdateCollectabilityAction;
 use App\Filament\Resources\ApiIntegrationLogs\ApiIntegrationLogResource;
 use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
 use App\Jobs\ExecuteEarlyTerminationJob;
@@ -56,7 +56,7 @@ class ViewInsuranceReceivable extends ViewRecord
             ActionGroup::make([
                 $this->retryInquiryAction(),
                 $this->retryEarlyTerminationAction(),
-                $this->updateCollectabilityAction(),
+                $this->confirmCollectabilityChangeAction(),
                 Action::make('viewApiLogs')
                     ->label('View API Logs')
                     ->visible(fn (): bool => auth()->user()?->can('ViewAny:ApiIntegrationLog') ?? false)
@@ -111,7 +111,7 @@ class ViewInsuranceReceivable extends ViewRecord
         return Action::make('submitAccountingValidation')
             ->label('Accounting validation')
             ->visible(fn (): bool => (auth()->user()?->can('submitAccountingValidation', $this->getRecord()) ?? false)
-                && $this->getRecord()->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_BRANCH_APPROVED)
+                && $this->getRecord()->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING)
             ->form([
                 DatePicker::make('journal_date')->default(now())->required(),
                 TextInput::make('amount')->default(fn () => $this->getRecord()->loan_outstanding)->required()->numeric(),
@@ -255,28 +255,21 @@ class ViewInsuranceReceivable extends ViewRecord
             });
     }
 
-    private function updateCollectabilityAction(): Action
+    private function confirmCollectabilityChangeAction(): Action
     {
-        return Action::make('updateCollectability')
-            ->label('Update collectability')
-            ->visible(fn (): bool => auth()->user()?->can('updateCollectability', $this->getRecord()) ?? false)
-            ->form([
-                TextInput::make('collectability')->default(fn () => $this->getRecord()->collectability)->maxLength(255),
-                Textarea::make('reason')->maxLength(65535),
-            ])
-            ->action(function (array $data): void {
+        return Action::make('confirmCollectabilityChange')
+            ->label('Confirm Collectability Change Completed')
+            ->requiresConfirmation()
+            ->visible(fn (): bool => (auth()->user()?->can('confirmCollectabilityChange', $this->getRecord()) ?? false)
+                && $this->getRecord()->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING)
+            ->action(function (): void {
                 $user = auth()->user();
 
                 if ($user instanceof User) {
-                    app(UpdateCollectabilityAction::class)->handle(
-                        $this->getRecord(),
-                        $user,
-                        $data['collectability'] ?? null,
-                        $data['reason'] ?? null,
-                    );
+                    app(ConfirmCollectabilityChangeCompletedAction::class)->handle($this->getRecord(), $user);
                 }
 
-                Notification::make()->success()->title('Collectability updated')->send();
+                Notification::make()->success()->title('Collectability change confirmed')->send();
             });
     }
 
@@ -400,7 +393,7 @@ class ViewInsuranceReceivable extends ViewRecord
             && $record->system_status === InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED;
 
         $canSubmitAccounting = ($user?->can('submitAccountingValidation', $record) ?? false)
-            && $record->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_BRANCH_APPROVED;
+            && $record->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING;
 
         $canApprove = ($user?->can('approveApproval', $record) ?? false) && $approvalPending;
         $canReject = ($user?->can('rejectApproval', $record) ?? false) && $approvalPending;
@@ -425,7 +418,8 @@ class ViewInsuranceReceivable extends ViewRecord
 
         return $canRetryInquiry
             || $canRetryEarlyTermination
-            || ($user?->can('updateCollectability', $record) ?? false)
+            || ($user?->can('confirmCollectabilityChange', $record) ?? false)
+            && $record->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING
             || ($user?->can('ViewAny:ApiIntegrationLog') ?? false);
     }
 

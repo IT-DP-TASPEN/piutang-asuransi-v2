@@ -6,9 +6,11 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 #[Fillable([
-    'insurance_receivable_id',
+    'receivable_type',
+    'receivable_id',
     'ckpn_workpaper_id',
     'ckpn_workpaper_item_id',
     'adjustment_type',
@@ -49,11 +51,11 @@ class CkpnAdjustment extends Model
     }
 
     /**
-     * @return BelongsTo<InsuranceReceivable, $this>
+     * @return MorphTo<Model, $this>
      */
-    public function insuranceReceivable(): BelongsTo
+    public function receivable(): MorphTo
     {
-        return $this->belongsTo(InsuranceReceivable::class);
+        return $this->morphTo();
     }
 
     /**

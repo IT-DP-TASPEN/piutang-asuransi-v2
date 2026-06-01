@@ -47,7 +47,7 @@ class CkpnAdjustmentResource extends Resource
         }
 
         if (RoleScope::isBranchScoped($user)) {
-            return $query->whereHas('insuranceReceivable', fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id));
+            return $query->whereHas('ckpnWorkpaper', fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id));
         }
 
         return $query->whereRaw('1 = 0');

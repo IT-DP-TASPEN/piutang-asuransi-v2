@@ -18,12 +18,6 @@ class CkpnAdjustmentForm
             ->components([
                 Section::make('Adjustment')
                     ->schema([
-                        Select::make('insurance_receivable_id')
-                            ->label('Insurance receivable')
-                            ->relationship('insuranceReceivable', 'loan_account_number')
-                            ->searchable()
-                            ->preload()
-                            ->required(),
                         Select::make('ckpn_workpaper_id')
                             ->label('Workpaper')
                             ->relationship('ckpnWorkpaper', 'period')
@@ -35,10 +29,11 @@ class CkpnAdjustmentForm
                                 ->orderBy('id')
                                 ->get()
                                 ->mapWithKeys(fn (CkpnWorkpaperItem $item): array => [
-                                    $item->id => "{$item->branch_code} - {$item->loan_account_number} - {$item->customer_name}",
+                                    $item->id => "{$item->source_label} - {$item->branch_code} - {$item->loan_account_number} - {$item->customer_name}",
                                 ])
                                 ->all())
-                            ->searchable(),
+                            ->searchable()
+                            ->required(),
                         TextInput::make('adjustment_type')
                             ->required()
                             ->maxLength(255),

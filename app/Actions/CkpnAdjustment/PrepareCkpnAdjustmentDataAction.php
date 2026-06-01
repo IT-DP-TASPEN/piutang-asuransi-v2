@@ -27,7 +27,8 @@ class PrepareCkpnAdjustmentDataAction
 
         return [
             ...$data,
-            'insurance_receivable_id' => $data['insurance_receivable_id'] ?? $item?->insurance_receivable_id,
+            'receivable_type' => $data['receivable_type'] ?? $item?->receivable_type,
+            'receivable_id' => $data['receivable_id'] ?? $item?->receivable_id,
             'ckpn_workpaper_id' => $data['ckpn_workpaper_id'] ?? $item?->ckpn_workpaper_id,
             'original_rate' => $data['original_rate'] ?? $item?->final_ckpn_rate,
             'original_amount' => $data['original_amount'] ?? $item?->ckpn_amount,

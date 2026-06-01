@@ -6,11 +6,14 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 #[Fillable([
     'ckpn_workpaper_id',
-    'insurance_receivable_id',
+    'receivable_type',
+    'receivable_id',
     'branch_code',
+    'branch_name',
     'cif_no',
     'loan_account_number',
     'customer_name',
@@ -40,11 +43,11 @@ class CkpnWorkpaperItem extends Model
     }
 
     /**
-     * @return BelongsTo<InsuranceReceivable, $this>
+     * @return MorphTo<Model, $this>
      */
-    public function insuranceReceivable(): BelongsTo
+    public function receivable(): MorphTo
     {
-        return $this->belongsTo(InsuranceReceivable::class);
+        return $this->morphTo();
     }
 
     /**
@@ -73,5 +76,14 @@ class CkpnWorkpaperItem extends Model
             'ckpn_amount' => 'decimal:2',
             'snapshot' => 'array',
         ];
+    }
+
+    public function getSourceLabelAttribute(): string
+    {
+        return match ($this->receivable_type) {
+            InsuranceReceivable::class => 'Current',
+            LegacyReceivable::class => 'Legacy',
+            default => class_basename($this->receivable_type),
+        };
     }
 }

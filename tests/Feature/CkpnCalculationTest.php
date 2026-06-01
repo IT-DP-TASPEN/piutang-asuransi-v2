@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Data\CkpnCalculationInput;
+use App\Data\CkpnReceivableCandidate;
 use App\Models\CkpnCalculationRule;
 use App\Models\ClaimStatus;
 use App\Models\InsuranceCompany;
@@ -30,7 +31,7 @@ class CkpnCalculationTest extends TestCase
             'receivable_amount' => '10000.00',
         ]);
 
-        $result = app(CkpnCalculationService::class)->calculate(new CkpnCalculationInput($receivable, CarbonImmutable::parse('2026-06-30')));
+        $result = app(CkpnCalculationService::class)->calculate($this->input($receivable, '2026-06-30'));
 
         $this->assertSame(180, $result->ageDays);
         $this->assertSame('1 - 6 bulan', $result->ageBucketName);
@@ -45,7 +46,7 @@ class CkpnCalculationTest extends TestCase
             'receivable_amount' => '10000.00',
         ]);
 
-        $result = app(CkpnCalculationService::class)->calculate(new CkpnCalculationInput($receivable, CarbonImmutable::parse('2026-07-01')));
+        $result = app(CkpnCalculationService::class)->calculate($this->input($receivable, '2026-07-01'));
 
         $this->assertSame(181, $result->ageDays);
         $this->assertSame('7 - 12 bulan', $result->ageBucketName);
@@ -60,7 +61,7 @@ class CkpnCalculationTest extends TestCase
             'receivable_amount' => '10000.00',
         ]);
 
-        $result = app(CkpnCalculationService::class)->calculate(new CkpnCalculationInput($receivable, CarbonImmutable::parse('2027-01-02')));
+        $result = app(CkpnCalculationService::class)->calculate($this->input($receivable, '2027-01-02'));
 
         $this->assertSame(366, $result->ageDays);
         $this->assertSame('> 12 bulan', $result->ageBucketName);
@@ -83,7 +84,7 @@ class CkpnCalculationTest extends TestCase
             'receivable_amount' => '10000.00',
         ]);
 
-        $result = app(CkpnCalculationService::class)->calculate(new CkpnCalculationInput($receivable, CarbonImmutable::parse('2026-06-30')));
+        $result = app(CkpnCalculationService::class)->calculate($this->input($receivable, '2026-06-30'));
 
         $this->assertSame('3.0000', $result->insuranceCompanyWeight);
         $this->assertSame('1.0000', $result->finalCkpnRate);
@@ -100,7 +101,7 @@ class CkpnCalculationTest extends TestCase
             'receivable_amount' => '10000.00',
         ]);
 
-        $result = app(CkpnCalculationService::class)->calculate(new CkpnCalculationInput($receivable, CarbonImmutable::parse('2027-01-02')));
+        $result = app(CkpnCalculationService::class)->calculate($this->input($receivable, '2027-01-02'));
 
         $this->assertSame('100.0000', $result->finalCkpnRate);
         $this->assertSame('10000.00', $result->ckpnAmount);
@@ -117,7 +118,7 @@ class CkpnCalculationTest extends TestCase
             'receivable_amount' => '10000.00',
         ]);
 
-        $result = app(CkpnCalculationService::class)->calculate(new CkpnCalculationInput($receivable, CarbonImmutable::parse('2026-06-30')));
+        $result = app(CkpnCalculationService::class)->calculate($this->input($receivable, '2026-06-30'));
 
         $this->assertSame('33.3333', $result->finalCkpnRate);
         $this->assertSame('3333.33', $result->ckpnAmount);
@@ -134,7 +135,7 @@ class CkpnCalculationTest extends TestCase
 
         $this->expectException(ValidationException::class);
 
-        app(CkpnCalculationService::class)->calculate(new CkpnCalculationInput($receivable, CarbonImmutable::parse('2026-06-30')));
+        app(CkpnCalculationService::class)->calculate($this->input($receivable, '2026-06-30'));
     }
 
     public function test_service_rejects_invalid_strategy_class(): void
@@ -150,7 +151,7 @@ class CkpnCalculationTest extends TestCase
 
         $this->expectException(ValidationException::class);
 
-        app(CkpnCalculationService::class)->calculate(new CkpnCalculationInput($receivable, CarbonImmutable::parse('2026-06-30')));
+        app(CkpnCalculationService::class)->calculate($this->input($receivable, '2026-06-30'));
     }
 
     private function seedDependencies(): void
@@ -173,5 +174,33 @@ class CkpnCalculationTest extends TestCase
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
             ...$attributes,
         ]);
+    }
+
+    private function input(InsuranceReceivable $receivable, string $asOfDate): CkpnCalculationInput
+    {
+        $receivable->loadMissing(['branchOffice', 'insuranceCompany', 'claimStatus']);
+
+        return new CkpnCalculationInput(
+            candidate: new CkpnReceivableCandidate(
+                receivableType: InsuranceReceivable::class,
+                receivableId: $receivable->id,
+                branchOfficeId: $receivable->branch_office_id,
+                branchCode: $receivable->branch_code,
+                branchName: $receivable->branchOffice->branch_name,
+                cif: $receivable->cif_no,
+                loanAccountNumber: $receivable->loan_account_number,
+                customerName: $receivable->customer_name,
+                insuranceCompanyId: $receivable->insurance_company_id,
+                insuranceCompanyName: $receivable->insuranceCompany->name,
+                insuranceCompanyWeight: $receivable->insuranceCompany->ckpn_weight,
+                claimStatusId: $receivable->claim_status_id,
+                claimStatusCode: $receivable->claimStatus->code,
+                claimStatusName: $receivable->claimStatus->name,
+                claimStatusWeight: $receivable->claimStatus->ckpn_weight,
+                receivableFormationDate: $receivable->receivable_formation_date->toDateString(),
+                receivableAmount: $receivable->receivable_amount,
+            ),
+            asOfDate: CarbonImmutable::parse($asOfDate),
+        );
     }
 }

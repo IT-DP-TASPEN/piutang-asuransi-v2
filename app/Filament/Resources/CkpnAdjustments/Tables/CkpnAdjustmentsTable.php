@@ -14,13 +14,19 @@ class CkpnAdjustmentsTable
     {
         return $table
             ->columns([
-                TextColumn::make('insuranceReceivable.branch_code')
+                TextColumn::make('ckpnWorkpaperItem.source_label')
+                    ->label('Source')
+                    ->badge(),
+                TextColumn::make('ckpnWorkpaperItem.branch_code')
                     ->label('Branch')
                     ->sortable(),
-                TextColumn::make('insuranceReceivable.loan_account_number')
+                TextColumn::make('ckpnWorkpaperItem.loan_account_number')
                     ->label('Loan account')
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('ckpnWorkpaperItem.customer_name')
+                    ->label('Customer')
+                    ->searchable(),
                 TextColumn::make('adjustment_type')
                     ->searchable()
                     ->sortable(),

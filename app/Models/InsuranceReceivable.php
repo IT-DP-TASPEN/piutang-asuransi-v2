@@ -53,6 +53,10 @@ class InsuranceReceivable extends Model
 
     public const WORKFLOW_STATUS_BRANCH_APPROVED = 'branch_approved';
 
+    public const WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING = 'collectability_confirmation_pending';
+
+    public const WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING = 'accounting_validation_pending';
+
     public const WORKFLOW_STATUS_RETURNED = 'returned';
 
     public const WORKFLOW_STATUS_REJECTED = 'rejected';
@@ -90,6 +94,8 @@ class InsuranceReceivable extends Model
             self::WORKFLOW_STATUS_DRAFT => 'Draft',
             self::WORKFLOW_STATUS_SUBMITTED => 'Submitted',
             self::WORKFLOW_STATUS_BRANCH_APPROVED => 'Branch approved',
+            self::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING => 'Collectability confirmation pending',
+            self::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING => 'Accounting validation pending',
             self::WORKFLOW_STATUS_RETURNED => 'Returned',
             self::WORKFLOW_STATUS_REJECTED => 'Rejected',
             self::WORKFLOW_STATUS_ACCOUNTING_VALIDATION => 'Accounting validation',
@@ -205,19 +211,19 @@ class InsuranceReceivable extends Model
     }
 
     /**
-     * @return HasMany<CkpnWorkpaperItem, $this>
+     * @return MorphMany<CkpnWorkpaperItem, $this>
      */
-    public function ckpnWorkpaperItems(): HasMany
+    public function ckpnWorkpaperItems(): MorphMany
     {
-        return $this->hasMany(CkpnWorkpaperItem::class);
+        return $this->morphMany(CkpnWorkpaperItem::class, 'receivable');
     }
 
     /**
-     * @return HasMany<CkpnAdjustment, $this>
+     * @return MorphMany<CkpnAdjustment, $this>
      */
-    public function ckpnAdjustments(): HasMany
+    public function ckpnAdjustments(): MorphMany
     {
-        return $this->hasMany(CkpnAdjustment::class);
+        return $this->morphMany(CkpnAdjustment::class, 'receivable');
     }
 
     /**

@@ -13,7 +13,8 @@ return new class extends Migration
     {
         Schema::create('ckpn_adjustments', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('insurance_receivable_id')->constrained()->restrictOnDelete();
+            $table->string('receivable_type')->nullable();
+            $table->unsignedBigInteger('receivable_id')->nullable();
             $table->foreignId('ckpn_workpaper_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('ckpn_workpaper_item_id')->nullable()->constrained()->nullOnDelete();
             $table->string('adjustment_type');
@@ -29,7 +30,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['ckpn_workpaper_id', 'status']);
-            $table->index(['insurance_receivable_id', 'status']);
+            $table->index(['receivable_type', 'receivable_id']);
         });
     }
 
