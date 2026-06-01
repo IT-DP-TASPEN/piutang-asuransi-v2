@@ -52,8 +52,6 @@ class GlToGlPayloadBuilder
 
     private function formatAmount(string $amount): string
     {
-        $scaledAmount = (string) BigDecimal::of($amount)->toScale(2, RoundingMode::HalfUp);
-
-        return str_replace('.', ',', $scaledAmount);
+        return (string) BigDecimal::of($amount)->toScale(2, RoundingMode::HalfUp);
     }
 }
