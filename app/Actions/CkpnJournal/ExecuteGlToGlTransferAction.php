@@ -81,8 +81,8 @@ class ExecuteGlToGlTransferAction
 
         for ($seconds = 0; $seconds < 10; $seconds++) {
             $timestamp = now()->copy()->addSeconds($seconds)->format('YmdHis');
-            $referenceNumber = "CKPN-GL{$timestamp}";
-            $receiptNumber = "CKPN-RC{$timestamp}";
+            $referenceNumber = "{$timestamp}";
+            $receiptNumber = "{$timestamp}";
 
             try {
                 return $journal->glToGlTransactions()->create([

@@ -50,7 +50,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_approver', '000');
         $journal = $this->approvedJournal(totalAmount: '3077644.00');
-        $expectedRawBody = '{"referenceNumber":"CKPN-GL20260531102030","trxType":"SAKEP CKPN","termType":"","termId":"FINCLOUD","receiptNumber":"CKPN-RC20260531102030","debitAccount":"D-1","creditAccount":"C-1","amount":"3077644.00","fee":"0","creditFee":"0","branchCode":"001","debitNarrative":"Debit narrative","creditNarrative":"Credit narrative","customerId":"","dateTime":"20260531102030","description":"CKPN journal","debitFee":"0","destAccount":"","currency":"IDR","srcAccType":"10","totalBill":"","type":"G2"}';
+        $expectedRawBody = '{"referenceNumber":"20260531102030","trxType":"SAKEP CKPN","termType":"","termId":"FINCLOUD","receiptNumber":"20260531102030","debitAccount":"D-1","creditAccount":"C-1","amount":"3077644.00","fee":"0","creditFee":"0","branchCode":"001","debitNarrative":"Debit narrative","creditNarrative":"Credit narrative","customerId":"","dateTime":"20260531102030","description":"CKPN journal","debitFee":"0","destAccount":"","currency":"IDR","srcAccType":"10","totalBill":"","type":"G2"}';
 
         Http::fake([
             'http://core.test/trx/transfer/gl-to-gl' => Http::sequence()
@@ -68,8 +68,8 @@ class CkpnJournalExportGlToGlTest extends TestCase
         $first = app(ExecuteGlToGlTransferAction::class)->handle($journal, $user);
 
         $this->assertSame(GlToGlTransaction::STATUS_FAILED, $first->status);
-        $this->assertSame('CKPN-GL20260531102030', $first->reference_number);
-        $this->assertSame('CKPN-RC20260531102030', $first->receipt_number);
+        $this->assertSame('20260531102030', $first->reference_number);
+        $this->assertSame('20260531102030', $first->receipt_number);
         $this->assertSame('3077644.00', $first->request_payload['amount']);
         $this->assertStringNotContainsString(',', $first->request_payload['amount']);
 
@@ -77,8 +77,8 @@ class CkpnJournalExportGlToGlTest extends TestCase
 
         $this->assertSame($first->id, $second->id);
         $this->assertSame(GlToGlTransaction::STATUS_SUCCESS, $second->status);
-        $this->assertSame('CKPN-GL20260531102030', $second->reference_number);
-        $this->assertSame('CKPN-RC20260531102030', $second->receipt_number);
+        $this->assertSame('20260531102030', $second->reference_number);
+        $this->assertSame('20260531102030', $second->receipt_number);
         $this->assertSame('00', $second->response_code);
         $this->assertSame('Accepted', $second->response_description);
         $this->assertSame('V-1', $second->response_payload['data']['unknownResponse']['voucher']);
@@ -106,8 +106,8 @@ class CkpnJournalExportGlToGlTest extends TestCase
 
         $payload = app(GlToGlPayloadBuilder::class)->build(
             journal: $journal,
-            referenceNumber: 'CKPN-GL20260531102030',
-            receiptNumber: 'CKPN-RC20260531102030',
+            referenceNumber: '20260531102030',
+            receiptNumber: '20260531102030',
             dateTime: Carbon::parse('2026-05-31 10:20:30'),
         );
 
@@ -361,7 +361,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
         foreach ($reader->getSheetIterator() as $sheet) {
             foreach ($sheet->getRowIterator() as $row) {
                 $rows[] = array_map(
-                    fn ($cell): bool|\DateInterval|\DateTimeInterface|float|int|string|null => $cell->getValue(),
+                    fn($cell): bool|\DateInterval|\DateTimeInterface|float|int|string|null => $cell->getValue(),
                     $row->getCells(),
                 );
             }
