@@ -16,9 +16,10 @@ class RecalculateCkpnWorkpaperAction
         if (! in_array($workpaper->status ?? CkpnWorkpaper::STATUS_DRAFT, [
             CkpnWorkpaper::STATUS_DRAFT,
             CkpnWorkpaper::STATUS_GENERATED,
+            CkpnWorkpaper::STATUS_RETURNED,
         ], true)) {
             throw ValidationException::withMessages([
-                'status' => 'Only draft or generated CKPN workpapers can be recalculated.',
+                'status' => 'Only draft, generated, or returned CKPN workpapers can be recalculated.',
             ]);
         }
 

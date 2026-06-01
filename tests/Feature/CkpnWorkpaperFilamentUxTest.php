@@ -4,17 +4,21 @@ namespace Tests\Feature;
 
 use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
 use App\Filament\Resources\CkpnWorkpapers\CkpnWorkpaperResource;
+use App\Filament\Resources\CkpnWorkpapers\Pages\CreateCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\Pages\EditCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ListCkpnWorkpapers;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ViewCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\RelationManagers\ItemsRelationManager;
+use App\Jobs\GenerateCkpnWorkpaperJob;
 use App\Models\BranchOffice;
 use App\Models\CkpnJournal;
 use App\Models\CkpnWorkpaper;
+use App\Models\CkpnWorkpaperItem;
 use App\Models\User;
 use Database\Seeders\BranchOfficeSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -29,6 +33,29 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
 
         $this->assertArrayHasKey('view', $pages);
         $this->assertContains(ItemsRelationManager::class, CkpnWorkpaperResource::getRelations());
+    }
+
+    public function test_create_page_dispatches_generation_and_redirects_to_view(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $maker = $this->userWithRole('business_maker', '000');
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+
+        $component = Livewire::actingAs($maker)
+            ->test(CreateCkpnWorkpaper::class)
+            ->fillForm([
+                'period' => '2026-04-30',
+                'branch_office_id' => $branch->id,
+            ])
+            ->call('create');
+
+        $workpaper = CkpnWorkpaper::query()->sole();
+
+        $this->assertSame('2026-04-01', $workpaper->period->toDateString());
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
+        Queue::assertPushed(GenerateCkpnWorkpaperJob::class, fn (GenerateCkpnWorkpaperJob $job): bool => $job->ckpnWorkpaperId === $workpaper->id);
+        $component->assertRedirect(CkpnWorkpaperResource::getUrl('view', ['record' => $workpaper]));
     }
 
     public function test_list_page_uses_view_as_primary_action_and_hides_edit_when_not_editable(): void
@@ -56,17 +83,29 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
         $maker = $this->userWithRole('business_maker', '000');
         $draft = $this->workpaper(CkpnWorkpaper::STATUS_DRAFT);
         $generated = $this->workpaper(CkpnWorkpaper::STATUS_GENERATED);
+        $failed = $this->workpaper(CkpnWorkpaper::STATUS_GENERATION_FAILED);
+        $queued = $this->workpaper(CkpnWorkpaper::STATUS_GENERATION_QUEUED);
 
         Livewire::actingAs($maker)
             ->test(ViewCkpnWorkpaper::class, ['record' => $draft->id])
             ->assertSee('Workpaper')
-            ->assertActionVisible('generate')
+            ->assertActionHidden('retryGeneration')
             ->assertActionVisible('recalculate')
             ->assertActionHidden('submit');
 
         Livewire::actingAs($maker)
             ->test(ViewCkpnWorkpaper::class, ['record' => $generated->id])
             ->assertActionVisible('submit');
+
+        Livewire::actingAs($maker)
+            ->test(ViewCkpnWorkpaper::class, ['record' => $failed->id])
+            ->assertActionVisible('retryGeneration')
+            ->assertActionHidden('recalculate');
+
+        Livewire::actingAs($maker)
+            ->test(ViewCkpnWorkpaper::class, ['record' => $queued->id])
+            ->assertActionHidden('recalculate')
+            ->assertActionHidden('submit');
     }
 
     public function test_view_page_exposes_approval_actions_for_pending_workpaper(): void
@@ -124,6 +163,7 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
         Livewire::actingAs($maker)
             ->test(EditCkpnWorkpaper::class, ['record' => $workpaper->id])
             ->assertActionDoesNotExist('generate')
+            ->assertActionDoesNotExist('retryGeneration')
             ->assertActionDoesNotExist('recalculate')
             ->assertActionDoesNotExist('submit')
             ->assertActionDoesNotExist('approve')
@@ -168,14 +208,40 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
 
     private function workpaper(string $status): CkpnWorkpaper
     {
-        return CkpnWorkpaper::create([
-            'period' => '2026-06-30',
+        $month = CkpnWorkpaper::query()->count() + 1;
+        $workpaper = CkpnWorkpaper::create([
+            'period' => sprintf('2026-%02d-15', $month),
             'status' => $status,
             'total_receivable_amount' => '1000.00',
             'total_calculated_ckpn_amount' => '100.00',
             'total_adjustment_delta' => '0.00',
             'total_effective_ckpn_amount' => '100.00',
             'total_ckpn_amount' => '100.00',
+        ]);
+
+        if ($status === CkpnWorkpaper::STATUS_GENERATED) {
+            $this->workpaperItem($workpaper);
+        }
+
+        return $workpaper;
+    }
+
+    private function workpaperItem(CkpnWorkpaper $workpaper): CkpnWorkpaperItem
+    {
+        return CkpnWorkpaperItem::query()->create([
+            'ckpn_workpaper_id' => $workpaper->id,
+            'receivable_type' => User::class,
+            'receivable_id' => 1,
+            'receivable_amount' => '1000.00',
+            'age_days' => 30,
+            'insurance_company_weight' => '0.0000',
+            'age_weight' => '0.0000',
+            'claim_status_weight' => '0.0000',
+            'calculated_ckpn_rate' => '10.0000',
+            'calculated_ckpn_amount' => '100.00',
+            'effective_ckpn_rate' => '10.0000',
+            'effective_ckpn_amount' => '100.00',
+            'calculation_rule_code' => 'test',
         ]);
     }
 

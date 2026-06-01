@@ -22,20 +22,32 @@ class GenerateMonthlyCkpnWorkpaperAction
 
     public function handle(CkpnWorkpaper $workpaper): CkpnWorkpaper
     {
-        if (! in_array($workpaper->status ?? CkpnWorkpaper::STATUS_DRAFT, [
-            CkpnWorkpaper::STATUS_DRAFT,
-            CkpnWorkpaper::STATUS_GENERATED,
-        ], true)) {
-            throw ValidationException::withMessages([
-                'status' => 'Only draft or generated CKPN workpapers can be generated.',
-            ]);
-        }
-
         return DB::transaction(function () use ($workpaper): CkpnWorkpaper {
+            $workpaper = CkpnWorkpaper::query()
+                ->whereKey($workpaper->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (! $workpaper->safeForGeneration()) {
+                throw ValidationException::withMessages([
+                    'status' => 'Only safe CKPN workpaper generation states can be generated.',
+                ]);
+            }
+
+            if ($workpaper->items()->whereHas('adjustments')->exists()
+                || $workpaper->journals()->exists()
+                || $workpaper->generatedExports()->exists()
+                || $workpaper->glToGlTransactions()->exists()) {
+                throw ValidationException::withMessages([
+                    'status' => 'CKPN workpaper cannot be regenerated after adjustments or outputs exist.',
+                ]);
+            }
+
             $workpaper->items()->delete();
 
             $totalReceivable = BigDecimal::of('0');
             $totalCalculatedCkpn = BigDecimal::of('0');
+            $periodEnd = $workpaper->periodEnd();
 
             $candidates = $this->collectCurrentReceivableCandidatesAction->handle($workpaper)
                 ->concat($this->collectLegacyReceivableCandidatesAction->handle($workpaper))
@@ -45,7 +57,7 @@ class GenerateMonthlyCkpnWorkpaperAction
             foreach ($candidates as $candidate) {
                 $result = $this->calculationService->calculate(new CkpnCalculationInput(
                     candidate: $candidate,
-                    asOfDate: $workpaper->period,
+                    asOfDate: $periodEnd,
                 ));
 
                 $workpaper->items()->create([
@@ -92,6 +104,8 @@ class GenerateMonthlyCkpnWorkpaperAction
                 'total_adjustment_delta' => '0.00',
                 'total_effective_ckpn_amount' => $totalCalculatedCkpn,
                 'total_ckpn_amount' => $totalCalculatedCkpn,
+                'last_error_message' => null,
+                'generated_at' => now(),
             ])->save();
 
             return $workpaper->refresh();

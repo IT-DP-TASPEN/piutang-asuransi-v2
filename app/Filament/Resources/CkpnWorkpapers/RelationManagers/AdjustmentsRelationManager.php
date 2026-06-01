@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\CkpnWorkpapers\RelationManagers;
 
 use App\Actions\CkpnAdjustment\ApproveCkpnAdjustmentAction;
+use App\Actions\CkpnAdjustment\CancelCkpnAdjustmentAction;
 use App\Actions\CkpnAdjustment\RejectCkpnAdjustmentAction;
 use App\Actions\CkpnAdjustment\ReturnCkpnAdjustmentAction;
 use App\Models\CkpnAdjustment;
@@ -50,6 +51,7 @@ class AdjustmentsRelationManager extends RelationManager
                 $this->approveAction(),
                 $this->rejectAction(),
                 $this->returnAction(),
+                $this->cancelAction(),
             ]);
     }
 
@@ -113,6 +115,27 @@ class AdjustmentsRelationManager extends RelationManager
                 }
 
                 Notification::make()->success()->title('CKPN adjustment returned')->send();
+            });
+    }
+
+    private function cancelAction(): Action
+    {
+        return Action::make('cancel')
+            ->color('danger')
+            ->requiresConfirmation()
+            ->visible(fn (CkpnAdjustment $record): bool => (auth()->user()?->can('cancel', $record) ?? false)
+                && in_array($record->status, [
+                    CkpnAdjustment::STATUS_DRAFT,
+                    CkpnAdjustment::STATUS_RETURNED,
+                ], true))
+            ->action(function (CkpnAdjustment $record): void {
+                $user = auth()->user();
+
+                if ($user instanceof User) {
+                    app(CancelCkpnAdjustmentAction::class)->handle($record, $user);
+                }
+
+                Notification::make()->success()->title('CKPN adjustment cancelled')->send();
             });
     }
 }

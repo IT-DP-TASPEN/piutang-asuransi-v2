@@ -15,10 +15,12 @@ class CollectCurrentReceivableCandidatesAction
      */
     public function handle(CkpnWorkpaper $workpaper): Collection
     {
+        $periodEnd = $workpaper->periodEnd()->toDateString();
+
         return InsuranceReceivable::query()
             ->with(['branchOffice', 'insuranceCompany', 'claimStatus'])
             ->whereNotNull('receivable_formation_date')
-            ->whereDate('receivable_formation_date', '<=', $workpaper->period)
+            ->whereDate('receivable_formation_date', '<=', $periodEnd)
             ->where('receivable_amount', '>', 0)
             ->whereNotIn('workflow_status', [
                 InsuranceReceivable::WORKFLOW_STATUS_REJECTED,

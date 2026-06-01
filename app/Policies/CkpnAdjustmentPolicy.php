@@ -90,6 +90,11 @@ class CkpnAdjustmentPolicy
         return $this->can($user, 'Return') && $this->canAccessRecord($user, $ckpnAdjustment);
     }
 
+    public function cancel(User $user, CkpnAdjustment $ckpnAdjustment): bool
+    {
+        return $this->can($user, 'Cancel') && $this->canAccessRecord($user, $ckpnAdjustment);
+    }
+
     private function can(User $user, string $action): bool
     {
         return $user->can("{$action}:".self::SUBJECT);

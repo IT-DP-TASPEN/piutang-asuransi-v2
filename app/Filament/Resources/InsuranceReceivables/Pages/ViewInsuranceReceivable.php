@@ -9,6 +9,7 @@ use App\Actions\ClaimStatusChangeRequest\ReturnClaimStatusChangeRequestAction;
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
 use App\Actions\InsuranceReceivable\RejectInsuranceReceivableApprovalAction;
+use App\Actions\InsuranceReceivable\ResolveFailedInsuranceReceivableAction;
 use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitInsuranceReceivableForApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
@@ -55,6 +56,7 @@ class ViewInsuranceReceivable extends ViewRecord
                 ->visible(fn (): bool => $this->hasVisibleApprovalActions()),
             ActionGroup::make([
                 $this->retryInquiryAction(),
+                $this->resolveFailedReceivableAction(),
                 $this->retryEarlyTerminationAction(),
                 $this->confirmCollectabilityChangeAction(),
                 Action::make('viewApiLogs')
@@ -255,6 +257,32 @@ class ViewInsuranceReceivable extends ViewRecord
             });
     }
 
+    private function resolveFailedReceivableAction(): Action
+    {
+        return Action::make('resolveFailedReceivable')
+            ->label('Resolve Failed Receivable')
+            ->color('warning')
+            ->requiresConfirmation()
+            ->visible(fn (): bool => (auth()->user()?->can('resolveFailed', $this->getRecord()) ?? false)
+                && in_array($this->getRecord()->system_status, [
+                    InsuranceReceivable::SYSTEM_STATUS_INQUIRY_FAILED,
+                    InsuranceReceivable::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED,
+                ], true))
+            ->form([
+                Textarea::make('notes')->required()->maxLength(65535),
+            ])
+            ->action(function (array $data): void {
+                $user = auth()->user();
+
+                if ($user instanceof User) {
+                    app(ResolveFailedInsuranceReceivableAction::class)->handle($this->getRecord(), $user, $data['notes']);
+                    $this->record = $this->getRecord()->refresh();
+                }
+
+                Notification::make()->success()->title('Failed receivable resolved')->send();
+            });
+    }
+
     private function confirmCollectabilityChangeAction(): Action
     {
         return Action::make('confirmCollectabilityChange')
@@ -416,7 +444,14 @@ class ViewInsuranceReceivable extends ViewRecord
         $canRetryEarlyTermination = ($user?->can('executeEarlyTermination', $record) ?? false)
             && $record->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED;
 
+        $canResolveFailed = ($user?->can('resolveFailed', $record) ?? false)
+            && in_array($record->system_status, [
+                InsuranceReceivable::SYSTEM_STATUS_INQUIRY_FAILED,
+                InsuranceReceivable::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED,
+            ], true);
+
         return $canRetryInquiry
+            || $canResolveFailed
             || $canRetryEarlyTermination
             || ($user?->can('confirmCollectabilityChange', $record) ?? false)
             && $record->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING

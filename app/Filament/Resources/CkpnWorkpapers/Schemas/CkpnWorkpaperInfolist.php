@@ -4,6 +4,7 @@ namespace App\Filament\Resources\CkpnWorkpapers\Schemas;
 
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
+use App\Models\CkpnAdjustment;
 use App\Models\CkpnJournal;
 use App\Models\CkpnWorkpaper;
 use App\Models\GeneratedExport;
@@ -24,6 +25,15 @@ class CkpnWorkpaperInfolist
                             ->label('Branch')
                             ->placeholder('All branches'),
                         TextEntry::make('status')->badge(),
+                        TextEntry::make('generation_status')
+                            ->label('Generation status')
+                            ->state(fn (CkpnWorkpaper $record): string => self::generationStatus($record))
+                            ->badge(),
+                        TextEntry::make('generation_message')
+                            ->label('Generation message')
+                            ->state(fn (CkpnWorkpaper $record): ?string => self::generationMessage($record))
+                            ->visible(fn (CkpnWorkpaper $record): bool => self::generationMessage($record) !== null)
+                            ->columnSpanFull(),
                         TextEntry::make('total_receivable_amount')
                             ->label('Total receivable')
                             ->numeric(2),
@@ -42,8 +52,17 @@ class CkpnWorkpaperInfolist
                         TextEntry::make('creator.name')->label('Created by'),
                         TextEntry::make('approver.name')->label('Approved by'),
                         TextEntry::make('approved_at')->dateTime(),
+                        TextEntry::make('generated_at')->dateTime(),
                     ])
                     ->columns(4),
+                Section::make('Pending CKPN adjustments')
+                    ->visible(fn (CkpnWorkpaper $record): bool => self::pendingAdjustmentCount($record) > 0)
+                    ->schema([
+                        TextEntry::make('pending_adjustment_summary')
+                            ->label('Blocking adjustments')
+                            ->state(fn (CkpnWorkpaper $record): string => self::pendingAdjustmentSummary($record))
+                            ->columnSpanFull(),
+                    ]),
                 Section::make('Pending approval')
                     ->visible(fn (CkpnWorkpaper $record): bool => $record->approvalRequests()
                         ->where('status', ApprovalRequest::STATUS_SUBMITTED)
@@ -66,6 +85,59 @@ class CkpnWorkpaperInfolist
                             ->columnSpanFull(),
                     ]),
             ]);
+    }
+
+    private static function generationStatus(CkpnWorkpaper $record): string
+    {
+        return match ($record->status) {
+            CkpnWorkpaper::STATUS_GENERATION_QUEUED => 'generation_queued',
+            CkpnWorkpaper::STATUS_GENERATION_PROCESSING => 'generation_processing',
+            CkpnWorkpaper::STATUS_GENERATION_FAILED => 'generation_failed',
+            CkpnWorkpaper::STATUS_GENERATED => 'generated',
+            default => $record->status,
+        };
+    }
+
+    private static function generationMessage(CkpnWorkpaper $record): ?string
+    {
+        return match ($record->status) {
+            CkpnWorkpaper::STATUS_GENERATION_QUEUED,
+            CkpnWorkpaper::STATUS_GENERATION_PROCESSING => 'CKPN generation is being processed in the background.',
+            CkpnWorkpaper::STATUS_GENERATION_FAILED => $record->last_error_message ?: 'CKPN generation failed.',
+            default => null,
+        };
+    }
+
+    private static function pendingAdjustmentCount(CkpnWorkpaper $record): int
+    {
+        return $record->adjustments()
+            ->whereIn('status', [
+                CkpnAdjustment::STATUS_DRAFT,
+                CkpnAdjustment::STATUS_SUBMITTED,
+                CkpnAdjustment::STATUS_RETURNED,
+            ])
+            ->count();
+    }
+
+    private static function pendingAdjustmentSummary(CkpnWorkpaper $record): string
+    {
+        $adjustments = $record->adjustments()
+            ->whereIn('status', [
+                CkpnAdjustment::STATUS_DRAFT,
+                CkpnAdjustment::STATUS_SUBMITTED,
+                CkpnAdjustment::STATUS_RETURNED,
+            ])
+            ->orderBy('id')
+            ->get(['id', 'status']);
+
+        $summary = $adjustments
+            ->take(10)
+            ->map(fn (CkpnAdjustment $adjustment): string => "#{$adjustment->id} ({$adjustment->status})")
+            ->join(', ');
+
+        $suffix = $adjustments->count() > 10 ? ', ...' : '';
+
+        return "{$adjustments->count()} pending adjustment(s): {$summary}{$suffix}";
     }
 
     private static function approvalSummary(CkpnWorkpaper $record): ?string

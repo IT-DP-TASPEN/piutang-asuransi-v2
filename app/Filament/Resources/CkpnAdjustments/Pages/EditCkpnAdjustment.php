@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\CkpnAdjustments\Pages;
 
 use App\Actions\CkpnAdjustment\ApproveCkpnAdjustmentAction;
+use App\Actions\CkpnAdjustment\CancelCkpnAdjustmentAction;
 use App\Actions\CkpnAdjustment\RejectCkpnAdjustmentAction;
 use App\Actions\CkpnAdjustment\ReturnCkpnAdjustmentAction;
 use App\Actions\CkpnAdjustment\SubmitCkpnAdjustmentAction;
@@ -102,6 +103,26 @@ class EditCkpnAdjustment extends EditRecord
                     $this->refreshFormData(['status']);
 
                     Notification::make()->success()->title('CKPN adjustment returned')->send();
+                }),
+            Action::make('cancel')
+                ->color('danger')
+                ->requiresConfirmation()
+                ->visible(fn (): bool => (auth()->user()?->can('cancel', $this->getRecord()) ?? false)
+                    && in_array($this->getRecord()->status, [
+                        CkpnAdjustment::STATUS_DRAFT,
+                        CkpnAdjustment::STATUS_RETURNED,
+                    ], true))
+                ->action(function (): void {
+                    $user = auth()->user();
+
+                    if (! $user instanceof User) {
+                        return;
+                    }
+
+                    app(CancelCkpnAdjustmentAction::class)->handle($this->getRecord(), $user);
+                    $this->refreshFormData(['status']);
+
+                    Notification::make()->success()->title('CKPN adjustment cancelled')->send();
                 }),
         ];
     }

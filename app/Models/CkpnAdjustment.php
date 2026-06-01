@@ -40,6 +40,8 @@ class CkpnAdjustment extends Model
 
     public const STATUS_RETURNED = 'returned';
 
+    public const STATUS_CANCELLED = 'cancelled';
+
     /**
      * @return array<string, string>
      */
@@ -51,6 +53,7 @@ class CkpnAdjustment extends Model
             self::STATUS_APPROVED => 'Approved',
             self::STATUS_REJECTED => 'Rejected',
             self::STATUS_RETURNED => 'Returned',
+            self::STATUS_CANCELLED => 'Cancelled',
         ];
     }
 

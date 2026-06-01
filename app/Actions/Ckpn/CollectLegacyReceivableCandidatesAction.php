@@ -17,7 +17,7 @@ class CollectLegacyReceivableCandidatesAction
      */
     public function handle(CkpnWorkpaper $workpaper): Collection
     {
-        $periodEnd = $workpaper->period->toDateString();
+        $periodEnd = $workpaper->periodEnd()->toDateString();
 
         return LegacyReceivable::query()
             ->with(['branchOffice', 'insuranceCompany', 'claimStatus'])

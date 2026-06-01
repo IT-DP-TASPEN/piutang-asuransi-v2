@@ -31,7 +31,7 @@ class ExecuteGlToGlTransferAction
             ]);
         }
 
-        $transaction = DB::transaction(fn (): GlToGlTransaction => $this->findOrCreateTransaction($journal, $user));
+        $transaction = DB::transaction(fn(): GlToGlTransaction => $this->findOrCreateTransaction($journal, $user));
         $payload = $transaction->request_payload ?: $this->payloadBuilder->build(
             journal: $journal,
             referenceNumber: $transaction->reference_number,
@@ -69,7 +69,7 @@ class ExecuteGlToGlTransferAction
     private function findOrCreateTransaction(CkpnJournal $journal, ?User $user): GlToGlTransaction
     {
         $existing = $journal->glToGlTransactions()
-            ->where(fn ($query) => $query
+            ->where(fn($query) => $query
                 ->whereNull('status')
                 ->orWhere('status', '!=', GlToGlTransaction::STATUS_SUCCESS))
             ->latest('id')
@@ -80,7 +80,7 @@ class ExecuteGlToGlTransferAction
         }
 
         for ($seconds = 0; $seconds < 10; $seconds++) {
-            $timestamp = now()->copy()->addSeconds($seconds)->format('YmdHis');
+            $timestamp = now()->copy()->addSeconds($seconds)->format('YmHi');
             $referenceNumber = "{$timestamp}";
             $receiptNumber = "{$timestamp}";
 

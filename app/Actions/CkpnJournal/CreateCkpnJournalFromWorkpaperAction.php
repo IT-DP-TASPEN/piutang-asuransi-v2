@@ -2,6 +2,7 @@
 
 namespace App\Actions\CkpnJournal;
 
+use App\Actions\Ckpn\ValidateCkpnJournalCreationAction;
 use App\Models\CkpnJournal;
 use App\Models\CkpnWorkpaper;
 use App\Models\User;
@@ -10,6 +11,10 @@ use Illuminate\Validation\ValidationException;
 
 class CreateCkpnJournalFromWorkpaperAction
 {
+    public function __construct(
+        private readonly ValidateCkpnJournalCreationAction $validateCkpnJournalCreationAction,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $data
      */
@@ -21,11 +26,15 @@ class CreateCkpnJournalFromWorkpaperAction
             ]);
         }
 
+        $this->validateCkpnJournalCreationAction->handle($workpaper);
+
         return DB::transaction(function () use ($workpaper, $user, $data): CkpnJournal {
-            $workpaper->newQuery()
+            $workpaper = $workpaper->newQuery()
                 ->where('id', $workpaper->id)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            $this->validateCkpnJournalCreationAction->handle($workpaper);
 
             if ($workpaper->journals()->exists()) {
                 throw ValidationException::withMessages([

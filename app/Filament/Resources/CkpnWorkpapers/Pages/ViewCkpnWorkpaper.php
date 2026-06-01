@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources\CkpnWorkpapers\Pages;
 
-use App\Actions\Ckpn\GenerateMonthlyCkpnWorkpaperAction;
 use App\Actions\Ckpn\RecalculateCkpnWorkpaperAction;
+use App\Actions\Ckpn\ValidateCkpnJournalCreationAction;
 use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
 use App\Actions\CkpnWorkpaper\ApproveCkpnWorkpaperAction;
 use App\Actions\CkpnWorkpaper\RejectCkpnWorkpaperAction;
@@ -15,6 +15,7 @@ use App\Filament\Resources\CkpnWorkpapers\CkpnWorkpaperResource;
 use App\Filament\Resources\GeneratedExports\GeneratedExportResource;
 use App\Filament\Resources\GlToGlTransactions\GlToGlTransactionResource;
 use App\Jobs\ExecuteGlToGlJob;
+use App\Jobs\GenerateCkpnWorkpaperJob;
 use App\Models\CkpnJournal;
 use App\Models\CkpnWorkpaper;
 use App\Models\GeneratedExport;
@@ -40,7 +41,7 @@ class ViewCkpnWorkpaper extends ViewRecord
                 ->visible(fn (): bool => $this->isEditable()
                     && (auth()->user()?->can('update', $this->workpaper()) ?? false)),
             ActionGroup::make([
-                $this->generateAction(),
+                $this->retryGenerationAction(),
                 $this->recalculateAction(),
                 $this->submitAction(),
             ])
@@ -82,17 +83,24 @@ class ViewCkpnWorkpaper extends ViewRecord
         ];
     }
 
-    private function generateAction(): Action
+    private function retryGenerationAction(): Action
     {
-        return Action::make('generate')
-            ->label('Generate Items')
+        return Action::make('retryGeneration')
+            ->label('Retry Generation')
+            ->color('danger')
             ->requiresConfirmation()
-            ->visible(fn (): bool => $this->canGenerate())
+            ->visible(fn (): bool => $this->canRetryGeneration())
             ->action(function (): void {
-                app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($this->workpaper());
+                $workpaper = $this->workpaper();
+                $workpaper->forceFill([
+                    'status' => CkpnWorkpaper::STATUS_GENERATION_QUEUED,
+                    'last_error_message' => null,
+                ])->save();
+
+                GenerateCkpnWorkpaperJob::dispatch($workpaper->id)->afterCommit();
                 $this->refreshWorkpaperData();
 
-                Notification::make()->success()->title('CKPN workpaper generated')->send();
+                Notification::make()->success()->title('CKPN generation retry queued')->send();
             });
     }
 
@@ -308,7 +316,7 @@ class ViewCkpnWorkpaper extends ViewRecord
 
     private function hasVisibleWorkpaperActions(): bool
     {
-        return $this->canGenerate() || $this->canRecalculate() || $this->canSubmit();
+        return $this->canRetryGeneration() || $this->canRecalculate() || $this->canSubmit();
     }
 
     private function hasVisibleApprovalActions(): bool
@@ -329,13 +337,10 @@ class ViewCkpnWorkpaper extends ViewRecord
             || (auth()->user()?->can('ViewAny:ApiIntegrationLog') ?? false);
     }
 
-    private function canGenerate(): bool
+    private function canRetryGeneration(): bool
     {
         return (auth()->user()?->can('generate', $this->workpaper()) ?? false)
-            && in_array($this->workpaper()->status, [
-                CkpnWorkpaper::STATUS_DRAFT,
-                CkpnWorkpaper::STATUS_GENERATED,
-            ], true);
+            && $this->workpaper()->status === CkpnWorkpaper::STATUS_GENERATION_FAILED;
     }
 
     private function canRecalculate(): bool
@@ -344,6 +349,7 @@ class ViewCkpnWorkpaper extends ViewRecord
             && in_array($this->workpaper()->status, [
                 CkpnWorkpaper::STATUS_DRAFT,
                 CkpnWorkpaper::STATUS_GENERATED,
+                CkpnWorkpaper::STATUS_RETURNED,
             ], true);
     }
 
@@ -352,8 +358,8 @@ class ViewCkpnWorkpaper extends ViewRecord
         return (auth()->user()?->can('submit', $this->workpaper()) ?? false)
             && in_array($this->workpaper()->status, [
                 CkpnWorkpaper::STATUS_GENERATED,
-                CkpnWorkpaper::STATUS_RETURNED,
-            ], true);
+            ], true)
+            && $this->workpaper()->items()->exists();
     }
 
     private function canApprove(): bool
@@ -378,7 +384,8 @@ class ViewCkpnWorkpaper extends ViewRecord
     {
         return (auth()->user()?->can('createJournal', $this->workpaper()) ?? false)
             && $this->workpaper()->status === CkpnWorkpaper::STATUS_APPROVED
-            && ! $this->workpaper()->journals()->exists();
+            && ! $this->workpaper()->journals()->exists()
+            && app(ValidateCkpnJournalCreationAction::class)->pendingCount($this->workpaper()) === 0;
     }
 
     private function canGenerateExport(): bool

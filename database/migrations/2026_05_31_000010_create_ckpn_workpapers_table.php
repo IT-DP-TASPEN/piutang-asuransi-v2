@@ -15,10 +15,13 @@ return new class extends Migration
             $table->id();
             $table->date('period');
             $table->foreignId('branch_office_id')->nullable()->constrained()->nullOnDelete();
+            $table->string('branch_scope_key')->default('central');
             $table->string('status')->default('draft');
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('approved_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('approved_at')->nullable();
+            $table->text('last_error_message')->nullable();
+            $table->timestamp('generated_at')->nullable();
             $table->decimal('total_receivable_amount', 20, 2)->default(0);
             $table->decimal('total_calculated_ckpn_amount', 20, 2)->default(0);
             $table->decimal('total_adjustment_delta', 20, 2)->default(0);
@@ -27,6 +30,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['period', 'branch_office_id']);
+            $table->unique(['period', 'branch_scope_key']);
             $table->index('status');
         });
     }

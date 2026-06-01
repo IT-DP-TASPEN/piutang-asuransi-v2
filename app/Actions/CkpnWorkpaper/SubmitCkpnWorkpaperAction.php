@@ -17,16 +17,30 @@ class SubmitCkpnWorkpaperAction
 
     public function handle(CkpnWorkpaper $workpaper, User $user, ?string $notes = null): CkpnWorkpaper
     {
-        if (! in_array($workpaper->status, [
-            CkpnWorkpaper::STATUS_GENERATED,
-            CkpnWorkpaper::STATUS_RETURNED,
-        ], true)) {
+        if ($workpaper->status !== CkpnWorkpaper::STATUS_GENERATED) {
             throw ValidationException::withMessages([
-                'status' => 'Only generated or returned CKPN workpapers can be submitted.',
+                'status' => 'Only successfully generated CKPN workpapers can be submitted.',
+            ]);
+        }
+
+        if (! $workpaper->items()->exists()) {
+            throw ValidationException::withMessages([
+                'items' => 'CKPN workpaper must have generated items before submission.',
             ]);
         }
 
         return DB::transaction(function () use ($workpaper, $user, $notes): CkpnWorkpaper {
+            $workpaper = CkpnWorkpaper::query()
+                ->whereKey($workpaper->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($workpaper->status !== CkpnWorkpaper::STATUS_GENERATED || ! $workpaper->items()->exists()) {
+                throw ValidationException::withMessages([
+                    'status' => 'CKPN workpaper must be generated with items before submission.',
+                ]);
+            }
+
             $this->approvalService->submit(
                 approvable: $workpaper,
                 workflowCode: ApprovalRequest::WORKFLOW_MONTHLY_CKPN_WORKPAPER,

@@ -110,6 +110,11 @@ class InsuranceReceivablePolicy
         return $this->can($user, 'ExecuteEarlyTermination') && $this->canAccessRecord($user, $insuranceReceivable);
     }
 
+    public function resolveFailed(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'ResolveFailed') && $this->canAccessRecord($user, $insuranceReceivable);
+    }
+
     private function can(User $user, string $action): bool
     {
         return $user->can("{$action}:".self::SUBJECT);

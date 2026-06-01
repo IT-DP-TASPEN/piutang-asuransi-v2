@@ -7,14 +7,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Support\Carbon;
 
 #[Fillable([
     'period',
     'branch_office_id',
+    'branch_scope_key',
     'status',
     'created_by',
     'approved_by',
     'approved_at',
+    'last_error_message',
+    'generated_at',
     'total_receivable_amount',
     'total_calculated_ckpn_amount',
     'total_adjustment_delta',
@@ -23,9 +27,17 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 ])]
 class CkpnWorkpaper extends Model
 {
+    public const BRANCH_SCOPE_CENTRAL = 'central';
+
     public const STATUS_DRAFT = 'draft';
 
+    public const STATUS_GENERATION_QUEUED = 'generation_queued';
+
+    public const STATUS_GENERATION_PROCESSING = 'generation_processing';
+
     public const STATUS_GENERATED = 'generated';
+
+    public const STATUS_GENERATION_FAILED = 'generation_failed';
 
     public const STATUS_SUBMITTED = 'submitted';
 
@@ -37,6 +49,8 @@ class CkpnWorkpaper extends Model
 
     public const STATUS_LOCKED = 'locked';
 
+    public const STATUS_CANCELLED = 'cancelled';
+
     /**
      * @return array<string, string>
      */
@@ -44,12 +58,61 @@ class CkpnWorkpaper extends Model
     {
         return [
             self::STATUS_DRAFT => 'Draft',
+            self::STATUS_GENERATION_QUEUED => 'Generation queued',
+            self::STATUS_GENERATION_PROCESSING => 'Generation processing',
             self::STATUS_GENERATED => 'Generated',
+            self::STATUS_GENERATION_FAILED => 'Generation failed',
             self::STATUS_SUBMITTED => 'Submitted',
             self::STATUS_APPROVED => 'Approved',
             self::STATUS_REJECTED => 'Rejected',
             self::STATUS_RETURNED => 'Returned',
             self::STATUS_LOCKED => 'Locked',
+            self::STATUS_CANCELLED => 'Cancelled',
+        ];
+    }
+
+    public static function normalizePeriod(mixed $period): Carbon
+    {
+        return Carbon::parse($period)->startOfMonth()->startOfDay();
+    }
+
+    public static function branchScopeKeyFor(?int $branchOfficeId): string
+    {
+        return $branchOfficeId === null
+            ? self::BRANCH_SCOPE_CENTRAL
+            : "branch:{$branchOfficeId}";
+    }
+
+    public function periodEnd(): Carbon
+    {
+        return self::normalizePeriod($this->period)->endOfMonth()->endOfDay();
+    }
+
+    public function branchScopeKey(): string
+    {
+        return self::branchScopeKeyFor($this->branch_office_id === null ? null : (int) $this->branch_office_id);
+    }
+
+    public function safeForGeneration(): bool
+    {
+        return in_array($this->status ?? self::STATUS_DRAFT, [
+            self::STATUS_DRAFT,
+            self::STATUS_GENERATION_QUEUED,
+            self::STATUS_GENERATION_PROCESSING,
+            self::STATUS_GENERATED,
+            self::STATUS_GENERATION_FAILED,
+            self::STATUS_RETURNED,
+        ], true);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function jobGenerationStatuses(): array
+    {
+        return [
+            self::STATUS_GENERATION_QUEUED,
+            self::STATUS_GENERATION_FAILED,
         ];
     }
 
@@ -135,11 +198,23 @@ class CkpnWorkpaper extends Model
         return [
             'period' => 'date',
             'approved_at' => 'datetime',
+            'generated_at' => 'datetime',
             'total_receivable_amount' => 'decimal:2',
             'total_calculated_ckpn_amount' => 'decimal:2',
             'total_adjustment_delta' => 'decimal:2',
             'total_effective_ckpn_amount' => 'decimal:2',
             'total_ckpn_amount' => 'decimal:2',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (CkpnWorkpaper $workpaper): void {
+            if ($workpaper->period !== null) {
+                $workpaper->period = self::normalizePeriod($workpaper->period)->toDateString();
+            }
+
+            $workpaper->branch_scope_key = $workpaper->branchScopeKey();
+        });
     }
 }
