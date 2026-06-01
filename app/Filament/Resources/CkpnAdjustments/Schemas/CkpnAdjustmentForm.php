@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\CkpnAdjustments\Schemas;
 
 use App\Models\CkpnAdjustment;
+use App\Models\CkpnWorkpaper;
 use App\Models\CkpnWorkpaperItem;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -17,18 +18,24 @@ class CkpnAdjustmentForm
         return $schema
             ->components([
                 Section::make('Adjustment')
+                    ->inlineLabel()
+                    ->columnSpanFull()
                     ->schema([
                         Select::make('ckpn_workpaper_id')
                             ->label('Workpaper')
-                            ->relationship('ckpnWorkpaper', 'period')
+                            ->relationship(
+                                'ckpnWorkpaper',
+                                'period',
+                                fn($query) => $query->where('status', CkpnWorkpaper::STATUS_GENERATED)
+                            )
                             ->searchable()
                             ->preload(),
                         Select::make('ckpn_workpaper_item_id')
                             ->label('Workpaper item')
-                            ->options(fn (): array => CkpnWorkpaperItem::query()
+                            ->options(fn(): array => CkpnWorkpaperItem::query()
                                 ->orderBy('id')
                                 ->get()
-                                ->mapWithKeys(fn (CkpnWorkpaperItem $item): array => [
+                                ->mapWithKeys(fn(CkpnWorkpaperItem $item): array => [
                                     $item->id => "{$item->source_label} - {$item->branch_code} - {$item->loan_account_number} - {$item->customer_name}",
                                 ])
                                 ->all())
@@ -57,8 +64,7 @@ class CkpnAdjustmentForm
                             ->required()
                             ->columnSpanFull()
                             ->maxLength(65535),
-                    ])
-                    ->columns(2),
+                    ]),
             ]);
     }
 }

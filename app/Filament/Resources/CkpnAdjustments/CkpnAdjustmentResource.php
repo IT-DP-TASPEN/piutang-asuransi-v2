@@ -21,7 +21,7 @@ class CkpnAdjustmentResource extends Resource
 {
     protected static ?string $model = CkpnAdjustment::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedAdjustmentsVertical;
 
     protected static string|\UnitEnum|null $navigationGroup = 'CKPN';
 
@@ -47,7 +47,7 @@ class CkpnAdjustmentResource extends Resource
         }
 
         if (RoleScope::isBranchScoped($user)) {
-            return $query->whereHas('ckpnWorkpaper', fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id));
+            return $query->whereHas('ckpnWorkpaper', fn(Builder $query) => $query->where('branch_office_id', $user->branch_office_id));
         }
 
         return $query->whereRaw('1 = 0');

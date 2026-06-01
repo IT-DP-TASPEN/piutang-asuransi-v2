@@ -20,7 +20,7 @@ class GlToGlTransactionResource extends Resource
 {
     protected static ?string $model = GlToGlTransaction::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedArrowsRightLeft;
 
     protected static string|\UnitEnum|null $navigationGroup = 'Audit';
 
@@ -46,9 +46,9 @@ class GlToGlTransactionResource extends Resource
         }
 
         if (RoleScope::isBranchScoped($user)) {
-            return $query->where(fn (Builder $query) => $query
-                ->whereHas('ckpnJournal', fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id))
-                ->orWhereHas('ckpnWorkpaper', fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id)));
+            return $query->where(fn(Builder $query) => $query
+                ->whereHas('ckpnJournal', fn(Builder $query) => $query->where('branch_office_id', $user->branch_office_id))
+                ->orWhereHas('ckpnWorkpaper', fn(Builder $query) => $query->where('branch_office_id', $user->branch_office_id)));
         }
 
         return $query->whereRaw('1 = 0');

@@ -21,7 +21,7 @@ class GeneratedExportResource extends Resource
 {
     protected static ?string $model = GeneratedExport::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedDocumentArrowDown;
 
     protected static string|\UnitEnum|null $navigationGroup = 'Reports';
 
@@ -50,7 +50,7 @@ class GeneratedExportResource extends Resource
             return $query->whereHasMorph(
                 'exportable',
                 [CkpnWorkpaper::class],
-                fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id),
+                fn(Builder $query) => $query->where('branch_office_id', $user->branch_office_id),
             );
         }
 

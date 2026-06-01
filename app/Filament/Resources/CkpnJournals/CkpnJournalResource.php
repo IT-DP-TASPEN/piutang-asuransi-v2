@@ -20,7 +20,7 @@ class CkpnJournalResource extends Resource
 {
     protected static ?string $model = CkpnJournal::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedNewspaper;
 
     protected static string|\UnitEnum|null $navigationGroup = 'CKPN';
 
@@ -46,9 +46,9 @@ class CkpnJournalResource extends Resource
         }
 
         if (RoleScope::isBranchScoped($user)) {
-            return $query->where(fn (Builder $query) => $query
+            return $query->where(fn(Builder $query) => $query
                 ->where('branch_office_id', $user->branch_office_id)
-                ->orWhereHas('ckpnWorkpaper', fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id)));
+                ->orWhereHas('ckpnWorkpaper', fn(Builder $query) => $query->where('branch_office_id', $user->branch_office_id)));
         }
 
         return $query->whereRaw('1 = 0');

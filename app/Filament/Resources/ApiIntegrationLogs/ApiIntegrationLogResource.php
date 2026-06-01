@@ -18,7 +18,7 @@ class ApiIntegrationLogResource extends Resource
 {
     protected static ?string $model = ApiIntegrationLog::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedComputerDesktop;
 
     protected static string|\UnitEnum|null $navigationGroup = 'Audit';
 

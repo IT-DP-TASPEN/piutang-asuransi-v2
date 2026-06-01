@@ -16,6 +16,8 @@ class CkpnWorkpaperForm
         return $schema
             ->components([
                 Section::make('Workpaper')
+                    ->inlineLabel()
+                    ->columnSpanFull()
                     ->schema([
                         DatePicker::make('period')
                             ->required(),
@@ -36,8 +38,7 @@ class CkpnWorkpaperForm
                             ->label('Total CKPN')
                             ->disabled()
                             ->dehydrated(false),
-                    ])
-                    ->columns(2),
+                    ]),
             ]);
     }
 }
