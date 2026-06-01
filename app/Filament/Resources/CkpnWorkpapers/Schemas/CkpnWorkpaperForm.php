@@ -23,7 +23,11 @@ class CkpnWorkpaperForm
                             ->required(),
                         Select::make('branch_office_id')
                             ->label('Branch')
-                            ->relationship('branchOffice', 'branch_name')
+                            ->relationship(
+                                'branchOffice',
+                                'branch_name',
+                                fn($query) => $query->where('is_active', true)->orderBy('branch_code'),
+                            )
                             ->searchable()
                             ->preload(),
                         Select::make('status')
