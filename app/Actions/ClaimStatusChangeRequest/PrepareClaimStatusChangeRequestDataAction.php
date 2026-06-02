@@ -23,6 +23,24 @@ class PrepareClaimStatusChangeRequestDataAction
             ]);
         }
 
+        if ($receivable->isTerminal()) {
+            throw ValidationException::withMessages([
+                'insurance_receivable_id' => 'Terminal receivables cannot update claim status.',
+            ]);
+        }
+
+        if ($receivable->claimStatusChangeRequests()
+            ->whereIn('status', [
+                ClaimStatusChangeRequest::STATUS_DRAFT,
+                ClaimStatusChangeRequest::STATUS_SUBMITTED,
+                ClaimStatusChangeRequest::STATUS_RETURNED,
+            ])
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'claim_status' => 'A pending claim status update already exists for this receivable.',
+            ]);
+        }
+
         return [
             ...$data,
             'from_claim_status_id' => $receivable->claim_status_id,

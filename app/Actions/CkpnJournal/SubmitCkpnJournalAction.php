@@ -17,6 +17,12 @@ class SubmitCkpnJournalAction
 
     public function handle(CkpnJournal $journal, User $user, ?string $notes = null): CkpnJournal
     {
+        if (! $user->can('submit', $journal)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only accounting maker can submit CKPN journals.',
+            ]);
+        }
+
         if (! in_array($journal->status, [CkpnJournal::STATUS_DRAFT, CkpnJournal::STATUS_RETURNED], true)) {
             throw ValidationException::withMessages([
                 'status' => 'Only draft or returned CKPN journals can be submitted.',

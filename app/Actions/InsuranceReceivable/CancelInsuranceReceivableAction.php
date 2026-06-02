@@ -8,7 +8,7 @@ use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
-class ResolveFailedInsuranceReceivableAction
+class CancelInsuranceReceivableAction
 {
     public function __construct(
         private readonly InsuranceReceivableStageLogger $stageLogger,
@@ -18,7 +18,7 @@ class ResolveFailedInsuranceReceivableAction
     {
         if (blank($notes)) {
             throw ValidationException::withMessages([
-                'notes' => 'Manual resolution notes are required.',
+                'notes' => 'Cancellation notes are required.',
             ]);
         }
 
@@ -28,27 +28,24 @@ class ResolveFailedInsuranceReceivableAction
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if (! in_array($insuranceReceivable->system_status, [
-                InsuranceReceivable::SYSTEM_STATUS_INQUIRY_FAILED,
-                InsuranceReceivable::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED,
-            ], true)) {
+            if (! $insuranceReceivable->canCancelFailedInquiry()) {
                 throw ValidationException::withMessages([
-                    'system_status' => 'Only failed or invalid inquiry receivables can be manually resolved.',
+                    'system_status' => 'Only unresolved technical inquiry failures can be cancelled.',
                 ]);
             }
 
             $fromWorkflowStatus = $insuranceReceivable->workflow_status;
 
             $insuranceReceivable->forceFill([
-                'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_REJECTED,
+                'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_CANCELLED,
             ])->save();
 
             $this->stageLogger->log(
                 receivable: $insuranceReceivable,
-                event: 'manual_failed_inquiry_resolution',
+                event: 'technical_inquiry_failure_cancelled',
                 fromStatus: $fromWorkflowStatus,
-                toStatus: InsuranceReceivable::WORKFLOW_STATUS_REJECTED,
-                description: "Manual resolution of failed/invalid inquiry before CKPN cutoff: {$notes}",
+                toStatus: InsuranceReceivable::WORKFLOW_STATUS_CANCELLED,
+                description: "Insurance Receivable cancelled by user due to unresolved technical inquiry failure: {$notes}",
                 metadata: [
                     'system_status' => $insuranceReceivable->system_status,
                 ],

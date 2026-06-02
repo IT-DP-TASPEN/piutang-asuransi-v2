@@ -24,7 +24,7 @@ class CollectCurrentReceivableCandidatesAction
             ->where('receivable_amount', '>', 0)
             ->whereNotIn('workflow_status', [
                 InsuranceReceivable::WORKFLOW_STATUS_REJECTED,
-                'cancelled',
+                InsuranceReceivable::WORKFLOW_STATUS_CANCELLED,
             ])
             ->when($workpaper->branch_office_id !== null, fn (Builder $query) => $query->where('branch_office_id', $workpaper->branch_office_id))
             ->orderBy('id')

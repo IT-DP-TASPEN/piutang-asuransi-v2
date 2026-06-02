@@ -19,6 +19,12 @@ class RejectClaimStatusChangeRequestAction
 
     public function handle(ClaimStatusChangeRequest $claimStatusChangeRequest, User $user, ?string $notes = null): ClaimStatusChangeRequest
     {
+        if ($claimStatusChangeRequest->insuranceReceivable->isTerminal()) {
+            throw ValidationException::withMessages([
+                'insurance_receivable_id' => 'Terminal receivables cannot update claim status.',
+            ]);
+        }
+
         return DB::transaction(function () use ($claimStatusChangeRequest, $user, $notes): ClaimStatusChangeRequest {
             $approvalRequest = $this->activeApprovalRequestFor($claimStatusChangeRequest);
             $this->approvalService->rejectCurrentStep($approvalRequest, $user, $notes);

@@ -80,7 +80,7 @@ class ExecuteGlToGlTransferAction
         }
 
         for ($seconds = 0; $seconds < 10; $seconds++) {
-            $timestamp = now()->copy()->addSeconds($seconds)->format('YmHs');
+            $timestamp = now()->copy()->addSeconds($seconds)->format('mdHi');
             $referenceNumber = "{$timestamp}";
             $receiptNumber = "{$timestamp}";
 

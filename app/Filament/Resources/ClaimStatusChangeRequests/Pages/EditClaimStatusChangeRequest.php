@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ClaimStatusChangeRequests\Pages;
 
 use App\Actions\ClaimStatusChangeRequest\ApproveClaimStatusChangeRequestAction;
+use App\Actions\ClaimStatusChangeRequest\CancelClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\RejectClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\ReturnClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\SubmitClaimStatusChangeRequestAction;
@@ -109,6 +110,27 @@ class EditClaimStatusChangeRequest extends EditRecord
                     $this->refreshFormData(['status']);
 
                     Notification::make()->success()->title('Claim status request returned')->send();
+                }),
+            Action::make('cancel')
+                ->label('Cancel')
+                ->color('danger')
+                ->requiresConfirmation()
+                ->visible(fn (): bool => auth()->user()?->can('cancel', $this->getRecord()) ?? false)
+                ->form([
+                    Textarea::make('notes')
+                        ->maxLength(65535),
+                ])
+                ->action(function (array $data): void {
+                    $user = auth()->user();
+
+                    if (! $user instanceof User) {
+                        return;
+                    }
+
+                    app(CancelClaimStatusChangeRequestAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
+                    $this->refreshFormData(['status']);
+
+                    Notification::make()->success()->title('Claim status request cancelled')->send();
                 }),
             DeleteAction::make(),
         ];

@@ -13,6 +13,7 @@ return new class extends Migration
             $table->text('last_error_message')->nullable()->after('system_status');
             $table->timestamp('inquiry_completed_at')->nullable()->after('approved_at');
             $table->timestamp('early_termination_executed_at')->nullable()->after('inquiry_completed_at');
+            $table->timestamp('early_termination_resolved_at')->nullable()->after('early_termination_executed_at');
 
             $table->index('system_status');
         });
@@ -27,6 +28,7 @@ return new class extends Migration
                 'last_error_message',
                 'inquiry_completed_at',
                 'early_termination_executed_at',
+                'early_termination_resolved_at',
             ]);
         });
     }

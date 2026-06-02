@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
 use App\Actions\CkpnJournal\ExecuteGlToGlTransferAction;
 use App\Actions\GeneratedExport\GenerateCkpnWorkpaperSakepExportAction;
+use App\Filament\Resources\GlToGlTransactions\GlToGlTransactionResource;
 use App\Models\ApiIntegrationLog;
 use App\Models\BranchOffice;
 use App\Models\CkpnJournal;
@@ -50,7 +51,8 @@ class CkpnJournalExportGlToGlTest extends TestCase
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_approver', '000');
         $journal = $this->approvedJournal(totalAmount: '3077644.00');
-        $expectedRawBody = '{"referenceNumber":"20260531102030","trxType":"SAKEP CKPN","termType":"","termId":"FINCLOUD","receiptNumber":"20260531102030","debitAccount":"D-1","creditAccount":"C-1","amount":"3077644,00","fee":"0","creditFee":"0","branchCode":"001","debitNarrative":"Debit narrative","creditNarrative":"Credit narrative","customerId":"","dateTime":"20260531102030","description":"CKPN journal","debitFee":"0","destAccount":"","currency":"IDR","srcAccType":"10","totalBill":"","type":"G2"}';
+        $expectedRawBody = '{"referenceNumber":"05311020","trxType":"SAKEP CKPN","termType":"","termId":"FINCLOUD","receiptNumber":"05311020","debitAccount":"D-1","creditAccount":"C-1","amount":"3077644.00","fee":"0","creditFee":"0","branchCode":"001","debitNarrative":"Debit narrative","creditNarrative":"Credit narrative","customerId":"","dateTime":"20260531102030","description":"CKPN journal","debitFee":"0","destAccount":"","currency":"IDR","srcAccType":"10","totalBill":"","type":"G2"}';
+        $expectedLogRequestBody = json_decode($expectedRawBody, true, flags: JSON_THROW_ON_ERROR);
 
         Http::fake([
             'http://core.test/trx/transfer/gl-to-gl' => Http::sequence()
@@ -68,18 +70,18 @@ class CkpnJournalExportGlToGlTest extends TestCase
         $first = app(ExecuteGlToGlTransferAction::class)->handle($journal, $user);
 
         $this->assertSame(GlToGlTransaction::STATUS_FAILED, $first->status);
-        $this->assertSame('20260531102030', $first->reference_number);
-        $this->assertSame('20260531102030', $first->receipt_number);
-        $this->assertSame('3077644,00', $first->request_payload['amount']);
-        $this->assertStringNotContainsString('.', $first->request_payload['amount']);
+        $this->assertSame('05311020', $first->reference_number);
+        $this->assertSame('05311020', $first->receipt_number);
+        $this->assertSame('3077644.00', $first->request_payload['amount']);
+        $this->assertStringNotContainsString(',', $first->request_payload['amount']);
         $this->assertSame('3077644.00', $journal->refresh()->total_amount);
 
         $second = app(ExecuteGlToGlTransferAction::class)->handle($journal->refresh(), $user);
 
         $this->assertSame($first->id, $second->id);
         $this->assertSame(GlToGlTransaction::STATUS_SUCCESS, $second->status);
-        $this->assertSame('20260531102030', $second->reference_number);
-        $this->assertSame('20260531102030', $second->receipt_number);
+        $this->assertSame('05311020', $second->reference_number);
+        $this->assertSame('05311020', $second->receipt_number);
         $this->assertSame('00', $second->response_code);
         $this->assertSame('Accepted', $second->response_description);
         $this->assertSame('V-1', $second->response_payload['data']['unknownResponse']['voucher']);
@@ -92,43 +94,16 @@ class CkpnJournalExportGlToGlTest extends TestCase
         });
 
         $this->assertSame(2, ApiIntegrationLog::query()->count());
-        ApiIntegrationLog::query()->each(function (ApiIntegrationLog $log) use ($expectedRawBody): void {
+        ApiIntegrationLog::query()->each(function (ApiIntegrationLog $log) use ($expectedLogRequestBody): void {
             $this->assertSame('/trx/transfer/gl-to-gl', $log->endpoint);
-            $this->assertSame($expectedRawBody, $log->request_body);
+            $this->assertSame($expectedLogRequestBody, $log->request_body);
             $this->assertSame('[masked]', $log->request_headers['Signature']);
             $this->assertStringNotContainsString('secret-key', json_encode($log->request_headers));
         });
-    }
 
-    public function test_gl_payload_builder_formats_amount_with_comma_decimal_separator(): void
-    {
-        $this->seedDependencies();
-        $journal = $this->approvedJournal(totalAmount: '0');
-
-        foreach ([
-            '0' => '0,00',
-            '1234.56' => '1234,56',
-            '1000000.50' => '1000000,50',
-            '3077644.00' => '3077644,00',
-        ] as $internalAmount => $apiAmount) {
-            $journal->forceFill(['total_amount' => $internalAmount]);
-
-            $payload = app(GlToGlPayloadBuilder::class)->build(
-                journal: $journal,
-                referenceNumber: '20260531102030',
-                receiptNumber: '20260531102030',
-                dateTime: Carbon::parse('2026-05-31 10:20:30'),
-            );
-
-            $this->assertSame($apiAmount, $payload['amount']);
-            $this->assertStringContainsString(',', $payload['amount']);
-            $this->assertStringNotContainsString('.', $payload['amount']);
-            $this->assertSame('20260531102030', $payload['dateTime']);
-        }
-
-        $journal->forceFill(['total_amount' => '3077644.00'])->save();
-
-        $this->assertSame('3077644.00', $journal->refresh()->total_amount);
+        $logs = ApiIntegrationLog::query()->orderBy('id')->get();
+        $this->assertSame('temporary_failure', $logs[0]->response_body['result']);
+        $this->assertSame('00', $logs[1]->response_body['responseCode']);
     }
 
     public function test_journal_must_be_approved_before_gl_to_gl_execute(): void
@@ -147,7 +122,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
     {
         Storage::fake('public');
         $this->seedDependencies();
-        $user = $this->userWithRole('business_maker', '000');
+        $user = $this->userWithRole('accounting_maker', '000');
         $workpaper = $this->approvedWorkpaperWithItem();
 
         $export = app(GenerateCkpnWorkpaperSakepExportAction::class)->handle($workpaper, $user);
@@ -197,7 +172,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
     public function test_ckpn_journal_uses_effective_total_from_workpaper(): void
     {
         $this->seedDependencies();
-        $user = $this->userWithRole('business_maker', '000');
+        $user = $this->userWithRole('accounting_maker', '000');
         $workpaper = $this->approvedWorkpaperWithItem();
 
         $journal = app(CreateCkpnJournalFromWorkpaperAction::class)->handle($workpaper, $user, [
@@ -206,6 +181,27 @@ class CkpnJournalExportGlToGlTest extends TestCase
 
         $this->assertSame('120000.00', $journal->total_amount);
         $this->assertStringContainsString('Includes approved CKPN adjustments.', $journal->description);
+    }
+
+    public function test_ckpn_journal_creation_is_accounting_maker_only(): void
+    {
+        $this->seedDependencies();
+        $businessMaker = $this->userWithRole('business_maker', '000');
+        $accountingMaker = $this->userWithRole('accounting_maker', '000');
+        $workpaper = $this->approvedWorkpaperWithItem();
+
+        $this->assertFalse($businessMaker->can('createJournal', $workpaper));
+        $this->assertTrue($accountingMaker->can('createJournal', $workpaper));
+
+        try {
+            app(CreateCkpnJournalFromWorkpaperAction::class)->handle($workpaper, $businessMaker);
+            $this->fail('Business maker should not create CKPN journal.');
+        } catch (ValidationException) {
+        }
+
+        $journal = app(CreateCkpnJournalFromWorkpaperAction::class)->handle($workpaper->refresh(), $accountingMaker);
+
+        $this->assertSame($accountingMaker->id, $journal->created_by);
     }
 
     public function test_branch_user_cannot_view_other_branch_phase_six_records_and_auditor_cannot_execute(): void
@@ -244,12 +240,38 @@ class CkpnJournalExportGlToGlTest extends TestCase
         $this->assertFalse(Gate::forUser($branchOneUser)->allows('view', $otherJournal));
         $this->assertTrue(Gate::forUser($branchOneUser)->allows('view', $ownExport));
         $this->assertFalse(Gate::forUser($branchOneUser)->allows('view', $otherExport));
-        $this->assertTrue(Gate::forUser($branchOneUser)->allows('view', $ownGl));
+        $this->assertFalse(Gate::forUser($branchOneUser)->allows('view', $ownGl));
         $this->assertFalse(Gate::forUser($branchOneUser)->allows('view', $otherGl));
+        $this->assertTrue(Gate::forUser($auditor)->allows('view', $ownGl));
 
         $this->assertFalse(Gate::forUser($auditor)->allows('createJournal', $ownWorkpaper));
         $this->assertFalse(Gate::forUser($auditor)->allows('generateExport', $ownWorkpaper));
         $this->assertFalse(Gate::forUser($auditor)->allows('executeGlToGl', $ownJournal));
+    }
+
+    public function test_gl_to_gl_transaction_resource_is_only_for_super_admin_and_auditor(): void
+    {
+        $this->seedDependencies();
+        $superAdmin = $this->userWithRole('super_admin', '000');
+        $auditor = $this->userWithRole('auditor', '000');
+        $accountingMaker = $this->userWithRole('accounting_maker', '000');
+        $branchMaker = $this->userWithRole('branch_maker', '001');
+
+        $this->actingAs($superAdmin);
+        $this->assertTrue(GlToGlTransactionResource::shouldRegisterNavigation());
+        $this->assertTrue(Gate::forUser($superAdmin)->allows('viewAny', GlToGlTransaction::class));
+
+        $this->actingAs($auditor);
+        $this->assertTrue(GlToGlTransactionResource::shouldRegisterNavigation());
+        $this->assertTrue(Gate::forUser($auditor)->allows('viewAny', GlToGlTransaction::class));
+
+        $this->actingAs($accountingMaker);
+        $this->assertFalse(GlToGlTransactionResource::shouldRegisterNavigation());
+        $this->assertFalse(Gate::forUser($accountingMaker)->allows('viewAny', GlToGlTransaction::class));
+
+        $this->actingAs($branchMaker);
+        $this->assertFalse(GlToGlTransactionResource::shouldRegisterNavigation());
+        $this->assertFalse(Gate::forUser($branchMaker)->allows('viewAny', GlToGlTransaction::class));
     }
 
     private function seedDependencies(): void
@@ -376,7 +398,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
         foreach ($reader->getSheetIterator() as $sheet) {
             foreach ($sheet->getRowIterator() as $row) {
                 $rows[] = array_map(
-                    fn ($cell): bool|\DateInterval|\DateTimeInterface|float|int|string|null => $cell->getValue(),
+                    fn($cell): bool|\DateInterval|\DateTimeInterface|float|int|string|null => $cell->getValue(),
                     $row->getCells(),
                 );
             }

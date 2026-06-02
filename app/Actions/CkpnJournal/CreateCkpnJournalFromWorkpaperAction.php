@@ -20,6 +20,12 @@ class CreateCkpnJournalFromWorkpaperAction
      */
     public function handle(CkpnWorkpaper $workpaper, User $user, array $data = []): CkpnJournal
     {
+        if (! $user->can('createJournal', $workpaper)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only accounting maker can create CKPN journals.',
+            ]);
+        }
+
         if ($workpaper->status !== CkpnWorkpaper::STATUS_APPROVED) {
             throw ValidationException::withMessages([
                 'status' => 'CKPN journal can only be created from an approved workpaper.',

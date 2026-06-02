@@ -7,11 +7,11 @@ use App\Actions\ClaimStatusChangeRequest\CreateAndSubmitClaimStatusChangeFromRec
 use App\Actions\ClaimStatusChangeRequest\RejectClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\ReturnClaimStatusChangeRequestAction;
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
+use App\Actions\InsuranceReceivable\CancelInsuranceReceivableAction;
 use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
 use App\Actions\InsuranceReceivable\RejectInsuranceReceivableApprovalAction;
-use App\Actions\InsuranceReceivable\ResolveFailedInsuranceReceivableAction;
+use App\Actions\InsuranceReceivable\ResolveEarlyTerminationManuallyAction;
 use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
-use App\Actions\InsuranceReceivable\SubmitInsuranceReceivableForApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
 use App\Filament\Resources\ApiIntegrationLogs\ApiIntegrationLogResource;
 use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
@@ -41,9 +41,9 @@ class ViewInsuranceReceivable extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
-            EditAction::make(),
+            EditAction::make()
+                ->visible(fn (): bool => auth()->user()?->can('update', $this->getRecord()) ?? false),
             ActionGroup::make([
-                $this->submitAction(),
                 $this->submitAccountingValidationAction(),
                 $this->approveAction(),
                 $this->rejectAction(),
@@ -56,8 +56,9 @@ class ViewInsuranceReceivable extends ViewRecord
                 ->visible(fn (): bool => $this->hasVisibleApprovalActions()),
             ActionGroup::make([
                 $this->retryInquiryAction(),
-                $this->resolveFailedReceivableAction(),
+                $this->cancelReceivableAction(),
                 $this->retryEarlyTerminationAction(),
+                $this->resolveEarlyTerminationAction(),
                 $this->confirmCollectabilityChangeAction(),
                 Action::make('viewApiLogs')
                     ->label('View API Logs')
@@ -83,37 +84,16 @@ class ViewInsuranceReceivable extends ViewRecord
         ];
     }
 
-    private function submitAction(): Action
-    {
-        return Action::make('submitForApproval')
-            ->label('Submit')
-            ->requiresConfirmation()
-            ->visible(fn (): bool => (auth()->user()?->can('submitForApproval', $this->getRecord()) ?? false)
-                && in_array($this->getRecord()->workflow_status, [
-                    InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
-                    InsuranceReceivable::WORKFLOW_STATUS_RETURNED,
-                ], true)
-                && $this->getRecord()->system_status === InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED)
-            ->form([
-                Textarea::make('notes')->maxLength(65535),
-            ])
-            ->action(function (array $data): void {
-                $user = auth()->user();
-
-                if ($user instanceof User) {
-                    app(SubmitInsuranceReceivableForApprovalAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
-                }
-
-                Notification::make()->success()->title('Submitted for approval')->send();
-            });
-    }
-
     private function submitAccountingValidationAction(): Action
     {
         return Action::make('submitAccountingValidation')
             ->label('Accounting validation')
             ->visible(fn (): bool => (auth()->user()?->can('submitAccountingValidation', $this->getRecord()) ?? false)
-                && $this->getRecord()->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING)
+                && ! $this->getRecord()->isTerminal()
+                && in_array($this->getRecord()->workflow_status, [
+                    InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING,
+                    InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER,
+                ], true))
             ->form([
                 DatePicker::make('journal_date')->default(now())->required(),
                 TextInput::make('amount')->default(fn () => $this->getRecord()->loan_outstanding)->required()->numeric(),
@@ -139,6 +119,7 @@ class ViewInsuranceReceivable extends ViewRecord
             ->label('Approve')
             ->requiresConfirmation()
             ->visible(fn (): bool => (auth()->user()?->can('approveApproval', $this->getRecord()) ?? false)
+                && ! $this->getRecord()->isTerminal()
                 && in_array($this->getRecord()->workflow_status, [
                     InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
                     InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
@@ -164,6 +145,7 @@ class ViewInsuranceReceivable extends ViewRecord
             ->color('danger')
             ->requiresConfirmation()
             ->visible(fn (): bool => (auth()->user()?->can('rejectApproval', $this->getRecord()) ?? false)
+                && ! $this->getRecord()->isTerminal()
                 && in_array($this->getRecord()->workflow_status, [
                     InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
                     InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
@@ -189,6 +171,7 @@ class ViewInsuranceReceivable extends ViewRecord
             ->color('warning')
             ->requiresConfirmation()
             ->visible(fn (): bool => (auth()->user()?->can('returnApproval', $this->getRecord()) ?? false)
+                && ! $this->getRecord()->isTerminal()
                 && in_array($this->getRecord()->workflow_status, [
                     InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
                     InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
@@ -213,10 +196,7 @@ class ViewInsuranceReceivable extends ViewRecord
             ->label('Retry Inquiry')
             ->requiresConfirmation()
             ->visible(fn (): bool => (auth()->user()?->can('runInquiry', $this->getRecord()) ?? false)
-                && in_array($this->getRecord()->system_status, [
-                    InsuranceReceivable::SYSTEM_STATUS_INQUIRY_FAILED,
-                    InsuranceReceivable::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED,
-                ], true))
+                && $this->getRecord()->canRetryInquiry())
             ->action(function (): void {
                 app(InsuranceReceivableInquiryDispatcher::class)->dispatch($this->getRecord(), 'inquiry_retry_queued');
 
@@ -231,6 +211,7 @@ class ViewInsuranceReceivable extends ViewRecord
             ->color('danger')
             ->requiresConfirmation()
             ->visible(fn (): bool => (auth()->user()?->can('executeEarlyTermination', $this->getRecord()) ?? false)
+                && ! $this->getRecord()->isTerminal()
                 && $this->getRecord()->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED)
             ->action(function (): void {
                 $user = auth()->user();
@@ -257,17 +238,14 @@ class ViewInsuranceReceivable extends ViewRecord
             });
     }
 
-    private function resolveFailedReceivableAction(): Action
+    private function cancelReceivableAction(): Action
     {
-        return Action::make('resolveFailedReceivable')
-            ->label('Resolve Failed Receivable')
+        return Action::make('cancelReceivable')
+            ->label('Cancel')
             ->color('warning')
             ->requiresConfirmation()
-            ->visible(fn (): bool => (auth()->user()?->can('resolveFailed', $this->getRecord()) ?? false)
-                && in_array($this->getRecord()->system_status, [
-                    InsuranceReceivable::SYSTEM_STATUS_INQUIRY_FAILED,
-                    InsuranceReceivable::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED,
-                ], true))
+            ->visible(fn (): bool => (auth()->user()?->can('cancel', $this->getRecord()) ?? false)
+                && $this->getRecord()->canCancelFailedInquiry())
             ->form([
                 Textarea::make('notes')->required()->maxLength(65535),
             ])
@@ -275,11 +253,34 @@ class ViewInsuranceReceivable extends ViewRecord
                 $user = auth()->user();
 
                 if ($user instanceof User) {
-                    app(ResolveFailedInsuranceReceivableAction::class)->handle($this->getRecord(), $user, $data['notes']);
+                    app(CancelInsuranceReceivableAction::class)->handle($this->getRecord(), $user, $data['notes']);
                     $this->record = $this->getRecord()->refresh();
                 }
 
-                Notification::make()->success()->title('Failed receivable resolved')->send();
+                Notification::make()->success()->title('Insurance receivable cancelled')->send();
+            });
+    }
+
+    private function resolveEarlyTerminationAction(): Action
+    {
+        return Action::make('resolveEarlyTermination')
+            ->label('Resolve Early Termination')
+            ->color('warning')
+            ->requiresConfirmation()
+            ->visible(fn (): bool => (auth()->user()?->can('resolveEarlyTermination', $this->getRecord()) ?? false)
+                && $this->getRecord()->canResolveEarlyTermination())
+            ->form([
+                Textarea::make('notes')->maxLength(65535),
+            ])
+            ->action(function (array $data): void {
+                $user = auth()->user();
+
+                if ($user instanceof User) {
+                    app(ResolveEarlyTerminationManuallyAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
+                    $this->record = $this->getRecord()->refresh();
+                }
+
+                Notification::make()->success()->title('Early termination resolved')->send();
             });
     }
 
@@ -289,6 +290,7 @@ class ViewInsuranceReceivable extends ViewRecord
             ->label('Confirm Collectability Change Completed')
             ->requiresConfirmation()
             ->visible(fn (): bool => (auth()->user()?->can('confirmCollectabilityChange', $this->getRecord()) ?? false)
+                && ! $this->getRecord()->isTerminal()
                 && $this->getRecord()->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING)
             ->action(function (): void {
                 $user = auth()->user();
@@ -307,7 +309,8 @@ class ViewInsuranceReceivable extends ViewRecord
             ->label('Update Claim Status')
             ->visible(fn (): bool => (auth()->user()?->can('Create:ClaimStatusChangeRequest') ?? false)
                 && (auth()->user()?->can('Submit:ClaimStatusChangeRequest') ?? false)
-                && ! $this->pendingClaimStatusRequest() instanceof ClaimStatusChangeRequest)
+                && ! $this->getRecord()->isTerminal()
+                && ! $this->hasOpenClaimStatusRequest())
             ->form([
                 TextInput::make('current_claim_status')
                     ->default(fn () => $this->getRecord()->claimStatus?->name)
@@ -413,21 +416,18 @@ class ViewInsuranceReceivable extends ViewRecord
             InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
         ], true);
 
-        $canSubmit = ($user?->can('submitForApproval', $record) ?? false)
-            && in_array($record->workflow_status, [
-                InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
-                InsuranceReceivable::WORKFLOW_STATUS_RETURNED,
-            ], true)
-            && $record->system_status === InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED;
-
         $canSubmitAccounting = ($user?->can('submitAccountingValidation', $record) ?? false)
-            && $record->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING;
+            && ! $record->isTerminal()
+            && in_array($record->workflow_status, [
+                InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING,
+                InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER,
+            ], true);
 
-        $canApprove = ($user?->can('approveApproval', $record) ?? false) && $approvalPending;
-        $canReject = ($user?->can('rejectApproval', $record) ?? false) && $approvalPending;
-        $canReturn = ($user?->can('returnApproval', $record) ?? false) && $approvalPending;
+        $canApprove = ($user?->can('approveApproval', $record) ?? false) && ! $record->isTerminal() && $approvalPending;
+        $canReject = ($user?->can('rejectApproval', $record) ?? false) && ! $record->isTerminal() && $approvalPending;
+        $canReturn = ($user?->can('returnApproval', $record) ?? false) && ! $record->isTerminal() && $approvalPending;
 
-        return $canSubmit || $canSubmitAccounting || $canApprove || $canReject || $canReturn;
+        return $canSubmitAccounting || $canApprove || $canReject || $canReturn;
     }
 
     private function hasVisibleSystemActions(): bool
@@ -436,25 +436,25 @@ class ViewInsuranceReceivable extends ViewRecord
         $record = $this->getRecord();
 
         $canRetryInquiry = ($user?->can('runInquiry', $record) ?? false)
-            && in_array($record->system_status, [
-                InsuranceReceivable::SYSTEM_STATUS_INQUIRY_FAILED,
-                InsuranceReceivable::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED,
-            ], true);
+            && $record->canRetryInquiry();
 
         $canRetryEarlyTermination = ($user?->can('executeEarlyTermination', $record) ?? false)
+            && ! $record->isTerminal()
             && $record->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED;
 
-        $canResolveFailed = ($user?->can('resolveFailed', $record) ?? false)
-            && in_array($record->system_status, [
-                InsuranceReceivable::SYSTEM_STATUS_INQUIRY_FAILED,
-                InsuranceReceivable::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED,
-            ], true);
+        $canCancel = ($user?->can('cancel', $record) ?? false)
+            && $record->canCancelFailedInquiry();
+
+        $canResolveEarlyTermination = ($user?->can('resolveEarlyTermination', $record) ?? false)
+            && $record->canResolveEarlyTermination();
 
         return $canRetryInquiry
-            || $canResolveFailed
+            || $canCancel
             || $canRetryEarlyTermination
-            || ($user?->can('confirmCollectabilityChange', $record) ?? false)
-            && $record->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING
+            || $canResolveEarlyTermination
+            || (($user?->can('confirmCollectabilityChange', $record) ?? false)
+            && ! $record->isTerminal()
+            && $record->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING)
             || ($user?->can('ViewAny:ApiIntegrationLog') ?? false);
     }
 
@@ -464,7 +464,8 @@ class ViewInsuranceReceivable extends ViewRecord
 
         $canCreateRequest = ($user?->can('Create:ClaimStatusChangeRequest') ?? false)
             && ($user?->can('Submit:ClaimStatusChangeRequest') ?? false)
-            && ! $this->pendingClaimStatusRequest() instanceof ClaimStatusChangeRequest;
+            && ! $this->getRecord()->isTerminal()
+            && ! $this->hasOpenClaimStatusRequest();
 
         return $canCreateRequest
             || $this->canActOnPendingClaimStatus('approve')
@@ -481,6 +482,18 @@ class ViewInsuranceReceivable extends ViewRecord
             ->first();
     }
 
+    private function hasOpenClaimStatusRequest(): bool
+    {
+        return $this->getRecord()
+            ->claimStatusChangeRequests()
+            ->whereIn('status', [
+                ClaimStatusChangeRequest::STATUS_DRAFT,
+                ClaimStatusChangeRequest::STATUS_SUBMITTED,
+                ClaimStatusChangeRequest::STATUS_RETURNED,
+            ])
+            ->exists();
+    }
+
     private function canActOnPendingClaimStatus(string $ability): bool
     {
         $user = auth()->user();
@@ -488,6 +501,7 @@ class ViewInsuranceReceivable extends ViewRecord
 
         return $user instanceof User
             && $request instanceof ClaimStatusChangeRequest
+            && ! $this->getRecord()->isTerminal()
             && $user->can($ability, $request);
     }
 }

@@ -18,8 +18,6 @@ class InsuranceReceivableObserver
             description: 'Insurance receivable draft created.',
             actor: $insuranceReceivable->creator,
         );
-
-        app(InsuranceReceivableInquiryDispatcher::class)->dispatch($insuranceReceivable);
     }
 
     public function updated(InsuranceReceivable $insuranceReceivable): void
@@ -31,6 +29,7 @@ class InsuranceReceivableObserver
         if (! in_array($insuranceReceivable->workflow_status, [
             InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
             InsuranceReceivable::WORKFLOW_STATUS_RETURNED,
+            InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
         ], true)) {
             return;
         }
@@ -38,12 +37,17 @@ class InsuranceReceivableObserver
         if (! in_array($insuranceReceivable->system_status, [
             null,
             InsuranceReceivable::SYSTEM_STATUS_INQUIRY_FAILED,
-            InsuranceReceivable::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED,
             InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
         ], true)) {
             return;
         }
 
-        app(InsuranceReceivableInquiryDispatcher::class)->dispatch($insuranceReceivable, 'inquiry_requeued');
+        if ($insuranceReceivable->isTerminal() || ! $insuranceReceivable->hasCompleteRequiredDocuments()) {
+            return;
+        }
+
+        /** @var InsuranceReceivableInquiryDispatcher $dispatcher */
+        $dispatcher = app(InsuranceReceivableInquiryDispatcher::class);
+        $dispatcher->dispatch($insuranceReceivable, 'inquiry_requeued');
     }
 }

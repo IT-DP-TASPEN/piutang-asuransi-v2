@@ -108,6 +108,7 @@ class CoreBankingClient
         $description = null;
         $data = [];
         $errorMessage = null;
+        $responseBodyForLog = [];
 
         try {
             $response = Http::withHeaders($headers)
@@ -117,6 +118,7 @@ class CoreBankingClient
             $status = $response->status();
             $responseBody = $response->body();
             $decoded = $this->decodeResponse($responseBody);
+            $responseBodyForLog = $this->responseBodyForLog($responseBody);
             $responseCode = isset($decoded['responseCode']) ? (string) $decoded['responseCode'] : null;
             $description = isset($decoded['description']) ? (string) $decoded['description'] : null;
             $data = is_array($decoded['data'] ?? null) ? $decoded['data'] : $decoded;
@@ -135,9 +137,9 @@ class CoreBankingClient
             'endpoint' => $endpoint,
             'method' => 'POST',
             'request_headers' => $this->maskedHeaders($headers),
-            'request_body' => $rawBody,
+            'request_body' => $payload,
             'response_status' => $status,
-            'response_body' => $responseBody,
+            'response_body' => $responseBodyForLog,
             'response_code' => $responseCode,
             'response_description' => $description,
             'is_success' => $ok,
@@ -183,6 +185,24 @@ class CoreBankingClient
         }
 
         return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function responseBodyForLog(?string $responseBody): array
+    {
+        if ($responseBody === null || $responseBody === '') {
+            return [];
+        }
+
+        try {
+            $decoded = json_decode($responseBody, true, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return ['raw' => $responseBody];
+        }
+
+        return is_array($decoded) ? $decoded : ['raw' => $responseBody];
     }
 
     private function url(string $endpoint): string

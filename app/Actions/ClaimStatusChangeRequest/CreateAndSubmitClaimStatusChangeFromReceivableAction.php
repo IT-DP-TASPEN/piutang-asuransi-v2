@@ -23,8 +23,18 @@ class CreateAndSubmitClaimStatusChangeFromReceivableAction
      */
     public function handle(InsuranceReceivable $receivable, User $user, array $data): ClaimStatusChangeRequest
     {
+        if ($receivable->isTerminal()) {
+            throw ValidationException::withMessages([
+                'insurance_receivable_id' => 'Terminal receivables cannot update claim status.',
+            ]);
+        }
+
         if ($receivable->claimStatusChangeRequests()
-            ->where('status', ClaimStatusChangeRequest::STATUS_SUBMITTED)
+            ->whereIn('status', [
+                ClaimStatusChangeRequest::STATUS_DRAFT,
+                ClaimStatusChangeRequest::STATUS_SUBMITTED,
+                ClaimStatusChangeRequest::STATUS_RETURNED,
+            ])
             ->exists()) {
             throw ValidationException::withMessages([
                 'claim_status' => 'A pending claim status update already exists for this receivable.',

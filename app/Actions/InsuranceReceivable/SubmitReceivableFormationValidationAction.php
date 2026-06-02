@@ -23,13 +23,23 @@ class SubmitReceivableFormationValidationAction
      */
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, array $data = [], ?string $notes = null): InsuranceReceivable
     {
-        if ($insuranceReceivable->workflow_status !== InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING) {
+        if ($insuranceReceivable->isTerminal()) {
             throw ValidationException::withMessages([
-                'workflow_status' => 'Only receivables pending accounting validation can be submitted for accounting validation.',
+                'workflow_status' => 'Terminal receivables cannot be submitted for accounting validation.',
+            ]);
+        }
+
+        if (! in_array($insuranceReceivable->workflow_status, [
+            InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING,
+            InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER,
+        ], true)) {
+            throw ValidationException::withMessages([
+                'workflow_status' => 'Only receivables pending or returned to accounting maker can be submitted for accounting validation.',
             ]);
         }
 
         return DB::transaction(function () use ($insuranceReceivable, $user, $data, $notes): InsuranceReceivable {
+            $fromWorkflowStatus = $insuranceReceivable->workflow_status;
             $journal = $insuranceReceivable->receivableFormationJournals()->create([
                 'journal_date' => $data['journal_date'] ?? now()->toDateString(),
                 'amount' => $this->amount($data['amount'] ?? $insuranceReceivable->loan_outstanding),
@@ -56,7 +66,7 @@ class SubmitReceivableFormationValidationAction
             $this->stageLogger->log(
                 receivable: $insuranceReceivable,
                 event: 'accounting_validation_submitted',
-                fromStatus: InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING,
+                fromStatus: $fromWorkflowStatus,
                 toStatus: InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
                 description: 'Accounting validation submitted.',
                 actor: $user,

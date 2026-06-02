@@ -6,11 +6,16 @@ use App\Actions\CkpnJournal\ApproveCkpnJournalAction;
 use App\Actions\CkpnJournal\ExecuteGlToGlTransferAction;
 use App\Actions\CkpnJournal\SubmitCkpnJournalAction;
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
+use App\Actions\InsuranceReceivable\AutoSubmitInsuranceReceivableForBranchApprovalAction;
+use App\Actions\InsuranceReceivable\CancelInsuranceReceivableAction;
 use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
+use App\Actions\InsuranceReceivable\CreateInsuranceReceivableAction;
 use App\Actions\InsuranceReceivable\ExecuteEarlyTerminationAction;
 use App\Actions\InsuranceReceivable\PerformLoanInquiryAction;
-use App\Actions\InsuranceReceivable\SubmitInsuranceReceivableForApprovalAction;
+use App\Actions\InsuranceReceivable\ResolveEarlyTerminationManuallyAction;
 use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
+use App\Actions\ClaimStatusChangeRequest\ApproveClaimStatusChangeRequestAction;
+use App\Actions\ClaimStatusChangeRequest\CreateAndSubmitClaimStatusChangeFromReceivableAction;
 use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
 use App\Filament\Resources\InsuranceReceivables\Pages\EditInsuranceReceivable;
 use App\Filament\Resources\InsuranceReceivables\Pages\ViewInsuranceReceivable;
@@ -19,6 +24,7 @@ use App\Jobs\ExecuteEarlyTerminationJob;
 use App\Jobs\ExecuteGlToGlJob;
 use App\Jobs\RunLoanInquiryJob;
 use App\Models\ApiIntegrationLog;
+use App\Models\ApprovalRequest;
 use App\Models\BranchOffice;
 use App\Models\CkpnJournal;
 use App\Models\CkpnWorkpaper;
@@ -26,6 +32,7 @@ use App\Models\ClaimStatus;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\EarlyTerminationTransaction;
 use App\Models\GlToGlTransaction;
+use App\Models\InsuranceCompany;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
@@ -58,11 +65,32 @@ class WorkflowQueueAutomationTest extends TestCase
         Queue::fake();
         $maker = $this->userWithRole('branch_maker', '001');
 
-        $receivable = $this->receivableFor($maker);
+        $receivable = app(CreateInsuranceReceivableAction::class)->handle([
+            'loan_account_number' => '3010001000054745',
+            'date_of_death' => '2026-05-01',
+            'insurance_company_id' => InsuranceCompany::query()->firstOrFail()->id,
+            'supporting_document_file_path' => 'testing/supporting-document.pdf',
+        ], $maker);
 
         Queue::assertPushed(RunLoanInquiryJob::class, fn (RunLoanInquiryJob $job): bool => $job->insuranceReceivableId === $receivable->id);
         $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_INQUIRY_QUEUED, $receivable->refresh()->system_status);
+        $this->assertTrue($receivable->hasCompleteRequiredDocuments());
         $this->assertSame(['record_created', 'inquiry_queued'], $receivable->stageLogs()->pluck('event')->reverse()->values()->all());
+    }
+
+    public function test_creating_receivable_requires_required_document_file_path(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $maker = $this->userWithRole('branch_maker', '001');
+
+        $this->expectException(ValidationException::class);
+
+        app(CreateInsuranceReceivableAction::class)->handle([
+            'loan_account_number' => '3010001000054745',
+            'date_of_death' => '2026-05-01',
+            'insurance_company_id' => InsuranceCompany::query()->firstOrFail()->id,
+        ], $maker);
     }
 
     public function test_inquiry_job_success_maps_response_and_writes_status_log(): void
@@ -95,6 +123,10 @@ class WorkflowQueueAutomationTest extends TestCase
         $this->assertSame('230929055.00', $receivable->loan_outstanding);
         $this->assertNotNull($receivable->inquiry_completed_at);
         $this->assertTrue($receivable->stageLogs()->where('event', 'inquiry_completed')->exists());
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED, $receivable->workflow_status);
+        $this->assertTrue($receivable->approvalRequests()
+            ->where('workflow_code', ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH)
+            ->exists());
     }
 
     public function test_inquiry_branch_mismatch_blocks_submission(): void
@@ -119,10 +151,40 @@ class WorkflowQueueAutomationTest extends TestCase
         $this->runInquiryJob($receivable);
 
         $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED, $receivable->refresh()->system_status);
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_CANCELLED, $receivable->workflow_status);
         $this->assertTrue($receivable->stageLogs()->where('event', 'branch_validation_failed')->exists());
 
-        $this->expectException(ValidationException::class);
-        app(SubmitInsuranceReceivableForApprovalAction::class)->handle($receivable->refresh(), $maker);
+        Livewire::actingAs($maker)
+            ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
+            ->assertActionHidden('retryInquiry')
+            ->assertActionHidden('cancelReceivable');
+    }
+
+    public function test_technical_inquiry_failure_can_be_cancelled_then_operational_actions_hide(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('branch_maker', '001');
+        $receivable = $this->receivableFor($maker, [
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_FAILED,
+        ]);
+
+        Livewire::actingAs($maker)
+            ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
+            ->assertActionVisible('retryInquiry')
+            ->assertActionVisible('cancelReceivable');
+
+        $cancelled = app(CancelInsuranceReceivableAction::class)->handle($receivable, $maker, 'Cannot complete inquiry.');
+
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_CANCELLED, $cancelled->workflow_status);
+        $this->assertTrue($cancelled->stageLogs()->where('event', 'technical_inquiry_failure_cancelled')->exists());
+
+        Livewire::actingAs($maker)
+            ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
+            ->assertActionHidden('retryInquiry')
+            ->assertActionHidden('cancelReceivable')
+            ->assertActionHidden('approveApproval')
+            ->assertActionHidden('rejectApproval')
+            ->assertActionHidden('returnApproval');
     }
 
     public function test_accounting_approval_queues_early_termination(): void
@@ -134,7 +196,7 @@ class WorkflowQueueAutomationTest extends TestCase
         $accountingApprover = $this->userWithRole('accounting_approver', '000');
         $receivable = $this->receivableReadyForSubmit($maker, ['loan_outstanding' => '230929055.00']);
 
-        app(SubmitInsuranceReceivableForApprovalAction::class)->handle($receivable, $maker);
+        app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
         $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $branchApprover);
         $receivable = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $this->userWithRole('it_user', '000'));
         app(SubmitReceivableFormationValidationAction::class)->handle($receivable, $accountingMaker, [
@@ -187,6 +249,30 @@ class WorkflowQueueAutomationTest extends TestCase
         $this->assertSame($first->trx_reference, $second->trx_reference);
         $this->assertSame(EarlyTerminationTransaction::STATUS_SUCCESS, $second->status);
         $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_EXECUTED, $receivable->refresh()->system_status);
+    }
+
+    public function test_early_termination_failure_can_be_resolved_manually_and_remains_non_terminal(): void
+    {
+        $this->seedDependencies();
+        $accountingMaker = $this->userWithRole('accounting_maker', '000');
+        $businessMaker = $this->userWithRole('business_maker', '000');
+        $receivable = $this->receivableReadyForSubmit($this->userWithRole('branch_maker', '001'), [
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED,
+            'receivable_formation_date' => '2026-05-31',
+            'receivable_amount' => '1000.00',
+        ]);
+
+        $resolved = app(ResolveEarlyTerminationManuallyAction::class)->handle($receivable, $accountingMaker);
+
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED, $resolved->workflow_status);
+        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED, $resolved->system_status);
+        $this->assertFalse($resolved->isTerminal());
+        $this->assertTrue($resolved->stageLogs()->where('event', 'early_termination_resolved_manually')->exists());
+
+        Livewire::actingAs($businessMaker)
+            ->test(ViewInsuranceReceivable::class, ['record' => $resolved->id])
+            ->assertActionVisible('updateClaimStatus');
     }
 
     public function test_ckpn_journal_approval_queues_gl_to_gl_job(): void
@@ -245,7 +331,7 @@ class WorkflowQueueAutomationTest extends TestCase
 
         Livewire::actingAs($maker)
             ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
-            ->assertActionVisible('submitForApproval');
+            ->assertActionDoesNotExist('submitForApproval');
 
         Livewire::actingAs($maker)
             ->test(EditInsuranceReceivable::class, ['record' => $receivable->id])
@@ -267,6 +353,9 @@ class WorkflowQueueAutomationTest extends TestCase
         $this->seedDependencies();
         $superAdmin = $this->userWithRole('super_admin', '000');
         $receivable = $this->receivableReadyForSubmit($this->userWithRole('branch_maker', '001'));
+        $receivable->forceFill([
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
+        ])->save();
 
         Livewire::actingAs($superAdmin)
             ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
@@ -286,10 +375,12 @@ class WorkflowQueueAutomationTest extends TestCase
 
         Livewire::actingAs($maker)
             ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
-            ->callAction('updateClaimStatus', [
-                'to_claim_status_id' => $targetStatus->id,
-                'reason' => 'Insurance approved claim.',
-            ]);
+            ->assertActionVisible('updateClaimStatus');
+
+        app(CreateAndSubmitClaimStatusChangeFromReceivableAction::class)->handle($receivable, $maker, [
+            'to_claim_status_id' => $targetStatus->id,
+            'reason' => 'Insurance approved claim.',
+        ]);
 
         $request = $receivable->claimStatusChangeRequests()->sole();
         $this->assertSame(ClaimStatusChangeRequest::STATUS_SUBMITTED, $request->status);
@@ -298,7 +389,9 @@ class WorkflowQueueAutomationTest extends TestCase
 
         Livewire::actingAs($approver)
             ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
-            ->callAction('approveClaimStatusUpdate');
+            ->assertActionVisible('approveClaimStatusUpdate');
+
+        app(ApproveClaimStatusChangeRequestAction::class)->handle($request, $approver);
 
         $this->assertSame($targetStatus->id, $receivable->refresh()->claim_status_id);
         $this->assertSame(ClaimStatusChangeRequest::STATUS_APPROVED, $request->refresh()->status);
@@ -309,6 +402,7 @@ class WorkflowQueueAutomationTest extends TestCase
     {
         (new RunLoanInquiryJob($receivable->id))->handle(
             app(PerformLoanInquiryAction::class),
+            app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class),
             app(InsuranceReceivableStageLogger::class),
         );
     }

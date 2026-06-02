@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ClaimStatusChangeRequests\Tables;
 
 use App\Actions\ClaimStatusChangeRequest\ApproveClaimStatusChangeRequestAction;
+use App\Actions\ClaimStatusChangeRequest\CancelClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\RejectClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\ReturnClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\SubmitClaimStatusChangeRequestAction;
@@ -144,6 +145,26 @@ class ClaimStatusChangeRequestsTable
                         app(ReturnClaimStatusChangeRequestAction::class)->handle($record, $user, $data['notes'] ?? null);
 
                         Notification::make()->success()->title('Claim status request returned')->send();
+                    }),
+                Action::make('cancel')
+                    ->label('Cancel')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->visible(fn (ClaimStatusChangeRequest $record): bool => auth()->user()?->can('cancel', $record) ?? false)
+                    ->form([
+                        Textarea::make('notes')
+                            ->maxLength(65535),
+                    ])
+                    ->action(function (ClaimStatusChangeRequest $record, array $data): void {
+                        $user = auth()->user();
+
+                        if (! $user instanceof User) {
+                            return;
+                        }
+
+                        app(CancelClaimStatusChangeRequestAction::class)->handle($record, $user, $data['notes'] ?? null);
+
+                        Notification::make()->success()->title('Claim status request cancelled')->send();
                     }),
                 EditAction::make()
                     ->visible(fn (ClaimStatusChangeRequest $record): bool => auth()->user()?->can('update', $record) ?? false),

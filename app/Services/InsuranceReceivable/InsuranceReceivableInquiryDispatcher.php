@@ -5,11 +5,24 @@ namespace App\Services\InsuranceReceivable;
 use App\Jobs\RunLoanInquiryJob;
 use App\Models\InsuranceReceivable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class InsuranceReceivableInquiryDispatcher
 {
     public function dispatch(InsuranceReceivable $receivable, string $event = 'inquiry_queued'): void
     {
+        if ($receivable->isTerminal()) {
+            throw ValidationException::withMessages([
+                'workflow_status' => 'Terminal receivables cannot run loan inquiry.',
+            ]);
+        }
+
+        if (! $receivable->hasCompleteRequiredDocuments()) {
+            throw ValidationException::withMessages([
+                'documents' => 'Required documents must be complete before loan inquiry.',
+            ]);
+        }
+
         DB::transaction(function () use ($receivable, $event): void {
             $fromStatus = $receivable->system_status;
 

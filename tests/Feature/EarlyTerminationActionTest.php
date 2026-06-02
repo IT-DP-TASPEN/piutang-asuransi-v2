@@ -48,6 +48,7 @@ class EarlyTerminationActionTest extends TestCase
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
         ]);
         $expectedRawBody = '{"trxReference":"PA-ET20260531102030","accountNumber":"3010010000000068","altNumber":"ALT-1","principalPaid":230929055,"interestPaid":0,"penaltyPaid":0,"principalWaive":230929055,"interestWaive":0,"description":"Pelunasan Debitur MD","branchCode":"001"}';
+        $expectedLogRequestBody = json_decode($expectedRawBody, true, flags: JSON_THROW_ON_ERROR);
 
         Http::fake([
             'http://core.test/loan/earlytermination/' => Http::sequence()
@@ -104,11 +105,15 @@ class EarlyTerminationActionTest extends TestCase
         });
 
         $this->assertSame(2, ApiIntegrationLog::query()->count());
-        ApiIntegrationLog::query()->each(function (ApiIntegrationLog $log) use ($expectedRawBody): void {
+        ApiIntegrationLog::query()->each(function (ApiIntegrationLog $log) use ($expectedLogRequestBody): void {
             $this->assertSame('/loan/earlytermination/', $log->endpoint);
-            $this->assertSame($expectedRawBody, $log->request_body);
+            $this->assertSame($expectedLogRequestBody, $log->request_body);
             $this->assertSame('[masked]', $log->request_headers['Signature']);
         });
+
+        $logs = ApiIntegrationLog::query()->orderBy('id')->get();
+        $this->assertSame('99', $logs[0]->response_body['responseCode']);
+        $this->assertSame('00', $logs[1]->response_body['responseCode']);
 
     }
 

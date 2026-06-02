@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Actions\InsuranceReceivable\AutoSubmitInsuranceReceivableForBranchApprovalAction;
 use App\Actions\InsuranceReceivable\PerformLoanInquiryAction;
 use App\Models\ApiIntegrationLog;
 use App\Models\InsuranceReceivable;
@@ -30,11 +31,23 @@ class RunLoanInquiryJob implements ShouldQueue
         return [10, 30, 60];
     }
 
-    public function handle(PerformLoanInquiryAction $action, InsuranceReceivableStageLogger $logger): void
+    public function handle(
+        PerformLoanInquiryAction $action,
+        AutoSubmitInsuranceReceivableForBranchApprovalAction $autoSubmitAction,
+        InsuranceReceivableStageLogger $logger,
+    ): void
     {
         $receivable = InsuranceReceivable::query()->findOrFail($this->insuranceReceivableId);
         $creator = User::query()->find($receivable->created_by);
         $fromStatus = $receivable->system_status;
+
+        if ($receivable->isTerminal() || ! in_array($receivable->workflow_status, [
+            InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
+            InsuranceReceivable::WORKFLOW_STATUS_RETURNED,
+            InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
+        ], true)) {
+            return;
+        }
 
         $receivable->forceFill([
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_PROCESSING,
@@ -75,6 +88,29 @@ class RunLoanInquiryJob implements ShouldQueue
                 apiLog: $apiLog,
                 triggeredByType: 'job',
             );
+
+            $logger->log(
+                receivable: $receivable,
+                event: 'branch_validation_passed',
+                fromStatus: null,
+                toStatus: $receivable->branch_code,
+                description: 'Branch validation passed.',
+                apiLog: $apiLog,
+                triggeredByType: 'job',
+            );
+
+            try {
+                $autoSubmitAction->handle($receivable, $creator);
+            } catch (ValidationException $exception) {
+                $logger->log(
+                    receivable: $receivable,
+                    event: 'auto_branch_submission_skipped',
+                    fromStatus: $receivable->workflow_status,
+                    toStatus: $receivable->workflow_status,
+                    description: $this->validationMessage($exception),
+                    triggeredByType: 'job',
+                );
+            }
         } catch (ValidationException $exception) {
             $this->markFailed($receivable, $logger, $this->validationMessage($exception), $this->isBranchMismatch($exception));
         } catch (Throwable $exception) {
@@ -101,22 +137,41 @@ class RunLoanInquiryJob implements ShouldQueue
         string $message,
         bool $branchMismatch,
     ): void {
+        $receivable->refresh();
+
+        if ($receivable->isTerminal() && ! $branchMismatch) {
+            return;
+        }
+
         $status = $branchMismatch
             ? InsuranceReceivable::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED
             : InsuranceReceivable::SYSTEM_STATUS_INQUIRY_FAILED;
         $event = $branchMismatch ? 'branch_validation_failed' : 'inquiry_failed';
+        $fromWorkflowStatus = $receivable->workflow_status;
 
-        $receivable->forceFill([
+        $updates = [
             'system_status' => $status,
             'last_error_message' => $message,
-        ])->saveQuietly();
+        ];
+
+        if ($branchMismatch) {
+            $updates['workflow_status'] = InsuranceReceivable::WORKFLOW_STATUS_CANCELLED;
+        }
+
+        $receivable->forceFill($updates)->saveQuietly();
 
         $logger->log(
             receivable: $receivable,
             event: $event,
             fromStatus: InsuranceReceivable::SYSTEM_STATUS_INQUIRY_PROCESSING,
             toStatus: $status,
-            description: $message,
+            description: $branchMismatch
+                ? "Branch validation failed. Creator branch code does not match inquiry response branch code. Record automatically cancelled. {$message}"
+                : $message,
+            metadata: $branchMismatch ? [
+                'from_workflow_status' => $fromWorkflowStatus,
+                'to_workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_CANCELLED,
+            ] : [],
             apiLog: $this->latestApiLog($receivable),
             triggeredByType: 'job',
         );

@@ -11,6 +11,13 @@ class EditInsuranceReceivable extends EditRecord
 {
     protected static string $resource = InsuranceReceivableResource::class;
 
+    public function mount(int|string $record): void
+    {
+        parent::mount($record);
+
+        abort_unless(auth()->user()?->can('update', $this->getRecord()) ?? false, 403);
+    }
+
     protected function getHeaderActions(): array
     {
         return [

@@ -14,6 +14,23 @@ use Illuminate\Database\Eloquent\Factories\Factory;
  */
 class InsuranceReceivableFactory extends Factory
 {
+    public function configure(): static
+    {
+        return $this->afterCreating(function (InsuranceReceivable $receivable): void {
+            foreach (InsuranceReceivable::REQUIRED_DOCUMENT_TYPES as $documentType) {
+                $receivable->documents()->firstOrCreate(
+                    ['document_type' => $documentType],
+                    [
+                        'file_path' => "testing/{$documentType}.pdf",
+                        'original_filename' => "{$documentType}.pdf",
+                        'mime_type' => 'application/pdf',
+                        'uploaded_by' => $receivable->created_by,
+                    ],
+                );
+            }
+        });
+    }
+
     /**
      * Define the model's default state.
      *

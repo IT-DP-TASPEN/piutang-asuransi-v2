@@ -36,6 +36,14 @@ class ExecuteEarlyTerminationJob implements ShouldQueue
         $actor = $this->requestedBy ? User::query()->find($this->requestedBy) : null;
         $fromStatus = $receivable->system_status;
 
+        if ($receivable->isTerminal()
+            || in_array($receivable->system_status, [
+                InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_EXECUTED,
+                InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED,
+            ], true)) {
+            return;
+        }
+
         $receivable->forceFill([
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING,
             'last_error_message' => null,
@@ -101,6 +109,11 @@ class ExecuteEarlyTerminationJob implements ShouldQueue
         string $message,
         ?User $actor,
     ): void {
+        if ($receivable->isTerminal()
+            || $receivable->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED) {
+            return;
+        }
+
         $receivable->forceFill([
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED,
             'last_error_message' => $message,

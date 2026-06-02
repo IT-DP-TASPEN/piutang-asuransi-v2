@@ -13,7 +13,7 @@ use App\Actions\CkpnAdjustment\SubmitCkpnAdjustmentAction;
 use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
 use App\Actions\CkpnWorkpaper\ApproveCkpnWorkpaperAction;
 use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
-use App\Actions\InsuranceReceivable\ResolveFailedInsuranceReceivableAction;
+use App\Actions\InsuranceReceivable\CancelInsuranceReceivableAction;
 use App\Actions\LegacyReceivable\RecordLegacyReceivablePaymentAction;
 use App\Jobs\GenerateCkpnWorkpaperJob;
 use App\Models\ApprovalRequest;
@@ -22,6 +22,8 @@ use App\Models\BranchOffice;
 use App\Models\CkpnAdjustment;
 use App\Models\CkpnJournal;
 use App\Models\CkpnWorkpaper;
+use App\Models\ClaimStatus;
+use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceCompany;
 use App\Models\InsuranceReceivable;
 use App\Models\LegacyReceivable;
@@ -463,14 +465,69 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
             $this->assertStringContainsString('Insurance Receivables are still pending', collect($exception->errors())->flatten()->first());
         }
 
-        $receivable = app(ResolveFailedInsuranceReceivableAction::class)->handle($receivable, $maker, 'Invalid inquiry data.');
+        $receivable = app(CancelInsuranceReceivableAction::class)->handle($receivable, $maker, 'Invalid inquiry data.');
 
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_REJECTED, $receivable->workflow_status);
-        $this->assertTrue($receivable->stageLogs()->where('event', 'manual_failed_inquiry_resolution')->exists());
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_CANCELLED, $receivable->workflow_status);
+        $this->assertTrue($receivable->stageLogs()->where('event', 'technical_inquiry_failure_cancelled')->exists());
 
         $workpaper = app(CreateCkpnWorkpaperAction::class)->handle([
             'period' => '2026-04-01',
             'branch_office_id' => $branch->id,
+        ], $businessMaker);
+
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
+    }
+
+    public function test_pending_claim_status_updates_block_workpaper_only_for_cutoff_scope(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $businessMaker = $this->userWithRole('business_maker', '000');
+        $branchOne = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $branchTwo = BranchOffice::query()->where('branch_code', '002')->firstOrFail();
+        $fromStatus = ClaimStatus::query()->where('code', ClaimStatus::DEFAULT_CODE)->firstOrFail();
+        $toStatus = ClaimStatus::query()->where('code', 'approved')->firstOrFail();
+        $receivable = InsuranceReceivable::factory()->create([
+            'branch_office_id' => $branchOne->id,
+            'branch_code' => $branchOne->branch_code,
+            'claim_status_id' => $fromStatus->id,
+            'receivable_formation_date' => '2026-04-15',
+            'receivable_amount' => '1000.00',
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED,
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED,
+        ]);
+        $request = $receivable->claimStatusChangeRequests()->create([
+            'from_claim_status_id' => $fromStatus->id,
+            'to_claim_status_id' => $toStatus->id,
+            'requested_by' => $businessMaker->id,
+            'status' => ClaimStatusChangeRequest::STATUS_RETURNED,
+        ]);
+
+        try {
+            app(CreateCkpnWorkpaperAction::class)->handle([
+                'period' => '2026-04-01',
+                'branch_office_id' => $branchOne->id,
+            ], $businessMaker);
+
+            $this->fail('Pending claim status request should block scoped CKPN workpaper.');
+        } catch (ValidationException $exception) {
+            $message = collect($exception->errors())->flatten()->first();
+            $this->assertStringContainsString('1 claim status update requests', $message);
+            $this->assertStringContainsString("#{$request->id} returned", $message);
+        }
+
+        $otherBranchWorkpaper = app(CreateCkpnWorkpaperAction::class)->handle([
+            'period' => '2026-04-01',
+            'branch_office_id' => $branchTwo->id,
+        ], $businessMaker);
+
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $otherBranchWorkpaper->status);
+
+        $request->forceFill(['status' => ClaimStatusChangeRequest::STATUS_CANCELLED])->save();
+
+        $workpaper = app(CreateCkpnWorkpaperAction::class)->handle([
+            'period' => '2026-04-01',
+            'branch_office_id' => $branchOne->id,
         ], $businessMaker);
 
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
@@ -531,6 +588,27 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame(0, $workpaper->items()->count());
     }
 
+    public function test_early_termination_resolved_receivable_is_eligible_for_ckpn_generation(): void
+    {
+        $this->seedDependencies();
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $this->receivable($branch, [
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED,
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED,
+            'receivable_formation_date' => '2026-04-30',
+            'receivable_amount' => '10000.00',
+        ]);
+        $workpaper = CkpnWorkpaper::query()->create([
+            'period' => '2026-04-01',
+            'branch_office_id' => $branch->id,
+        ]);
+
+        $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
+
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $workpaper->status);
+        $this->assertSame(1, $workpaper->items()->count());
+    }
+
     public function test_submit_is_blocked_without_generated_items(): void
     {
         $this->seedDependencies();
@@ -549,6 +627,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     {
         $this->seedDependencies();
         $maker = $this->userWithRole('business_maker', '000');
+        $accountingMaker = $this->userWithRole('accounting_maker', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $this->receivable($branch, ['receivable_formation_date' => '2026-01-01', 'receivable_amount' => '10000.00']);
         $workpaper = CkpnWorkpaper::query()->create(['period' => '2026-06-30', 'branch_office_id' => $branch->id]);
@@ -563,7 +642,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $adjustment = CkpnAdjustment::query()->create($payload);
 
         try {
-            app(CreateCkpnJournalFromWorkpaperAction::class)->handle($workpaper->refresh(), $maker);
+            app(CreateCkpnJournalFromWorkpaperAction::class)->handle($workpaper->refresh(), $accountingMaker);
 
             $this->fail('Draft adjustment should block CKPN journal creation.');
         } catch (ValidationException $exception) {
@@ -574,7 +653,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         app(CancelCkpnAdjustmentAction::class)->handle($adjustment, $maker);
 
-        $journal = app(CreateCkpnJournalFromWorkpaperAction::class)->handle($workpaper->refresh(), $maker);
+        $journal = app(CreateCkpnJournalFromWorkpaperAction::class)->handle($workpaper->refresh(), $accountingMaker);
 
         $this->assertSame(CkpnAdjustment::STATUS_CANCELLED, $adjustment->refresh()->status);
         $this->assertSame($workpaper->total_effective_ckpn_amount, $journal->total_amount);

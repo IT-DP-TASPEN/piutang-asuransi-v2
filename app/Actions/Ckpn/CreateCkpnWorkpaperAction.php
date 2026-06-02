@@ -27,6 +27,7 @@ class CreateCkpnWorkpaperAction
 
             $this->readinessValidator->assertNoDuplicateWorkpaper($period, $branchOfficeId);
             $this->readinessValidator->assertNoPendingInsuranceReceivables($period, $branchOfficeId);
+            $this->readinessValidator->assertNoPendingClaimStatusUpdates($period, $branchOfficeId);
 
             $workpaper = CkpnWorkpaper::query()->create([
                 ...$data,

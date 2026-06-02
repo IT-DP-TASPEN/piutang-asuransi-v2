@@ -16,6 +16,12 @@ class ConfirmCollectabilityChangeCompletedAction
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user): InsuranceReceivable
     {
+        if ($insuranceReceivable->isTerminal()) {
+            throw ValidationException::withMessages([
+                'workflow_status' => 'Terminal receivables cannot be forwarded.',
+            ]);
+        }
+
         if ($insuranceReceivable->workflow_status !== InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING) {
             throw ValidationException::withMessages([
                 'workflow_status' => 'Receivable is not waiting for collectability confirmation.',

@@ -75,11 +75,13 @@ class RolePermissionSeeder extends Seeder
                 'ConfirmCollectabilityChange:InsuranceReceivable',
                 'SubmitAccountingValidation:InsuranceReceivable',
                 'ExecuteEarlyTermination:InsuranceReceivable',
-                'ResolveFailed:InsuranceReceivable',
+                'Cancel:InsuranceReceivable',
+                'ResolveEarlyTermination:InsuranceReceivable',
                 'Submit:ClaimStatusChangeRequest',
                 'Approve:ClaimStatusChangeRequest',
                 'Reject:ClaimStatusChangeRequest',
                 'Return:ClaimStatusChangeRequest',
+                'Cancel:ClaimStatusChangeRequest',
                 'GenerateDraft:InsuranceCoverLetter',
                 'Generate:CkpnWorkpaper',
                 'Recalculate:CkpnWorkpaper',
@@ -170,8 +172,6 @@ class RolePermissionSeeder extends Seeder
             'View:CkpnJournal',
             'ViewAny:GeneratedExport',
             'View:GeneratedExport',
-            'ViewAny:GlToGlTransaction',
-            'View:GlToGlTransaction',
             'ViewAny:ApiIntegrationLog',
             'View:ApiIntegrationLog',
         ];
@@ -184,6 +184,7 @@ class RolePermissionSeeder extends Seeder
         $roles->get('accounting_maker')->syncPermissions([
             ...$centralViewPermissions,
             'SubmitAccountingValidation:InsuranceReceivable',
+            'ResolveEarlyTermination:InsuranceReceivable',
             'Create:ReceivableFormationJournal',
             'Update:ReceivableFormationJournal',
             'Create:LegacyReceivable',
@@ -191,6 +192,10 @@ class RolePermissionSeeder extends Seeder
             'Create:LegacyReceivablePayment',
             'Update:LegacyReceivablePayment',
             'Delete:LegacyReceivablePayment',
+            'CreateJournal:CkpnWorkpaper',
+            'Create:CkpnJournal',
+            'Update:CkpnJournal',
+            'Submit:CkpnJournal',
         ]);
 
         $roles->get('accounting_approver')->syncPermissions([
@@ -199,11 +204,10 @@ class RolePermissionSeeder extends Seeder
             'RejectApproval:InsuranceReceivable',
             'ReturnApproval:InsuranceReceivable',
             'ExecuteEarlyTermination:InsuranceReceivable',
+            'ResolveEarlyTermination:InsuranceReceivable',
             'Update:ReceivableFormationJournal',
             'Create:EarlyTerminationTransaction',
             'Update:EarlyTerminationTransaction',
-            'Submit:CkpnJournal',
-            'Update:CkpnJournal',
         ]);
 
         $roles->get('business_maker')->syncPermissions([
@@ -211,6 +215,7 @@ class RolePermissionSeeder extends Seeder
             'Create:ClaimStatusChangeRequest',
             'Update:ClaimStatusChangeRequest',
             'Submit:ClaimStatusChangeRequest',
+            'Cancel:ClaimStatusChangeRequest',
             'Create:InsuranceCoverLetter',
             'Update:InsuranceCoverLetter',
             'GenerateDraft:InsuranceCoverLetter',
@@ -228,10 +233,7 @@ class RolePermissionSeeder extends Seeder
             'Update:CkpnAdjustment',
             'Submit:CkpnAdjustment',
             'Cancel:CkpnAdjustment',
-            'CreateJournal:CkpnWorkpaper',
             'GenerateExport:CkpnWorkpaper',
-            'Create:CkpnJournal',
-            'Update:CkpnJournal',
             'Create:GeneratedExport',
         ]);
 
@@ -253,8 +255,6 @@ class RolePermissionSeeder extends Seeder
             'Reject:CkpnJournal',
             'Return:CkpnJournal',
             'ExecuteGlToGl:CkpnJournal',
-            'Create:GlToGlTransaction',
-            'Update:GlToGlTransaction',
         ]);
 
         $roles->get('branch_maker')->syncPermissions([
@@ -263,8 +263,7 @@ class RolePermissionSeeder extends Seeder
             'Create:InsuranceReceivable',
             'Update:InsuranceReceivable',
             'RunInquiry:InsuranceReceivable',
-            'ResolveFailed:InsuranceReceivable',
-            'SubmitForApproval:InsuranceReceivable',
+            'Cancel:InsuranceReceivable',
             'ViewAny:InsuranceReceivableDocument',
             'View:InsuranceReceivableDocument',
             'ViewAny:ClaimStatusChangeRequest',
@@ -285,8 +284,6 @@ class RolePermissionSeeder extends Seeder
             'View:CkpnJournal',
             'ViewAny:GeneratedExport',
             'View:GeneratedExport',
-            'ViewAny:GlToGlTransaction',
-            'View:GlToGlTransaction',
             'Create:InsuranceReceivableDocument',
             'Update:InsuranceReceivableDocument',
             'Delete:InsuranceReceivableDocument',
@@ -319,8 +316,6 @@ class RolePermissionSeeder extends Seeder
             'View:CkpnJournal',
             'ViewAny:GeneratedExport',
             'View:GeneratedExport',
-            'ViewAny:GlToGlTransaction',
-            'View:GlToGlTransaction',
             'ViewAny:ApprovalRequest',
             'View:ApprovalRequest',
             'ViewAny:ApprovalStep',

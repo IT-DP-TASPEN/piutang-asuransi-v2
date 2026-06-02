@@ -2,16 +2,19 @@
 
 namespace App\Filament\Resources\InsuranceReceivables\RelationManagers;
 
+use App\Actions\ClaimStatusChangeRequest\CancelClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\PrepareClaimStatusChangeRequestDataAction;
 use App\Models\ClaimStatus;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\User;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
@@ -80,7 +83,15 @@ class ClaimStatusChangeRequestsRelationManager extends RelationManager
             ])
             ->headerActions([
                 CreateAction::make()
-                    ->visible(fn (): bool => auth()->user()?->can('Create:ClaimStatusChangeRequest') ?? false)
+                    ->visible(fn (): bool => (auth()->user()?->can('Create:ClaimStatusChangeRequest') ?? false)
+                        && ! $this->getOwnerRecord()->isTerminal()
+                        && ! $this->getOwnerRecord()->claimStatusChangeRequests()
+                            ->whereIn('status', [
+                                ClaimStatusChangeRequest::STATUS_DRAFT,
+                                ClaimStatusChangeRequest::STATUS_SUBMITTED,
+                                ClaimStatusChangeRequest::STATUS_RETURNED,
+                            ])
+                            ->exists())
                     ->mutateDataUsing(function (array $data): array {
                         $user = auth()->user();
 
@@ -98,6 +109,25 @@ class ClaimStatusChangeRequestsRelationManager extends RelationManager
                 ViewAction::make(),
                 EditAction::make()
                     ->visible(fn (ClaimStatusChangeRequest $record): bool => auth()->user()?->can('update', $record) ?? false),
+                Action::make('cancel')
+                    ->label('Cancel')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->visible(fn (ClaimStatusChangeRequest $record): bool => auth()->user()?->can('cancel', $record) ?? false)
+                    ->form([
+                        Textarea::make('notes')->maxLength(65535),
+                    ])
+                    ->action(function (ClaimStatusChangeRequest $record, array $data): void {
+                        $user = auth()->user();
+
+                        if (! $user instanceof User) {
+                            return;
+                        }
+
+                        app(CancelClaimStatusChangeRequestAction::class)->handle($record, $user, $data['notes'] ?? null);
+
+                        Notification::make()->success()->title('Claim status request cancelled')->send();
+                    }),
             ]);
     }
 }

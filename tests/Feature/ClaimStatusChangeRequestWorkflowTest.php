@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Actions\ClaimStatusChangeRequest\ApproveClaimStatusChangeRequestAction;
+use App\Actions\ClaimStatusChangeRequest\CancelClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\PrepareClaimStatusChangeRequestDataAction;
 use App\Actions\ClaimStatusChangeRequest\RejectClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\SubmitClaimStatusChangeRequestAction;
@@ -87,6 +88,20 @@ class ClaimStatusChangeRequestWorkflowTest extends TestCase
         $this->assertSame(ClaimStatusChangeRequest::STATUS_REJECTED, $request->status);
         $this->assertSame($originalStatusId, $receivable->refresh()->claim_status_id);
         $this->assertSame(ApprovalRequest::STATUS_REJECTED, ApprovalRequest::query()->sole()->status);
+    }
+
+    public function test_draft_claim_status_request_can_be_cancelled(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('business_maker', '000');
+        $receivable = InsuranceReceivable::factory()->create();
+        $targetStatus = ClaimStatus::query()->where('code', 'reject_loss')->firstOrFail();
+        $request = $this->createDraftRequest($receivable, $targetStatus, $maker);
+
+        $request = app(CancelClaimStatusChangeRequestAction::class)->handle($request, $maker, 'not needed');
+
+        $this->assertSame(ClaimStatusChangeRequest::STATUS_CANCELLED, $request->status);
+        $this->assertTrue($receivable->stageLogs()->where('event', 'claim_status_update_cancelled')->exists());
     }
 
     public function test_claim_status_request_uses_master_claim_status_rows(): void

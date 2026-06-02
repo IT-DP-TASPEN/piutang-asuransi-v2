@@ -4,6 +4,7 @@ namespace App\Filament\Resources\InsuranceReceivables\Schemas;
 
 use App\Models\ClaimStatus;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
@@ -45,6 +46,18 @@ class InsuranceReceivableForm
                             ->dehydrated()
                             ->required(),
                     ]),
+                Section::make('Required documents')
+                    ->inlineLabel()
+                    ->columnSpanFull()
+                    ->schema([
+                        FileUpload::make('supporting_document_file_path')
+                            ->label('Supporting document')
+                            ->disk('public')
+                            ->directory('insurance-receivable-documents')
+                            ->storeFileNamesIn('supporting_document_original_filename')
+                            ->required(),
+                    ])
+                    ->visibleOn('create'),
                 Section::make('Inquiry snapshot')
                     ->inlineLabel()
                     ->columnSpanFull()

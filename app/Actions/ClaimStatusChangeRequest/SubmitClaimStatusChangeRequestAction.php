@@ -19,6 +19,12 @@ class SubmitClaimStatusChangeRequestAction
 
     public function handle(ClaimStatusChangeRequest $request, User $user, ?string $notes = null): ClaimStatusChangeRequest
     {
+        if ($request->insuranceReceivable->isTerminal()) {
+            throw ValidationException::withMessages([
+                'insurance_receivable_id' => 'Terminal receivables cannot update claim status.',
+            ]);
+        }
+
         if (! in_array($request->status, [
             ClaimStatusChangeRequest::STATUS_DRAFT,
             ClaimStatusChangeRequest::STATUS_RETURNED,
@@ -30,7 +36,11 @@ class SubmitClaimStatusChangeRequestAction
 
         if ($request->insuranceReceivable->claimStatusChangeRequests()
             ->whereKeyNot($request->id)
-            ->where('status', ClaimStatusChangeRequest::STATUS_SUBMITTED)
+            ->whereIn('status', [
+                ClaimStatusChangeRequest::STATUS_DRAFT,
+                ClaimStatusChangeRequest::STATUS_SUBMITTED,
+                ClaimStatusChangeRequest::STATUS_RETURNED,
+            ])
             ->exists()) {
             throw ValidationException::withMessages([
                 'claim_status' => 'A pending claim status update already exists for this receivable.',

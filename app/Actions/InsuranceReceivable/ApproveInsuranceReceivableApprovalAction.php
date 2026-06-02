@@ -16,6 +16,12 @@ class ApproveInsuranceReceivableApprovalAction
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, ?string $notes = null): InsuranceReceivable
     {
+        if ($insuranceReceivable->isTerminal()) {
+            throw ValidationException::withMessages([
+                'workflow_status' => 'Terminal receivables cannot be approved.',
+            ]);
+        }
+
         $this->approvalService->approveCurrentStep($this->activeRequestFor($insuranceReceivable), $user, $notes);
 
         return $insuranceReceivable->refresh();

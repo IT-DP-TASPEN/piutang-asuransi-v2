@@ -29,6 +29,7 @@ class ClaimStatusChangeRequestPolicy
     {
         return $this->can($user, 'Update')
             && $this->canAccessRecord($user, $claimStatusChangeRequest)
+            && ! $claimStatusChangeRequest->insuranceReceivable->isTerminal()
             && ($user->hasRole('super_admin') || in_array($claimStatusChangeRequest->status, [
                 ClaimStatusChangeRequest::STATUS_DRAFT,
                 ClaimStatusChangeRequest::STATUS_RETURNED,
@@ -77,22 +78,41 @@ class ClaimStatusChangeRequestPolicy
 
     public function submit(User $user, ClaimStatusChangeRequest $claimStatusChangeRequest): bool
     {
-        return $this->can($user, 'Submit') && $this->canAccessRecord($user, $claimStatusChangeRequest);
+        return $this->can($user, 'Submit')
+            && $this->canAccessRecord($user, $claimStatusChangeRequest)
+            && ! $claimStatusChangeRequest->insuranceReceivable->isTerminal();
     }
 
     public function approve(User $user, ClaimStatusChangeRequest $claimStatusChangeRequest): bool
     {
-        return $this->can($user, 'Approve') && $this->canAccessRecord($user, $claimStatusChangeRequest);
+        return $this->can($user, 'Approve')
+            && $this->canAccessRecord($user, $claimStatusChangeRequest)
+            && ! $claimStatusChangeRequest->insuranceReceivable->isTerminal();
     }
 
     public function reject(User $user, ClaimStatusChangeRequest $claimStatusChangeRequest): bool
     {
-        return $this->can($user, 'Reject') && $this->canAccessRecord($user, $claimStatusChangeRequest);
+        return $this->can($user, 'Reject')
+            && $this->canAccessRecord($user, $claimStatusChangeRequest)
+            && ! $claimStatusChangeRequest->insuranceReceivable->isTerminal();
     }
 
     public function returnRequest(User $user, ClaimStatusChangeRequest $claimStatusChangeRequest): bool
     {
-        return $this->can($user, 'Return') && $this->canAccessRecord($user, $claimStatusChangeRequest);
+        return $this->can($user, 'Return')
+            && $this->canAccessRecord($user, $claimStatusChangeRequest)
+            && ! $claimStatusChangeRequest->insuranceReceivable->isTerminal();
+    }
+
+    public function cancel(User $user, ClaimStatusChangeRequest $claimStatusChangeRequest): bool
+    {
+        return $this->can($user, 'Cancel')
+            && $this->canAccessRecord($user, $claimStatusChangeRequest)
+            && ! $claimStatusChangeRequest->insuranceReceivable->isTerminal()
+            && in_array($claimStatusChangeRequest->status, [
+                ClaimStatusChangeRequest::STATUS_DRAFT,
+                ClaimStatusChangeRequest::STATUS_RETURNED,
+            ], true);
     }
 
     private function can(User $user, string $action): bool

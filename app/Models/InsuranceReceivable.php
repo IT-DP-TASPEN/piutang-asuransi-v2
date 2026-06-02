@@ -41,6 +41,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'approved_at',
     'inquiry_completed_at',
     'early_termination_executed_at',
+    'early_termination_resolved_at',
 ])]
 class InsuranceReceivable extends Model
 {
@@ -59,13 +60,21 @@ class InsuranceReceivable extends Model
 
     public const WORKFLOW_STATUS_RETURNED = 'returned';
 
+    public const WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER = 'returned_to_branch_maker';
+
+    public const WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER = 'returned_to_accounting_maker';
+
     public const WORKFLOW_STATUS_REJECTED = 'rejected';
+
+    public const WORKFLOW_STATUS_CANCELLED = 'cancelled';
 
     public const WORKFLOW_STATUS_ACCOUNTING_VALIDATION = 'accounting_validation';
 
     public const WORKFLOW_STATUS_RECEIVABLE_FORMED = 'receivable_formed';
 
     public const WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED = 'early_termination_executed';
+
+    public const WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED = 'early_termination_resolved';
 
     public const SYSTEM_STATUS_INQUIRY_QUEUED = 'inquiry_queued';
 
@@ -85,6 +94,15 @@ class InsuranceReceivable extends Model
 
     public const SYSTEM_STATUS_EARLY_TERMINATION_FAILED = 'early_termination_failed';
 
+    public const SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED = 'early_termination_resolved';
+
+    /**
+     * @var list<string>
+     */
+    public const REQUIRED_DOCUMENT_TYPES = [
+        'supporting_document',
+    ];
+
     /**
      * @return array<string, string>
      */
@@ -97,10 +115,14 @@ class InsuranceReceivable extends Model
             self::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING => 'Collectability confirmation pending',
             self::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING => 'Accounting validation pending',
             self::WORKFLOW_STATUS_RETURNED => 'Returned',
+            self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER => 'Returned to branch maker',
+            self::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER => 'Returned to accounting maker',
             self::WORKFLOW_STATUS_REJECTED => 'Rejected',
+            self::WORKFLOW_STATUS_CANCELLED => 'Cancelled',
             self::WORKFLOW_STATUS_ACCOUNTING_VALIDATION => 'Accounting validation',
             self::WORKFLOW_STATUS_RECEIVABLE_FORMED => 'Receivable formed',
             self::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED => 'Early termination executed',
+            self::WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED => 'Early termination resolved',
         ];
     }
 
@@ -119,7 +141,71 @@ class InsuranceReceivable extends Model
             self::SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING => 'Early termination processing',
             self::SYSTEM_STATUS_EARLY_TERMINATION_EXECUTED => 'Early termination executed',
             self::SYSTEM_STATUS_EARLY_TERMINATION_FAILED => 'Early termination failed',
+            self::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED => 'Early termination resolved',
         ];
+    }
+
+    public function isTerminal(): bool
+    {
+        return in_array($this->workflow_status, [
+            self::WORKFLOW_STATUS_REJECTED,
+            self::WORKFLOW_STATUS_CANCELLED,
+        ], true);
+    }
+
+    public function isEditable(): bool
+    {
+        return in_array($this->workflow_status, [
+            self::WORKFLOW_STATUS_DRAFT,
+            self::WORKFLOW_STATUS_RETURNED,
+            self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
+            self::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER,
+        ], true) && ! $this->isTerminal();
+    }
+
+    public function canRetryInquiry(): bool
+    {
+        return ! $this->isTerminal()
+            && in_array($this->workflow_status, [
+                self::WORKFLOW_STATUS_DRAFT,
+                self::WORKFLOW_STATUS_RETURNED,
+                self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
+            ], true)
+            && $this->system_status === self::SYSTEM_STATUS_INQUIRY_FAILED;
+    }
+
+    public function canCancelFailedInquiry(): bool
+    {
+        return ! $this->isTerminal()
+            && in_array($this->workflow_status, [
+                self::WORKFLOW_STATUS_DRAFT,
+                self::WORKFLOW_STATUS_RETURNED,
+                self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
+            ], true)
+            && $this->system_status === self::SYSTEM_STATUS_INQUIRY_FAILED;
+    }
+
+    public function canResolveEarlyTermination(): bool
+    {
+        return ! $this->isTerminal()
+            && $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_FAILED;
+    }
+
+    public function hasCompleteRequiredDocuments(): bool
+    {
+        foreach (self::REQUIRED_DOCUMENT_TYPES as $documentType) {
+            $exists = $this->documents()
+                ->where('document_type', $documentType)
+                ->whereNotNull('file_path')
+                ->where('file_path', '!=', '')
+                ->exists();
+
+            if (! $exists) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -254,6 +340,7 @@ class InsuranceReceivable extends Model
             'approved_at' => 'datetime',
             'inquiry_completed_at' => 'datetime',
             'early_termination_executed_at' => 'datetime',
+            'early_termination_resolved_at' => 'datetime',
         ];
     }
 }

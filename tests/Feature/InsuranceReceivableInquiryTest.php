@@ -34,6 +34,7 @@ class InsuranceReceivableInquiryTest extends TestCase
         $user = $this->branchUser('001');
         $receivable = $this->draftReceivableFor($user);
         $expectedRawBody = '{"accountNumber":"3010001000054745"}';
+        $expectedLogRequestBody = json_decode($expectedRawBody, true, flags: JSON_THROW_ON_ERROR);
 
         Http::fake([
             'http://core.test/inquiry/detail/loan' => Http::response([
@@ -78,9 +79,9 @@ class InsuranceReceivableInquiryTest extends TestCase
         $log = ApiIntegrationLog::query()->sole();
         $this->assertSame('core_banking', $log->service_name);
         $this->assertSame('/inquiry/detail/loan', $log->endpoint);
-        $this->assertSame($expectedRawBody, $log->request_body);
+        $this->assertSame($expectedLogRequestBody, $log->request_body);
         $this->assertSame('[masked]', $log->request_headers['Signature']);
-        $this->assertStringContainsString('"responseCode":"00"', $log->response_body);
+        $this->assertSame('00', $log->response_body['responseCode']);
         $this->assertTrue($log->is_success);
     }
 

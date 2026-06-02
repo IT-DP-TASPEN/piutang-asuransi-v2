@@ -18,6 +18,12 @@ class ExecuteEarlyTerminationAction
 
     public function handle(InsuranceReceivable $insuranceReceivable, ?User $user = null): EarlyTerminationTransaction
     {
+        if ($insuranceReceivable->isTerminal()) {
+            throw ValidationException::withMessages([
+                'workflow_status' => 'Terminal receivables cannot execute early termination.',
+            ]);
+        }
+
         if ($insuranceReceivable->workflow_status !== InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED
             && $insuranceReceivable->system_status !== InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED
             && $insuranceReceivable->system_status !== InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED
