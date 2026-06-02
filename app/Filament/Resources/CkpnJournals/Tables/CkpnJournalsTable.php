@@ -4,6 +4,7 @@ namespace App\Filament\Resources\CkpnJournals\Tables;
 
 use App\Models\CkpnJournal;
 use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -48,7 +49,9 @@ class CkpnJournalsTable
                     ->options(CkpnJournal::statusOptions()),
             ])
             ->recordActions([
-                EditAction::make(),
+                ViewAction::make(),
+                EditAction::make()
+                    ->visible(fn (CkpnJournal $record): bool => auth()->user()?->can('update', $record) ?? false),
             ]);
     }
 }

@@ -70,8 +70,8 @@ class ApprovalFinalizationService
         }
 
         $journal = $receivable->receivableFormationJournals()
+            ->where('approval_request_id', $approvalRequest->id)
             ->where('status', ReceivableFormationJournal::STATUS_SUBMITTED)
-            ->latest('id')
             ->first();
 
         if (! $journal instanceof ReceivableFormationJournal) {
@@ -83,6 +83,8 @@ class ApprovalFinalizationService
         $fromStatus = $receivable->workflow_status;
 
         DB::transaction(function () use ($receivable, $journal, $actor, $approvalRequest, $fromStatus, $notes): void {
+            $snapshot = $journal->frozenSnapshot();
+
             $journal->forceFill([
                 'status' => ReceivableFormationJournal::STATUS_APPROVED,
                 'approved_by' => $actor->id,
@@ -90,8 +92,8 @@ class ApprovalFinalizationService
             ])->save();
 
             $receivable->forceFill([
-                'receivable_formation_date' => $journal->journal_date,
-                'receivable_amount' => $journal->amount,
+                'receivable_formation_date' => $snapshot['journal_date'] ?? $journal->journal_date,
+                'receivable_amount' => $snapshot['amount'] ?? $journal->amount,
                 'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
                 'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED,
                 'last_error_message' => null,
@@ -104,6 +106,10 @@ class ApprovalFinalizationService
                 fromStatus: $fromStatus,
                 toStatus: InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
                 description: $notes ?: 'Accounting validation approved.',
+                metadata: [
+                    'receivable_formation_journal_id' => $journal->id,
+                    'snapshot' => $snapshot,
+                ],
                 actor: $actor,
                 approvalRequest: $approvalRequest,
             );
@@ -114,6 +120,7 @@ class ApprovalFinalizationService
                 fromStatus: null,
                 toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED,
                 description: 'Early termination queued after accounting approval.',
+                metadata: ['receivable_formation_journal_id' => $journal->id],
                 actor: $actor,
                 approvalRequest: $approvalRequest,
             );

@@ -31,7 +31,7 @@ class GeneratedExportResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Generated exports';
 
-    protected static ?string $recordTitleAttribute = 'file_path';
+    protected static ?string $recordTitleAttribute = 'export_type';
 
     public static function getEloquentQuery(): Builder
     {

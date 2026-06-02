@@ -120,7 +120,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
 
     public function test_approved_workpaper_generates_sakep_xlsx_with_required_columns(): void
     {
-        Storage::fake('public');
+        Storage::fake(GeneratedExport::DISK);
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_maker', '000');
         $workpaper = $this->approvedWorkpaperWithItem();
@@ -129,13 +129,13 @@ class CkpnJournalExportGlToGlTest extends TestCase
 
         $this->assertSame(GeneratedExport::STATUS_GENERATED, $export->status);
         $this->assertSame(GeneratedExport::TYPE_CKPN_WORKPAPER_SAKEP_XLSX, $export->export_type);
-        Storage::disk('public')->assertExists($export->file_path);
+        Storage::disk(GeneratedExport::DISK)->assertExists($export->file_path);
         $this->assertDatabaseHas('generated_exports', [
             'id' => $export->id,
             'status' => GeneratedExport::STATUS_GENERATED,
         ]);
 
-        $rows = $this->rowsFromXlsx(Storage::disk('public')->path($export->file_path));
+        $rows = $this->rowsFromXlsx(Storage::disk(GeneratedExport::DISK)->path($export->file_path));
         $headers = $rows[0];
         $dataRow = $rows[1];
 

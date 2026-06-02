@@ -19,6 +19,8 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 ])]
 class GeneratedExport extends Model
 {
+    public const DISK = 'local';
+
     public const STATUS_GENERATED = 'generated';
 
     public const STATUS_FAILED = 'failed';

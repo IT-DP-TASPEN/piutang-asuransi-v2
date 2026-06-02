@@ -17,6 +17,12 @@ class ReturnCkpnJournalAction
 
     public function handle(CkpnJournal $journal, User $user, ?string $notes = null): CkpnJournal
     {
+        if (! $user->can('returnRequest', $journal)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only accounting approver can return CKPN journals.',
+            ]);
+        }
+
         return DB::transaction(function () use ($journal, $user, $notes): CkpnJournal {
             $this->approvalService->returnCurrentStep($this->activeApprovalRequestFor($journal), $user, $notes);
             $journal->forceFill(['status' => CkpnJournal::STATUS_RETURNED])->save();

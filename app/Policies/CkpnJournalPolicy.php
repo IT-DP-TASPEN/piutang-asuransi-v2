@@ -27,7 +27,9 @@ class CkpnJournalPolicy
 
     public function update(User $user, CkpnJournal $ckpnJournal): bool
     {
-        return $this->can($user, 'Update') && $this->canAccessRecord($user, $ckpnJournal);
+        return $this->can($user, 'Update')
+            && $this->canAccessRecord($user, $ckpnJournal)
+            && $ckpnJournal->isEditable();
     }
 
     public function delete(User $user, CkpnJournal $ckpnJournal): bool
@@ -72,22 +74,30 @@ class CkpnJournalPolicy
 
     public function submit(User $user, CkpnJournal $ckpnJournal): bool
     {
-        return $this->can($user, 'Submit') && $this->canAccessRecord($user, $ckpnJournal);
+        return $this->can($user, 'Submit')
+            && $this->canAccessRecord($user, $ckpnJournal)
+            && in_array($ckpnJournal->status, CkpnJournal::editableStatuses(), true);
     }
 
     public function approve(User $user, CkpnJournal $ckpnJournal): bool
     {
-        return $this->can($user, 'Approve') && $this->canAccessRecord($user, $ckpnJournal);
+        return $this->can($user, 'Approve')
+            && $this->canAccessRecord($user, $ckpnJournal)
+            && $ckpnJournal->status === CkpnJournal::STATUS_SUBMITTED;
     }
 
     public function reject(User $user, CkpnJournal $ckpnJournal): bool
     {
-        return $this->can($user, 'Reject') && $this->canAccessRecord($user, $ckpnJournal);
+        return $this->can($user, 'Reject')
+            && $this->canAccessRecord($user, $ckpnJournal)
+            && $ckpnJournal->status === CkpnJournal::STATUS_SUBMITTED;
     }
 
     public function returnRequest(User $user, CkpnJournal $ckpnJournal): bool
     {
-        return $this->can($user, 'Return') && $this->canAccessRecord($user, $ckpnJournal);
+        return $this->can($user, 'Return')
+            && $this->canAccessRecord($user, $ckpnJournal)
+            && $ckpnJournal->status === CkpnJournal::STATUS_SUBMITTED;
     }
 
     public function executeGlToGl(User $user, CkpnJournal $ckpnJournal): bool

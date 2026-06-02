@@ -30,6 +30,14 @@ class SubmitCkpnJournalAction
         }
 
         return DB::transaction(function () use ($journal, $user, $notes): CkpnJournal {
+            $journal->loadMissing('ckpnWorkpaper');
+
+            if (blank($journal->derivedTotalAmount())) {
+                throw ValidationException::withMessages([
+                    'total_amount' => 'CKPN journal amount could not be derived from the workpaper.',
+                ]);
+            }
+
             $this->approvalService->submit(
                 approvable: $journal,
                 workflowCode: ApprovalRequest::WORKFLOW_CKPN_JOURNAL_APPROVAL,
@@ -37,7 +45,10 @@ class SubmitCkpnJournalAction
                 notes: $notes,
             );
 
-            $journal->forceFill(['status' => CkpnJournal::STATUS_SUBMITTED])->save();
+            $journal->forceFill([
+                'total_amount' => $journal->derivedTotalAmount(),
+                'status' => CkpnJournal::STATUS_SUBMITTED,
+            ])->save();
 
             return $journal->refresh();
         });

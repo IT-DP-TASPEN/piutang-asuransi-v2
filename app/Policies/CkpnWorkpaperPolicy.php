@@ -27,7 +27,12 @@ class CkpnWorkpaperPolicy
 
     public function update(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
     {
-        return $this->can($user, 'Update') && $this->canAccessRecord($user, $ckpnWorkpaper);
+        return $this->can($user, 'Update')
+            && $this->canAccessRecord($user, $ckpnWorkpaper)
+            && in_array($ckpnWorkpaper->status, [
+                CkpnWorkpaper::STATUS_DRAFT,
+                CkpnWorkpaper::STATUS_RETURNED,
+            ], true);
     }
 
     public function delete(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
@@ -72,42 +77,62 @@ class CkpnWorkpaperPolicy
 
     public function generate(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
     {
-        return $this->can($user, 'Generate') && $this->canAccessRecord($user, $ckpnWorkpaper);
+        return $this->can($user, 'Generate')
+            && $this->canAccessRecord($user, $ckpnWorkpaper)
+            && $ckpnWorkpaper->status === CkpnWorkpaper::STATUS_GENERATION_FAILED;
     }
 
     public function recalculate(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
     {
-        return $this->can($user, 'Recalculate') && $this->canAccessRecord($user, $ckpnWorkpaper);
+        return $this->can($user, 'Recalculate')
+            && $this->canAccessRecord($user, $ckpnWorkpaper)
+            && in_array($ckpnWorkpaper->status, [
+                CkpnWorkpaper::STATUS_DRAFT,
+                CkpnWorkpaper::STATUS_GENERATED,
+                CkpnWorkpaper::STATUS_RETURNED,
+            ], true);
     }
 
     public function submit(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
     {
-        return $this->can($user, 'Submit') && $this->canAccessRecord($user, $ckpnWorkpaper);
+        return $this->can($user, 'Submit')
+            && $this->canAccessRecord($user, $ckpnWorkpaper)
+            && $ckpnWorkpaper->status === CkpnWorkpaper::STATUS_GENERATED;
     }
 
     public function approve(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
     {
-        return $this->can($user, 'Approve') && $this->canAccessRecord($user, $ckpnWorkpaper);
+        return $this->can($user, 'Approve')
+            && $this->canAccessRecord($user, $ckpnWorkpaper)
+            && $ckpnWorkpaper->status === CkpnWorkpaper::STATUS_SUBMITTED;
     }
 
     public function reject(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
     {
-        return $this->can($user, 'Reject') && $this->canAccessRecord($user, $ckpnWorkpaper);
+        return $this->can($user, 'Reject')
+            && $this->canAccessRecord($user, $ckpnWorkpaper)
+            && $ckpnWorkpaper->status === CkpnWorkpaper::STATUS_SUBMITTED;
     }
 
     public function returnRequest(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
     {
-        return $this->can($user, 'Return') && $this->canAccessRecord($user, $ckpnWorkpaper);
+        return $this->can($user, 'Return')
+            && $this->canAccessRecord($user, $ckpnWorkpaper)
+            && $ckpnWorkpaper->status === CkpnWorkpaper::STATUS_SUBMITTED;
     }
 
     public function createJournal(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
     {
-        return $this->can($user, 'CreateJournal') && $this->canAccessRecord($user, $ckpnWorkpaper);
+        return $this->can($user, 'CreateJournal')
+            && $this->canAccessRecord($user, $ckpnWorkpaper)
+            && $ckpnWorkpaper->status === CkpnWorkpaper::STATUS_APPROVED;
     }
 
     public function generateExport(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
     {
-        return $this->can($user, 'GenerateExport') && $this->canAccessRecord($user, $ckpnWorkpaper);
+        return $this->can($user, 'GenerateExport')
+            && $this->canAccessRecord($user, $ckpnWorkpaper)
+            && $ckpnWorkpaper->status === CkpnWorkpaper::STATUS_APPROVED;
     }
 
     private function can(User $user, string $action): bool

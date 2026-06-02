@@ -19,7 +19,7 @@ class SubmitReceivableFormationValidationAction
     ) {}
 
     /**
-     * @param  array{journal_date?: mixed, amount?: mixed, debit_account?: string|null, credit_account?: string|null, description?: string|null}  $data
+     * @param  array{journal_date?: mixed, amount?: mixed, debit_account?: string|null, credit_account?: string|null, description?: string|null, notes?: string|null}  $data
      */
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, array $data = [], ?string $notes = null): InsuranceReceivable
     {
@@ -40,14 +40,25 @@ class SubmitReceivableFormationValidationAction
 
         return DB::transaction(function () use ($insuranceReceivable, $user, $data, $notes): InsuranceReceivable {
             $fromWorkflowStatus = $insuranceReceivable->workflow_status;
-            $journal = $insuranceReceivable->receivableFormationJournals()->create([
-                'journal_date' => $data['journal_date'] ?? now()->toDateString(),
-                'amount' => $this->amount($data['amount'] ?? $insuranceReceivable->loan_outstanding),
+            $journalDate = $data['journal_date'] ?? now()->toDateString();
+            $amount = $this->amount($data['amount'] ?? $insuranceReceivable->loan_outstanding);
+            $notes ??= $data['notes'] ?? null;
+            $snapshot = [
+                'journal_date' => (string) $journalDate,
+                'amount' => $amount,
                 'debit_account' => $data['debit_account'] ?? null,
                 'credit_account' => $data['credit_account'] ?? null,
                 'description' => $data['description'] ?? null,
+                'notes' => $notes,
+            ];
+
+            $journal = $insuranceReceivable->receivableFormationJournals()->create([
+                ...$snapshot,
                 'status' => ReceivableFormationJournal::STATUS_SUBMITTED,
                 'created_by' => $user->id,
+                'submitted_by' => $user->id,
+                'submitted_at' => now(),
+                'snapshot' => $snapshot,
             ]);
 
             $approvalRequest = $this->approvalService->submit(
@@ -55,7 +66,12 @@ class SubmitReceivableFormationValidationAction
                 workflowCode: ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION,
                 actor: $user,
                 notes: $notes,
+                metadata: ['receivable_formation_journal_id' => $journal->id],
             );
+
+            $journal->forceFill([
+                'approval_request_id' => $approvalRequest->id,
+            ])->save();
 
             $insuranceReceivable->forceFill([
                 'receivable_formation_date' => $journal->journal_date,
@@ -69,6 +85,7 @@ class SubmitReceivableFormationValidationAction
                 fromStatus: $fromWorkflowStatus,
                 toStatus: InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
                 description: 'Accounting validation submitted.',
+                metadata: ['receivable_formation_journal_id' => $journal->id],
                 actor: $user,
                 approvalRequest: $approvalRequest,
             );

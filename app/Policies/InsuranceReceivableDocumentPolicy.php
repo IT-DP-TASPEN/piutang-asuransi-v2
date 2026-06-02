@@ -2,9 +2,11 @@
 
 namespace App\Policies;
 
+use App\Models\InsuranceReceivable;
 use App\Models\InsuranceReceivableDocument;
 use App\Models\User;
 use App\Support\Access\RoleScope;
+use Illuminate\Support\Facades\Gate;
 
 class InsuranceReceivableDocumentPolicy
 {
@@ -27,12 +29,16 @@ class InsuranceReceivableDocumentPolicy
 
     public function update(User $user, InsuranceReceivableDocument $insuranceReceivableDocument): bool
     {
-        return $this->can($user, 'Update') && $this->canAccessRecord($user, $insuranceReceivableDocument);
+        return $this->can($user, 'Update')
+            && $this->canAccessRecord($user, $insuranceReceivableDocument)
+            && $this->canMutateForParentState($user, $insuranceReceivableDocument);
     }
 
     public function delete(User $user, InsuranceReceivableDocument $insuranceReceivableDocument): bool
     {
-        return $this->can($user, 'Delete') && $this->canAccessRecord($user, $insuranceReceivableDocument);
+        return $this->can($user, 'Delete')
+            && $this->canAccessRecord($user, $insuranceReceivableDocument)
+            && $this->canMutateForParentState($user, $insuranceReceivableDocument);
     }
 
     public function deleteAny(User $user): bool
@@ -86,5 +92,17 @@ class InsuranceReceivableDocumentPolicy
         }
 
         return $user->branch_office_id === $insuranceReceivableDocument->insuranceReceivable?->branch_office_id;
+    }
+
+    private function canMutateForParentState(User $user, InsuranceReceivableDocument $insuranceReceivableDocument): bool
+    {
+        if (! $user->hasRole('branch_maker')) {
+            return true;
+        }
+
+        $receivable = $insuranceReceivableDocument->insuranceReceivable;
+
+        return $receivable instanceof InsuranceReceivable
+            && Gate::forUser($user)->allows('update', $receivable);
     }
 }

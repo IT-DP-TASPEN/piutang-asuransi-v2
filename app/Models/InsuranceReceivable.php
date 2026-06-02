@@ -103,6 +103,8 @@ class InsuranceReceivable extends Model
         'supporting_document',
     ];
 
+    public const DOCUMENT_DISK = 'local';
+
     /**
      * @return array<string, string>
      */
@@ -159,7 +161,6 @@ class InsuranceReceivable extends Model
             self::WORKFLOW_STATUS_DRAFT,
             self::WORKFLOW_STATUS_RETURNED,
             self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
-            self::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER,
         ], true) && ! $this->isTerminal();
     }
 

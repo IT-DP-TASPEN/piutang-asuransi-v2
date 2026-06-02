@@ -29,13 +29,18 @@ class RejectInsuranceReceivableApprovalAction
         return DB::transaction(function () use ($insuranceReceivable, $user, $notes): InsuranceReceivable {
             $request = $this->activeRequestFor($insuranceReceivable);
             $request = $this->approvalService->rejectCurrentStep($request, $user, $notes);
+            $fromWorkflowStatus = $insuranceReceivable->workflow_status;
 
             if ($request->workflow_code === ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION) {
                 $insuranceReceivable->receivableFormationJournals()
+                    ->where('approval_request_id', $request->id)
                     ->where('status', ReceivableFormationJournal::STATUS_SUBMITTED)
-                    ->latest('id')
                     ->first()
-                    ?->forceFill(['status' => ReceivableFormationJournal::STATUS_REJECTED])
+                    ?->forceFill([
+                        'status' => ReceivableFormationJournal::STATUS_REJECTED,
+                        'rejected_by' => $user->id,
+                        'rejected_at' => now(),
+                    ])
                     ->save();
             }
 
@@ -48,9 +53,14 @@ class RejectInsuranceReceivableApprovalAction
                 event: $request->workflow_code === ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION
                     ? 'accounting_validation_rejected'
                     : 'approval_rejected',
-                fromStatus: null,
+                fromStatus: $fromWorkflowStatus,
                 toStatus: InsuranceReceivable::WORKFLOW_STATUS_REJECTED,
                 description: $notes ?: 'Approval rejected.',
+                metadata: $request->workflow_code === ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION
+                    ? ['receivable_formation_journal_id' => $insuranceReceivable->receivableFormationJournals()
+                        ->where('approval_request_id', $request->id)
+                        ->value('id')]
+                    : [],
                 actor: $user,
                 approvalRequest: $request,
             );

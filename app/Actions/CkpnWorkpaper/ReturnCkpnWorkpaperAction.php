@@ -17,6 +17,12 @@ class ReturnCkpnWorkpaperAction
 
     public function handle(CkpnWorkpaper $workpaper, User $user, ?string $notes = null): CkpnWorkpaper
     {
+        if (! $user->can('returnRequest', $workpaper)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only accounting approver can return CKPN workpapers.',
+            ]);
+        }
+
         return DB::transaction(function () use ($workpaper, $user, $notes): CkpnWorkpaper {
             $approvalRequest = $this->activeApprovalRequestFor($workpaper);
             $this->approvalService->returnCurrentStep($approvalRequest, $user, $notes);

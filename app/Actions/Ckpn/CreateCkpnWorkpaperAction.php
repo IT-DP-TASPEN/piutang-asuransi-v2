@@ -19,6 +19,12 @@ class CreateCkpnWorkpaperAction
      */
     public function handle(array $data, User $user): CkpnWorkpaper
     {
+        if (! $user->can('create', CkpnWorkpaper::class)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'permission' => 'Only accounting maker can create CKPN workpapers.',
+            ]);
+        }
+
         return DB::transaction(function () use ($data, $user): CkpnWorkpaper {
             $period = CkpnWorkpaper::normalizePeriod($data['period'])->toDateString();
             $branchOfficeId = filled($data['branch_office_id'] ?? null)

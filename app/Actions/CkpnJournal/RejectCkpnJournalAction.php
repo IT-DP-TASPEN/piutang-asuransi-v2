@@ -17,6 +17,12 @@ class RejectCkpnJournalAction
 
     public function handle(CkpnJournal $journal, User $user, ?string $notes = null): CkpnJournal
     {
+        if (! $user->can('reject', $journal)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only accounting approver can reject CKPN journals.',
+            ]);
+        }
+
         return DB::transaction(function () use ($journal, $user, $notes): CkpnJournal {
             $this->approvalService->rejectCurrentStep($this->activeApprovalRequestFor($journal), $user, $notes);
             $journal->forceFill(['status' => CkpnJournal::STATUS_REJECTED])->save();

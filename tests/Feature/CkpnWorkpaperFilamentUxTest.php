@@ -41,7 +41,7 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
     {
         $this->seedDependencies();
         Queue::fake();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
 
         $component = Livewire::actingAs($maker)
@@ -62,7 +62,7 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
     {
         $this->seedDependencies();
         Queue::fake();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         InsuranceReceivable::factory()->create([
             'branch_office_id' => $branch->id,
@@ -105,7 +105,7 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
     public function test_view_page_exposes_workpaper_actions_by_status_and_permission(): void
     {
         $this->seedDependencies();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $draft = $this->workpaper(CkpnWorkpaper::STATUS_DRAFT);
         $generated = $this->workpaper(CkpnWorkpaper::STATUS_GENERATED);
         $failed = $this->workpaper(CkpnWorkpaper::STATUS_GENERATION_FAILED);
@@ -157,11 +157,13 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
         Livewire::actingAs($accountingMaker)
             ->test(ViewCkpnWorkpaper::class, ['record' => $workpaper->id])
             ->assertSee('Output')
-            ->assertActionVisible('createJournal');
+            ->assertActionVisible('createJournal')
+            ->assertActionVisible('generateSakepExport');
 
         Livewire::actingAs($businessMaker)
             ->test(ViewCkpnWorkpaper::class, ['record' => $workpaper->id])
-            ->assertActionVisible('generateSakepExport');
+            ->assertActionHidden('generateSakepExport')
+            ->assertActionHidden('createJournal');
 
         $this->journal($workpaper, CkpnJournal::STATUS_DRAFT);
 
@@ -173,7 +175,7 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
     public function test_create_journal_action_notifies_when_pending_adjustments_block_creation(): void
     {
         $this->seedDependencies();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $accountingMaker = $this->userWithRole('accounting_maker', '000');
         $workpaper = $this->workpaper(CkpnWorkpaper::STATUS_APPROVED);
         $item = $this->workpaperItem($workpaper);
@@ -216,7 +218,7 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
     public function test_edit_page_does_not_expose_workflow_or_operational_actions(): void
     {
         $this->seedDependencies();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $workpaper = $this->workpaper(CkpnWorkpaper::STATUS_DRAFT);
 
         Livewire::actingAs($maker)

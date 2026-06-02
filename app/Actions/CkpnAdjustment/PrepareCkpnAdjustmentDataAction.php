@@ -17,6 +17,12 @@ class PrepareCkpnAdjustmentDataAction
      */
     public function handle(array $data, User $user): array
     {
+        if (! $user->can('Create:CkpnAdjustment')) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only accounting maker can request CKPN adjustments.',
+            ]);
+        }
+
         if (blank($data['reason'] ?? null)) {
             throw ValidationException::withMessages([
                 'reason' => 'CKPN adjustment reason is required.',

@@ -39,11 +39,14 @@ class ApprovalService
         ],
     ];
 
-    public function submit(Model $approvable, string $workflowCode, User $actor, ?string $notes = null): ApprovalRequest
+    /**
+     * @param  array<string, mixed>  $metadata
+     */
+    public function submit(Model $approvable, string $workflowCode, User $actor, ?string $notes = null, array $metadata = []): ApprovalRequest
     {
         $steps = $this->workflowSteps($workflowCode);
 
-        return DB::transaction(function () use ($approvable, $workflowCode, $actor, $notes, $steps): ApprovalRequest {
+        return DB::transaction(function () use ($approvable, $workflowCode, $actor, $notes, $steps, $metadata): ApprovalRequest {
             $activeRequest = $this->latestActiveRequest($approvable, $workflowCode);
 
             if ($activeRequest instanceof ApprovalRequest) {
@@ -68,7 +71,7 @@ class ApprovalService
                 ]);
             }
 
-            $this->writeLog($request, $actor, 'submitted', $notes);
+            $this->writeLog($request, $actor, 'submitted', $notes, $metadata);
 
             return $request->refresh();
         });

@@ -27,9 +27,18 @@ class InsuranceReceivablePolicy
 
     public function update(User $user, InsuranceReceivable $insuranceReceivable): bool
     {
-        return $this->can($user, 'Update')
-            && $this->canAccessRecord($user, $insuranceReceivable)
-            && $insuranceReceivable->isEditable();
+        if (! $this->can($user, 'Update') || ! $this->canAccessRecord($user, $insuranceReceivable)) {
+            return false;
+        }
+
+        if ($user->hasRole('branch_maker')) {
+            return in_array($insuranceReceivable->workflow_status, [
+                InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
+                InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
+            ], true) && ! $insuranceReceivable->isTerminal();
+        }
+
+        return $insuranceReceivable->isEditable();
     }
 
     public function delete(User $user, InsuranceReceivable $insuranceReceivable): bool

@@ -16,6 +16,12 @@ class ApproveCkpnJournalAction
 
     public function handle(CkpnJournal $journal, User $user, ?string $notes = null): CkpnJournal
     {
+        if (! $user->can('approve', $journal)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only accounting approver can approve CKPN journals.',
+            ]);
+        }
+
         $this->approvalService->approveCurrentStep($this->activeApprovalRequestFor($journal), $user, $notes);
 
         return $journal->refresh();

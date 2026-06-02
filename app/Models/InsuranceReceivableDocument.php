@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class InsuranceReceivableDocument extends Model
 {
+    public const DISK = InsuranceReceivable::DOCUMENT_DISK;
+
     /**
      * @return BelongsTo<InsuranceReceivable, $this>
      */

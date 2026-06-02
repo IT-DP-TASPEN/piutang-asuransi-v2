@@ -64,6 +64,7 @@ class ViewCkpnWorkpaper extends ViewRecord
             ActionGroup::make([
                 $this->createJournalAction(),
                 $this->generateSakepExportAction(),
+                $this->downloadLatestSakepExportAction(),
             ])
                 ->label('Output')
                 ->icon(Heroicon::OutlinedDocumentArrowDown)
@@ -92,6 +93,12 @@ class ViewCkpnWorkpaper extends ViewRecord
             ->requiresConfirmation()
             ->visible(fn (): bool => $this->canRetryGeneration())
             ->action(function (): void {
+                $user = auth()->user();
+
+                if (! ($user?->can('generate', $this->workpaper()) ?? false)) {
+                    abort(403);
+                }
+
                 $workpaper = $this->workpaper();
                 $workpaper->forceFill([
                     'status' => CkpnWorkpaper::STATUS_GENERATION_QUEUED,
@@ -111,7 +118,13 @@ class ViewCkpnWorkpaper extends ViewRecord
             ->requiresConfirmation()
             ->visible(fn (): bool => $this->canRecalculate())
             ->action(function (): void {
-                app(RecalculateCkpnWorkpaperAction::class)->handle($this->workpaper());
+                $user = auth()->user();
+
+                if (! $user instanceof User) {
+                    abort(403);
+                }
+
+                app(RecalculateCkpnWorkpaperAction::class)->handle($this->workpaper(), $user);
                 $this->refreshWorkpaperData();
 
                 Notification::make()->success()->title('CKPN workpaper recalculated')->send();
@@ -275,6 +288,18 @@ class ViewCkpnWorkpaper extends ViewRecord
             });
     }
 
+    private function downloadLatestSakepExportAction(): Action
+    {
+        return Action::make('downloadLatestSakepExport')
+            ->label('Download latest SAKEP')
+            ->icon(Heroicon::OutlinedArrowDownTray)
+            ->visible(fn (): bool => $this->latestGeneratedExport() instanceof GeneratedExport)
+            ->url(fn (): ?string => ($export = $this->latestGeneratedExport()) instanceof GeneratedExport
+                ? route('generated-exports.download', $export)
+                : null)
+            ->openUrlInNewTab();
+    }
+
     private function retryGlToGlAction(): Action
     {
         return Action::make('retryGlToGl')
@@ -334,7 +359,9 @@ class ViewCkpnWorkpaper extends ViewRecord
 
     private function hasVisibleOutputActions(): bool
     {
-        return $this->canAttemptCreateJournal() || $this->canGenerateExport();
+        return $this->canAttemptCreateJournal()
+            || $this->canGenerateExport()
+            || $this->latestGeneratedExport() instanceof GeneratedExport;
     }
 
     private function hasVisibleSystemActions(): bool
@@ -399,6 +426,26 @@ class ViewCkpnWorkpaper extends ViewRecord
     {
         return (auth()->user()?->can('generateExport', $this->workpaper()) ?? false)
             && $this->workpaper()->status === CkpnWorkpaper::STATUS_APPROVED;
+    }
+
+    private function latestGeneratedExport(): ?GeneratedExport
+    {
+        $export = $this->workpaper()
+            ->generatedExports()
+            ->where('status', GeneratedExport::STATUS_GENERATED)
+            ->whereNotNull('file_path')
+            ->latest('id')
+            ->first();
+
+        if (! $export instanceof GeneratedExport) {
+            return null;
+        }
+
+        if (! (auth()->user()?->can('view', $export) ?? false)) {
+            return null;
+        }
+
+        return $export;
     }
 
     private function canRetryGlToGl(): bool

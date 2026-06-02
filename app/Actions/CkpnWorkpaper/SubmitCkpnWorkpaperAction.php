@@ -17,6 +17,12 @@ class SubmitCkpnWorkpaperAction
 
     public function handle(CkpnWorkpaper $workpaper, User $user, ?string $notes = null): CkpnWorkpaper
     {
+        if (! $user->can('submit', $workpaper)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only accounting maker can submit CKPN workpapers.',
+            ]);
+        }
+
         if ($workpaper->status !== CkpnWorkpaper::STATUS_GENERATED) {
             throw ValidationException::withMessages([
                 'status' => 'Only successfully generated CKPN workpapers can be submitted.',

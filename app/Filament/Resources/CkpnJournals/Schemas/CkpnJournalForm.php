@@ -31,11 +31,13 @@ class CkpnJournalForm
                             ->disabled()
                             ->dehydrated(false),
                         DatePicker::make('journal_date')
-                            ->required(),
+                            ->disabled()
+                            ->dehydrated(false),
                         TextInput::make('total_amount')
                             ->numeric()
                             ->step('0.01')
-                            ->required(),
+                            ->disabled()
+                            ->dehydrated(false),
                         Select::make('status')
                             ->options(CkpnJournal::statusOptions())
                             ->disabled()

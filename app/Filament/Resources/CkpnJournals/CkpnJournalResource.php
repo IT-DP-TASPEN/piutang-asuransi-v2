@@ -4,7 +4,9 @@ namespace App\Filament\Resources\CkpnJournals;
 
 use App\Filament\Resources\CkpnJournals\Pages\EditCkpnJournal;
 use App\Filament\Resources\CkpnJournals\Pages\ListCkpnJournals;
+use App\Filament\Resources\CkpnJournals\Pages\ViewCkpnJournal;
 use App\Filament\Resources\CkpnJournals\Schemas\CkpnJournalForm;
+use App\Filament\Resources\CkpnJournals\Schemas\CkpnJournalInfolist;
 use App\Filament\Resources\CkpnJournals\Tables\CkpnJournalsTable;
 use App\Models\CkpnJournal;
 use App\Models\User;
@@ -59,6 +61,11 @@ class CkpnJournalResource extends Resource
         return CkpnJournalForm::configure($schema);
     }
 
+    public static function infolist(Schema $schema): Schema
+    {
+        return CkpnJournalInfolist::configure($schema);
+    }
+
     public static function table(Table $table): Table
     {
         return CkpnJournalsTable::configure($table);
@@ -68,6 +75,7 @@ class CkpnJournalResource extends Resource
     {
         return [
             'index' => ListCkpnJournals::route('/'),
+            'view' => ViewCkpnJournal::route('/{record}'),
             'edit' => EditCkpnJournal::route('/{record}/edit'),
         ];
     }

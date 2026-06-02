@@ -186,7 +186,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     public function test_recalculate_is_blocked_after_submit(): void
     {
         $this->seedDependencies();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $this->receivable($branch, ['receivable_formation_date' => '2026-01-01', 'receivable_amount' => '10000.00']);
         $workpaper = CkpnWorkpaper::query()->create(['period' => '2026-06-30', 'branch_office_id' => $branch->id]);
@@ -201,7 +201,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     public function test_workpaper_submit_and_approve_finalizes_status(): void
     {
         $this->seedDependencies();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $approver = $this->userWithRole('accounting_approver', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $this->receivable($branch, ['receivable_formation_date' => '2026-01-01', 'receivable_amount' => '10000.00']);
@@ -226,7 +226,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     public function test_adjustment_requires_reason_and_approval_preserves_item_values(): void
     {
         $this->seedDependencies();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $approver = $this->userWithRole('accounting_approver', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $this->receivable($branch, ['receivable_formation_date' => '2026-01-01', 'receivable_amount' => '10000.00']);
@@ -244,7 +244,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     public function test_pending_rejected_and_approved_adjustments_update_only_effective_values(): void
     {
         $this->seedDependencies();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $approver = $this->userWithRole('accounting_approver', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $this->receivable($branch, ['receivable_formation_date' => '2026-01-01', 'receivable_amount' => '10000.00']);
@@ -297,7 +297,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     public function test_rejected_adjustment_does_not_change_effective_values(): void
     {
         $this->seedDependencies();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $approver = $this->userWithRole('accounting_approver', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $this->receivable($branch, ['receivable_formation_date' => '2026-01-01', 'receivable_amount' => '10000.00']);
@@ -321,7 +321,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     public function test_adjustment_approval_is_blocked_after_financial_output_exists(): void
     {
         $this->seedDependencies();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $approver = $this->userWithRole('accounting_approver', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $this->receivable($branch, ['receivable_formation_date' => '2026-01-01', 'receivable_amount' => '10000.00']);
@@ -354,7 +354,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     {
         $this->seedDependencies();
         Queue::fake();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
 
         $workpaper = app(CreateCkpnWorkpaperAction::class)->handle([
@@ -375,11 +375,51 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         ], $maker);
     }
 
+    public function test_ckpn_workpaper_creation_is_accounting_owned_and_business_read_only(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $accountingMaker = $this->userWithRole('accounting_maker', '000');
+        $businessMaker = $this->userWithRole('business_maker', '000');
+        $businessApprover = $this->userWithRole('business_approver', '000');
+        $accountingApprover = $this->userWithRole('accounting_approver', '000');
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $workpaper = CkpnWorkpaper::query()->create([
+            'period' => '2026-05-01',
+            'branch_office_id' => $branch->id,
+            'status' => CkpnWorkpaper::STATUS_SUBMITTED,
+        ]);
+
+        $this->assertTrue($accountingMaker->can('create', CkpnWorkpaper::class));
+        $this->assertFalse($businessMaker->can('create', CkpnWorkpaper::class));
+        $this->assertFalse($businessMaker->can('update', $workpaper));
+        $this->assertFalse($businessApprover->can('approve', $workpaper));
+        $this->assertTrue($accountingApprover->can('approve', $workpaper));
+
+        try {
+            app(CreateCkpnWorkpaperAction::class)->handle([
+                'period' => '2026-04-01',
+                'branch_office_id' => $branch->id,
+            ], $businessMaker);
+
+            $this->fail('Business maker should not create CKPN workpapers.');
+        } catch (ValidationException) {
+        }
+
+        $created = app(CreateCkpnWorkpaperAction::class)->handle([
+            'period' => '2026-04-01',
+            'branch_office_id' => $branch->id,
+        ], $accountingMaker);
+
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $created->status);
+        Queue::assertPushed(GenerateCkpnWorkpaperJob::class, fn (GenerateCkpnWorkpaperJob $job): bool => $job->ckpnWorkpaperId === $created->id);
+    }
+
     public function test_create_workpaper_prevents_duplicate_central_scope(): void
     {
         $this->seedDependencies();
         Queue::fake();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
 
         app(CreateCkpnWorkpaperAction::class)->handle(['period' => '2026-04-15'], $maker);
 
@@ -392,7 +432,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     {
         $this->seedDependencies();
         Queue::fake();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
 
         InsuranceReceivable::factory()->create([
@@ -416,7 +456,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     {
         $this->seedDependencies();
         Queue::fake();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
 
         InsuranceReceivable::factory()->create([
@@ -441,7 +481,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->seedDependencies();
         Queue::fake();
         $maker = $this->userWithRole('branch_maker', '001');
-        $businessMaker = $this->userWithRole('business_maker', '000');
+        $accountingMaker = $this->userWithRole('accounting_maker', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $receivable = InsuranceReceivable::factory()->create([
             'branch_office_id' => $branch->id,
@@ -458,7 +498,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
             app(CreateCkpnWorkpaperAction::class)->handle([
                 'period' => '2026-04-01',
                 'branch_office_id' => $branch->id,
-            ], $businessMaker);
+            ], $accountingMaker);
 
             $this->fail('Pending failed receivable should block workpaper creation.');
         } catch (ValidationException $exception) {
@@ -473,7 +513,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $workpaper = app(CreateCkpnWorkpaperAction::class)->handle([
             'period' => '2026-04-01',
             'branch_office_id' => $branch->id,
-        ], $businessMaker);
+        ], $accountingMaker);
 
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
     }
@@ -483,6 +523,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->seedDependencies();
         Queue::fake();
         $businessMaker = $this->userWithRole('business_maker', '000');
+        $accountingMaker = $this->userWithRole('accounting_maker', '000');
         $branchOne = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $branchTwo = BranchOffice::query()->where('branch_code', '002')->firstOrFail();
         $fromStatus = ClaimStatus::query()->where('code', ClaimStatus::DEFAULT_CODE)->firstOrFail();
@@ -507,7 +548,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
             app(CreateCkpnWorkpaperAction::class)->handle([
                 'period' => '2026-04-01',
                 'branch_office_id' => $branchOne->id,
-            ], $businessMaker);
+            ], $accountingMaker);
 
             $this->fail('Pending claim status request should block scoped CKPN workpaper.');
         } catch (ValidationException $exception) {
@@ -519,7 +560,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $otherBranchWorkpaper = app(CreateCkpnWorkpaperAction::class)->handle([
             'period' => '2026-04-01',
             'branch_office_id' => $branchTwo->id,
-        ], $businessMaker);
+        ], $accountingMaker);
 
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $otherBranchWorkpaper->status);
 
@@ -528,7 +569,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $workpaper = app(CreateCkpnWorkpaperAction::class)->handle([
             'period' => '2026-04-01',
             'branch_office_id' => $branchOne->id,
-        ], $businessMaker);
+        ], $accountingMaker);
 
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
     }
@@ -612,7 +653,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     public function test_submit_is_blocked_without_generated_items(): void
     {
         $this->seedDependencies();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $workpaper = CkpnWorkpaper::query()->create([
             'period' => '2026-04-01',
             'status' => CkpnWorkpaper::STATUS_GENERATED,
@@ -626,7 +667,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     public function test_draft_adjustment_blocks_journal_with_count_and_can_be_cancelled(): void
     {
         $this->seedDependencies();
-        $maker = $this->userWithRole('business_maker', '000');
+        $maker = $this->userWithRole('accounting_maker', '000');
         $accountingMaker = $this->userWithRole('accounting_maker', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $this->receivable($branch, ['receivable_formation_date' => '2026-01-01', 'receivable_amount' => '10000.00']);

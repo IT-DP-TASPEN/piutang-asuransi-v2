@@ -17,6 +17,12 @@ class GenerateCkpnWorkpaperSakepExportAction
 {
     public function handle(CkpnWorkpaper $workpaper, User $user): GeneratedExport
     {
+        if (! $user->can('generateExport', $workpaper)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only authorized accounting users can generate CKPN workpaper exports.',
+            ]);
+        }
+
         if ($workpaper->status !== CkpnWorkpaper::STATUS_APPROVED) {
             throw ValidationException::withMessages([
                 'status' => 'SAKEP export can only be generated from an approved CKPN workpaper.',
@@ -26,7 +32,7 @@ class GenerateCkpnWorkpaperSakepExportAction
         $directory = 'generated-exports/ckpn-workpapers';
         $filename = sprintf('ckpn-workpaper-%s-%s.xlsx', $workpaper->id, now()->format('YmdHis'));
         $relativePath = "{$directory}/{$filename}";
-        $disk = Storage::disk('public');
+        $disk = Storage::disk(GeneratedExport::DISK);
         $disk->makeDirectory($directory);
         $absolutePath = $disk->path($relativePath);
 

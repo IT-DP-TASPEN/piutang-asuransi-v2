@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\InsuranceReceivables\Schemas;
 
 use App\Models\ClaimStatus;
+use App\Models\InsuranceReceivable;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
@@ -52,7 +53,7 @@ class InsuranceReceivableForm
                     ->schema([
                         FileUpload::make('supporting_document_file_path')
                             ->label('Supporting document')
-                            ->disk('public')
+                            ->disk(InsuranceReceivable::DOCUMENT_DISK)
                             ->directory('insurance-receivable-documents')
                             ->storeFileNamesIn('supporting_document_original_filename')
                             ->required(),

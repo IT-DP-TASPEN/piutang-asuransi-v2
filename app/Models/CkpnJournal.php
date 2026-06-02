@@ -44,6 +44,27 @@ class CkpnJournal extends Model
     public const STATUS_GL_TO_GL_FAILED = 'gl_to_gl_failed';
 
     /**
+     * @return list<string>
+     */
+    public static function editableStatuses(): array
+    {
+        return [
+            self::STATUS_DRAFT,
+            self::STATUS_RETURNED,
+        ];
+    }
+
+    public function isEditable(): bool
+    {
+        return in_array($this->status, self::editableStatuses(), true);
+    }
+
+    public function derivedTotalAmount(): ?string
+    {
+        return $this->ckpnWorkpaper?->total_effective_ckpn_amount;
+    }
+
+    /**
      * @return array<string, string>
      */
     public static function statusOptions(): array

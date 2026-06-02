@@ -17,6 +17,12 @@ class ApproveCkpnWorkpaperAction
 
     public function handle(CkpnWorkpaper $workpaper, User $user, ?string $notes = null): CkpnWorkpaper
     {
+        if (! $user->can('approve', $workpaper)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only accounting approver can approve CKPN workpapers.',
+            ]);
+        }
+
         return DB::transaction(function () use ($workpaper, $user, $notes): CkpnWorkpaper {
             $approvalRequest = $this->activeApprovalRequestFor($workpaper);
             $approvalRequest = $this->approvalService->approveCurrentStep($approvalRequest, $user, $notes);

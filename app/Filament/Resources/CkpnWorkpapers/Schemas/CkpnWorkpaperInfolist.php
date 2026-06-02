@@ -198,7 +198,7 @@ class CkpnWorkpaperInfolist
             "Export #{$export->id}",
             "Type: {$export->export_type}",
             "Status: {$export->status}",
-            $export->file_path ? "File: {$export->file_path}" : null,
+            $export->file_path ? 'File: '.basename($export->file_path) : null,
             $export->generated_at ? "Generated at: {$export->generated_at->toDateTimeString()}" : null,
         ])->filter()->join("\n");
     }

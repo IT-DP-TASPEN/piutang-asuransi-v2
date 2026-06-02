@@ -19,11 +19,23 @@ return new class extends Migration
             $table->string('debit_account')->nullable();
             $table->string('credit_account')->nullable();
             $table->text('description')->nullable();
-            $table->string('status')->default('draft');
+            $table->text('notes')->nullable();
+            $table->string('status')->default('submitted');
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('submitted_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('submitted_at')->nullable();
             $table->foreignId('approved_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('approved_at')->nullable();
+            $table->foreignId('returned_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('returned_at')->nullable();
+            $table->foreignId('rejected_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('rejected_at')->nullable();
+            $table->foreignId('approval_request_id')->nullable()->constrained()->nullOnDelete();
+            $table->json('snapshot')->nullable();
             $table->timestamps();
+
+            $table->index(['insurance_receivable_id', 'status']);
+            $table->index('approval_request_id');
         });
     }
 

@@ -40,10 +40,14 @@ class ReturnInsuranceReceivableApprovalAction
 
             if ($request->workflow_code === ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION) {
                 $insuranceReceivable->receivableFormationJournals()
+                    ->where('approval_request_id', $request->id)
                     ->where('status', ReceivableFormationJournal::STATUS_SUBMITTED)
-                    ->latest('id')
                     ->first()
-                    ?->forceFill(['status' => ReceivableFormationJournal::STATUS_RETURNED])
+                    ?->forceFill([
+                        'status' => ReceivableFormationJournal::STATUS_RETURNED,
+                        'returned_by' => $user->id,
+                        'returned_at' => now(),
+                    ])
                     ->save();
             }
 
@@ -59,6 +63,11 @@ class ReturnInsuranceReceivableApprovalAction
                 fromStatus: $fromWorkflowStatus,
                 toStatus: $toWorkflowStatus,
                 description: $notes ?: 'Approval returned.',
+                metadata: $request->workflow_code === ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION
+                    ? ['receivable_formation_journal_id' => $insuranceReceivable->receivableFormationJournals()
+                        ->where('approval_request_id', $request->id)
+                        ->value('id')]
+                    : [],
                 actor: $user,
                 approvalRequest: $request,
             );

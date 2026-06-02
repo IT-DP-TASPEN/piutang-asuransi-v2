@@ -5,6 +5,7 @@ namespace App\Filament\Resources\InsuranceReceivables\Schemas;
 use App\Models\ApprovalRequest;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceReceivable;
+use App\Models\ReceivableFormationJournal;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -53,6 +54,44 @@ class InsuranceReceivableInfolist
                                 ->latest('id')
                                 ->first()?->workflow_code),
                     ]),
+                Section::make('Accounting validation')
+                    ->visible(fn (InsuranceReceivable $record): bool => $record->receivableFormationJournals()->exists()
+                        && (auth()->user()?->can('view', $record) ?? false))
+                    ->schema([
+                        TextEntry::make('accounting_validation_journal_date')
+                            ->label('Journal date')
+                            ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->journal_date?->toDateString()),
+                        TextEntry::make('accounting_validation_amount')
+                            ->label('Amount')
+                            ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->amount)
+                            ->numeric(2),
+                        TextEntry::make('accounting_validation_debit_account')
+                            ->label('Debit account')
+                            ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->debit_account),
+                        TextEntry::make('accounting_validation_credit_account')
+                            ->label('Credit account')
+                            ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->credit_account),
+                        TextEntry::make('accounting_validation_description')
+                            ->label('Description')
+                            ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->description)
+                            ->columnSpanFull(),
+                        TextEntry::make('accounting_validation_notes')
+                            ->label('Notes')
+                            ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->notes)
+                            ->columnSpanFull(),
+                        TextEntry::make('accounting_validation_submitter')
+                            ->label('Submitted by')
+                            ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->submitter?->name),
+                        TextEntry::make('accounting_validation_submitted_at')
+                            ->label('Submitted at')
+                            ->state(fn (InsuranceReceivable $record): mixed => self::latestAccountingValidation($record)?->submitted_at)
+                            ->dateTime(),
+                        TextEntry::make('accounting_validation_status')
+                            ->label('Status')
+                            ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->status)
+                            ->badge(),
+                    ])
+                    ->columns(3),
                 Section::make('Pending claim status update')
                     ->visible(fn (InsuranceReceivable $record): bool => $record->claimStatusChangeRequests()
                         ->where('status', ClaimStatusChangeRequest::STATUS_SUBMITTED)
@@ -81,5 +120,13 @@ class InsuranceReceivableInfolist
                             ->columnSpanFull(),
                     ]),
             ]);
+    }
+
+    private static function latestAccountingValidation(InsuranceReceivable $record): ?ReceivableFormationJournal
+    {
+        return $record->receivableFormationJournals()
+            ->with('submitter')
+            ->latest('id')
+            ->first();
     }
 }
