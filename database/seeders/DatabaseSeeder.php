@@ -3,10 +3,11 @@
 namespace Database\Seeders;
 
 use App\Models\BranchOffice;
-use App\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
+use RuntimeException;
 
 class DatabaseSeeder extends Seeder
 {
@@ -26,20 +27,78 @@ class DatabaseSeeder extends Seeder
             RolePermissionSeeder::class,
         ]);
 
-        $centralBranch = BranchOffice::query()
-            ->where('branch_code', '000')
-            ->firstOrFail();
+        $branchOffices = BranchOffice::query()
+            ->get()
+            ->keyBy('branch_code');
 
-        $user = User::query()->updateOrCreate(
-            ['email' => 'test@example.com'],
-            [
-                'branch_office_id' => $centralBranch->id,
-                'name' => 'Test User',
-                'username' => 'test',
-                'password' => 'password',
-            ],
+        $centralBranch = $branchOffices->get('000');
+        if (! $centralBranch) {
+            throw new RuntimeException('Central branch with branch_code 000 not found.');
+        }
+
+        $upsertUser = function (
+            string $role,
+            BranchOffice $branchOffice,
+            string $email,
+            ?string $name = null,
+            ?string $username = null,
+        ): User {
+            $user = User::query()->updateOrCreate(
+                ['email' => $email],
+                [
+                    'branch_office_id' => $branchOffice->id,
+                    'name' => $name ?? Str::headline($role),
+                    'username' => $username ?? $role,
+                    'password' => 'password',
+                ],
+            );
+
+            $user->syncRoles([$role]);
+
+            return $user;
+        };
+
+        $upsertUser(
+            role: 'super_admin',
+            branchOffice: $centralBranch,
+            email: 'test@example.com',
+            name: 'Test User',
+            username: 'test',
         );
 
-        $user->syncRoles(['super_admin']);
+        $branchOffices
+            ->except('000')
+            ->each(function (BranchOffice $branchOffice) use ($upsertUser) {
+                $code = $branchOffice->branch_code;
+
+                $upsertUser(
+                    role: 'branch_maker',
+                    branchOffice: $branchOffice,
+                    email: "maker_{$code}@example.com",
+                    name: "Maker {$code}",
+                    username: "maker_{$code}",
+                );
+
+                $upsertUser(
+                    role: 'branch_approver',
+                    branchOffice: $branchOffice,
+                    email: "approver_{$code}@example.com",
+                    name: "Approver {$code}",
+                    username: "approver_{$code}",
+                );
+            });
+
+        collect([
+            'it_user',
+            'accounting_maker',
+            'accounting_approver',
+            'business_maker',
+            'business_approver',
+            'auditor',
+        ])->each(fn(string $role) => $upsertUser(
+            role: $role,
+            branchOffice: $centralBranch,
+            email: "{$role}@example.com",
+        ));
     }
 }
