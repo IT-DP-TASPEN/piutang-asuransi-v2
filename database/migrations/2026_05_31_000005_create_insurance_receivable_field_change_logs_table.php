@@ -13,7 +13,10 @@ return new class extends Migration
     {
         Schema::create('insurance_receivable_field_change_logs', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('insurance_receivable_id')->constrained()->cascadeOnDelete();
+            $table
+                ->foreignId('insurance_receivable_id')
+                ->constrained(indexName: 'receivable_log_receivable_id_foreign')
+                ->cascadeOnDelete();
             $table->string('field_name');
             $table->text('old_value')->nullable();
             $table->text('new_value')->nullable();
