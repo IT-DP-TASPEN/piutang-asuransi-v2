@@ -34,7 +34,7 @@ return new class extends Migration
             $table->json('snapshot')->nullable();
             $table->timestamps();
 
-            $table->index(['insurance_receivable_id', 'status']);
+            $table->index(['insurance_receivable_id', 'status'], 'receivable_status_index');
             $table->index('approval_request_id');
         });
     }
