@@ -24,8 +24,8 @@ return new class extends Migration
             $table->string('status')->default('draft');
             $table->timestamps();
 
-            $table->index(['insurance_receivable_id', 'status']);
-            $table->index(['from_claim_status_id', 'to_claim_status_id']);
+            $table->index(['insurance_receivable_id', 'status'], 'receivable_claim_status_request_index');
+            $table->index(['from_claim_status_id', 'to_claim_status_id'], 'claim_status_transition_index');
         });
     }
 
