@@ -24,7 +24,7 @@ return new class extends Migration
             $table->json('metadata')->nullable();
             $table->timestamp('created_at')->nullable();
 
-            $table->index(['insurance_receivable_id', 'created_at']);
+            $table->index(['insurance_receivable_id', 'created_at'], 'receivable_created_at_index');
             $table->index('event');
         });
     }
