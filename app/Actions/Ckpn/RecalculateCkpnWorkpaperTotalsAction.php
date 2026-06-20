@@ -23,9 +23,9 @@ class RecalculateCkpnWorkpaperTotalsAction
             $totalEffective = $totalEffective->plus($item->effective_ckpn_amount);
         }
 
-        $totalCalculated = $totalCalculated->toScale(2, RoundingMode::HALF_UP);
-        $totalEffective = $totalEffective->toScale(2, RoundingMode::HALF_UP);
-        $delta = $totalEffective->minus($totalCalculated)->toScale(2, RoundingMode::HALF_UP);
+        $totalCalculated = $totalCalculated->toScale(2, RoundingMode::HalfUp);
+        $totalEffective = $totalEffective->toScale(2, RoundingMode::HalfUp);
+        $delta = $totalEffective->minus($totalCalculated)->toScale(2, RoundingMode::HalfUp);
 
         $workpaper->forceFill([
             'total_calculated_ckpn_amount' => (string) $totalCalculated,

@@ -54,26 +54,26 @@ class AverageThreeFactorsWithRejectLossOverrideStrategy implements CkpnCalculati
         $isRejectLossOverride = $ageDays > 365 && $candidate->claimStatusCode === 'reject_loss';
 
         if ($isRejectLossOverride) {
-            $finalRate = BigDecimal::of('100')->toScale(4, RoundingMode::HALF_UP);
+            $finalRate = BigDecimal::of('100')->toScale(4, RoundingMode::HalfUp);
             $explanation = 'Reject Loss with age greater than 365 days: CKPN rate overridden to 100%.';
         } else {
             $finalRate = BigDecimal::of($insuranceCompanyWeight)
                 ->plus($ageWeight)
                 ->plus($claimStatusWeight)
-                ->dividedBy('3', 4, RoundingMode::HALF_UP);
+                ->dividedBy('3', 4, RoundingMode::HalfUp);
             $explanation = 'Average of insurance company, age bucket, and claim status weights divided by 3.';
         }
 
         $ckpnAmount = BigDecimal::of($candidate->receivableAmount)
             ->multipliedBy($finalRate)
-            ->dividedBy('100', 2, RoundingMode::HALF_UP);
+            ->dividedBy('100', 2, RoundingMode::HalfUp);
 
         return new CkpnCalculationResult(
             insuranceCompanyWeight: $insuranceCompanyWeight,
             ageWeight: $ageWeight,
             claimStatusWeight: $claimStatusWeight,
-            finalCkpnRate: (string) $finalRate->toScale(4, RoundingMode::HALF_UP),
-            ckpnAmount: (string) $ckpnAmount->toScale(2, RoundingMode::HALF_UP),
+            finalCkpnRate: (string) $finalRate->toScale(4, RoundingMode::HalfUp),
+            ckpnAmount: (string) $ckpnAmount->toScale(2, RoundingMode::HalfUp),
             calculationExplanation: $explanation,
             appliedRuleCode: $rule->code,
             ageDays: $ageDays,
@@ -108,6 +108,6 @@ class AverageThreeFactorsWithRejectLossOverrideStrategy implements CkpnCalculati
 
     private function scale4(string $value): string
     {
-        return (string) BigDecimal::of($value)->toScale(4, RoundingMode::HALF_UP);
+        return (string) BigDecimal::of($value)->toScale(4, RoundingMode::HalfUp);
     }
 }

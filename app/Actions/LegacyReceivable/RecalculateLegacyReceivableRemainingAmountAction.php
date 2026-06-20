@@ -18,10 +18,10 @@ class RecalculateLegacyReceivableRemainingAmountAction
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $paidAmount = BigDecimal::of((string) $locked->payments()->sum('amount'))->toScale(2, RoundingMode::HALF_UP);
+            $paidAmount = BigDecimal::of((string) $locked->payments()->sum('amount'))->toScale(2, RoundingMode::HalfUp);
             $remainingAmount = BigDecimal::of($locked->original_receivable_amount)
                 ->minus($paidAmount)
-                ->toScale(2, RoundingMode::HALF_UP);
+                ->toScale(2, RoundingMode::HalfUp);
 
             if ($remainingAmount->isLessThan('0')) {
                 throw ValidationException::withMessages([

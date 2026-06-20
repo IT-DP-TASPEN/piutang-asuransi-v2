@@ -34,10 +34,12 @@ class GenerateMonthlyCkpnWorkpaperAction
                 ]);
             }
 
-            if ($workpaper->items()->whereHas('adjustments')->exists()
+            if (
+                $workpaper->items()->whereHas('adjustments')->exists()
                 || $workpaper->journals()->exists()
                 || $workpaper->generatedExports()->exists()
-                || $workpaper->glToGlTransactions()->exists()) {
+                || $workpaper->glToGlTransactions()->exists()
+            ) {
                 throw ValidationException::withMessages([
                     'status' => 'CKPN workpaper cannot be regenerated after adjustments or outputs exist.',
                 ]);
@@ -51,7 +53,7 @@ class GenerateMonthlyCkpnWorkpaperAction
 
             $candidates = $this->collectCurrentReceivableCandidatesAction->handle($workpaper)
                 ->concat($this->collectLegacyReceivableCandidatesAction->handle($workpaper))
-                ->sortBy(fn (CkpnReceivableCandidate $candidate): string => "{$candidate->receivableType}:{$candidate->receivableId}")
+                ->sortBy(fn(CkpnReceivableCandidate $candidate): string => "{$candidate->receivableType}:{$candidate->receivableId}")
                 ->values();
 
             foreach ($candidates as $candidate) {
@@ -95,11 +97,11 @@ class GenerateMonthlyCkpnWorkpaperAction
                 $totalCalculatedCkpn = $totalCalculatedCkpn->plus($result->ckpnAmount);
             }
 
-            $totalCalculatedCkpn = (string) $totalCalculatedCkpn->toScale(2, RoundingMode::HALF_UP);
+            $totalCalculatedCkpn = (string) $totalCalculatedCkpn->toScale(2, RoundingMode::HalfUp);
 
             $workpaper->forceFill([
                 'status' => CkpnWorkpaper::STATUS_GENERATED,
-                'total_receivable_amount' => (string) $totalReceivable->toScale(2, RoundingMode::HALF_UP),
+                'total_receivable_amount' => (string) $totalReceivable->toScale(2, RoundingMode::HalfUp),
                 'total_calculated_ckpn_amount' => $totalCalculatedCkpn,
                 'total_adjustment_delta' => '0.00',
                 'total_effective_ckpn_amount' => $totalCalculatedCkpn,

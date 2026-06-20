@@ -30,7 +30,7 @@ class UpdateLegacyReceivablePaymentAction
             $otherPaid = BigDecimal::of((string) $locked->payments()
                 ->whereKeyNot($payment->getKey())
                 ->sum('amount'))
-                ->toScale(2, RoundingMode::HALF_UP);
+                ->toScale(2, RoundingMode::HalfUp);
             $available = BigDecimal::of($locked->original_receivable_amount)->minus($otherPaid);
 
             if (BigDecimal::of($amount)->isGreaterThan($available)) {

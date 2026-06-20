@@ -45,7 +45,7 @@ class PrepareCkpnAdjustmentDataAction
             ]);
         }
 
-        $requestedAmount = (string) BigDecimal::of($data['requested_adjusted_ckpn_amount'])->toScale(2, RoundingMode::HALF_UP);
+        $requestedAmount = (string) BigDecimal::of($data['requested_adjusted_ckpn_amount'])->toScale(2, RoundingMode::HalfUp);
         $requestedRate = $data['requested_adjusted_ckpn_rate'] ?? null;
 
         if (BigDecimal::of($requestedAmount)->isLessThan('0')) {
@@ -63,7 +63,7 @@ class PrepareCkpnAdjustmentDataAction
 
             $requestedRate = (string) BigDecimal::of($requestedAmount)
                 ->multipliedBy('100')
-                ->dividedBy($item->receivable_amount, 4, RoundingMode::HALF_UP);
+                ->dividedBy($item->receivable_amount, 4, RoundingMode::HalfUp);
         }
 
         return [
@@ -74,7 +74,7 @@ class PrepareCkpnAdjustmentDataAction
             'ckpn_workpaper_item_id' => $item->id,
             'calculated_ckpn_rate' => $item->calculated_ckpn_rate,
             'calculated_ckpn_amount' => $item->calculated_ckpn_amount,
-            'requested_adjusted_ckpn_rate' => (string) BigDecimal::of($requestedRate)->toScale(4, RoundingMode::HALF_UP),
+            'requested_adjusted_ckpn_rate' => (string) BigDecimal::of($requestedRate)->toScale(4, RoundingMode::HalfUp),
             'requested_adjusted_ckpn_amount' => $requestedAmount,
             'approved_adjusted_ckpn_rate' => null,
             'approved_adjusted_ckpn_amount' => null,
