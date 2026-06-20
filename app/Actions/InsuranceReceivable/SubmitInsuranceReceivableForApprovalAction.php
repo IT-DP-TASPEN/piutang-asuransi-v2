@@ -21,7 +21,7 @@ class SubmitInsuranceReceivableForApprovalAction
     {
         if (! $user->can('submitForApproval', $insuranceReceivable)) {
             throw ValidationException::withMessages([
-                'permission' => 'Manual branch approval submission is not available.',
+                'permission' => 'Manual BM approval submission is not available.',
             ]);
         }
 
@@ -61,7 +61,7 @@ class SubmitInsuranceReceivableForApprovalAction
 
             if ($activeRequest instanceof ApprovalRequest) {
                 throw ValidationException::withMessages([
-                    'approval' => 'Active branch approval request already exists.',
+                    'approval' => 'Active BM approval request already exists.',
                 ]);
             }
 
@@ -84,7 +84,7 @@ class SubmitInsuranceReceivableForApprovalAction
                 event: 'submitted_for_branch_approval',
                 fromStatus: $fromWorkflowStatus,
                 toStatus: InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
-                description: 'Submitted for branch approval.',
+                description: 'Submitted for BM approval.',
                 actor: $user,
                 approvalRequest: $approvalRequest,
             );

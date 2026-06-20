@@ -19,6 +19,7 @@ class CkpnAdjustmentForm
                 Section::make('Adjustment')
                     ->inlineLabel()
                     ->columnSpanFull()
+                    ->disabled(fn($context): bool => $context === 'edit')
                     ->schema([
                         Select::make('ckpn_workpaper_id')
                             ->label('Workpaper')
@@ -27,10 +28,10 @@ class CkpnAdjustmentForm
                             ->preload(),
                         Select::make('ckpn_workpaper_item_id')
                             ->label('Workpaper item')
-                            ->options(fn (): array => CkpnWorkpaperItem::query()
+                            ->options(fn(): array => CkpnWorkpaperItem::query()
                                 ->orderBy('id')
                                 ->get()
-                                ->mapWithKeys(fn (CkpnWorkpaperItem $item): array => [
+                                ->mapWithKeys(fn(CkpnWorkpaperItem $item): array => [
                                     $item->id => "{$item->source_label} - {$item->branch_code} - {$item->loan_account_number} - {$item->customer_name}",
                                 ])
                                 ->all())

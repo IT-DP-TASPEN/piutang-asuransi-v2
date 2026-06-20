@@ -55,7 +55,7 @@ class ApprovalFinalizationService
             event: 'branch_approval_approved',
             fromStatus: $fromStatus,
             toStatus: InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
-            description: $notes ?: 'Branch approval completed. Awaiting IT collectability confirmation.',
+            description: $notes ?: 'BM approval completed. Awaiting collectability change confirmation by IT.',
             actor: $actor,
             approvalRequest: $approvalRequest,
         );

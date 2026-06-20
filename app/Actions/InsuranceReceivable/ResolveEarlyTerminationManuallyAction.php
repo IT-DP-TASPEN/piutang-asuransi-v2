@@ -43,7 +43,7 @@ class ResolveEarlyTerminationManuallyAction
                 event: 'early_termination_resolved_manually',
                 fromStatus: $fromSystemStatus,
                 toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED,
-                description: $notes ?: 'Early termination failure resolved manually in core banking.',
+                description: $notes ?: 'Early termination failure has been resolved manually.',
                 metadata: [
                     'from_workflow_status' => $fromWorkflowStatus,
                     'to_workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED,

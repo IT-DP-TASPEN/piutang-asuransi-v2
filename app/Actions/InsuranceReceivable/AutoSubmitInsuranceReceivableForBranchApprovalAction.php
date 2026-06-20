@@ -81,7 +81,7 @@ class AutoSubmitInsuranceReceivableForBranchApprovalAction
                 event: 'auto_submitted_for_branch_approval',
                 fromStatus: $fromWorkflowStatus,
                 toStatus: InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
-                description: 'Automatically submitted to branch approver after successful inquiry and branch validation.',
+                description: 'Submitted for BM approval.',
                 actor: $user,
                 approvalRequest: $approvalRequest,
                 triggeredByType: 'system',

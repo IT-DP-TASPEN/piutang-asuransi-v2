@@ -40,7 +40,7 @@ class ConfirmCollectabilityChangeCompletedAction
                 event: 'collectability_change_confirmed',
                 fromStatus: $fromStatus,
                 toStatus: InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING,
-                description: 'IT confirmed collectability change was completed in core banking.',
+                description: 'Collectability change confirmed.',
                 actor: $user,
             );
 

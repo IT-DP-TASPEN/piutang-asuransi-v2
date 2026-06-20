@@ -35,8 +35,7 @@ class RunLoanInquiryJob implements ShouldQueue
         PerformLoanInquiryAction $action,
         AutoSubmitInsuranceReceivableForBranchApprovalAction $autoSubmitAction,
         InsuranceReceivableStageLogger $logger,
-    ): void
-    {
+    ): void {
         $receivable = InsuranceReceivable::query()->findOrFail($this->insuranceReceivableId);
         $creator = User::query()->find($receivable->created_by);
         $fromStatus = $receivable->system_status;
@@ -166,7 +165,7 @@ class RunLoanInquiryJob implements ShouldQueue
             fromStatus: InsuranceReceivable::SYSTEM_STATUS_INQUIRY_PROCESSING,
             toStatus: $status,
             description: $branchMismatch
-                ? "Branch validation failed. Creator branch code does not match inquiry response branch code. Record automatically cancelled. {$message}"
+                ? "Branch validation failed. {$message}"
                 : $message,
             metadata: $branchMismatch ? [
                 'from_workflow_status' => $fromWorkflowStatus,
