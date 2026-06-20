@@ -2,10 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Actions\LegacyReceivable\DeleteLegacyReceivablePaymentAction;
 use App\Actions\LegacyReceivable\PrepareLegacyReceivableDataAction;
-use App\Actions\LegacyReceivable\RecordLegacyReceivablePaymentAction;
-use App\Actions\LegacyReceivable\UpdateLegacyReceivablePaymentAction;
+use App\Actions\ReceivablePayment\RecordReceivablePaymentAction;
 use App\Models\BranchOffice;
 use App\Models\ClaimStatus;
 use App\Models\InsuranceCompany;
@@ -50,7 +48,7 @@ class LegacyReceivableTest extends TestCase
         $this->assertSame($user->id, $legacy->created_by);
     }
 
-    public function test_payment_create_update_and_delete_recalculates_remaining_amount(): void
+    public function test_payment_create_decreases_remaining_amount(): void
     {
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_maker', '000');
@@ -59,23 +57,15 @@ class LegacyReceivableTest extends TestCase
             'remaining_receivable_amount' => '10000.00',
         ]);
 
-        $payment = app(RecordLegacyReceivablePaymentAction::class)->handle($legacy, [
+        $payment = app(RecordReceivablePaymentAction::class)->handle($legacy, [
             'amount' => '2500.00',
             'paid_at' => '2026-06-01',
         ], $user);
 
+        $this->assertSame($legacy->id, $payment->legacy_receivable_id);
+        $this->assertNull($payment->insurance_receivable_id);
+        $this->assertSame($user->id, $payment->created_by);
         $this->assertSame('7500.00', $legacy->refresh()->remaining_receivable_amount);
-
-        app(UpdateLegacyReceivablePaymentAction::class)->handle($payment, [
-            'amount' => '3000.00',
-            'paid_at' => '2026-06-01',
-        ]);
-
-        $this->assertSame('7000.00', $legacy->refresh()->remaining_receivable_amount);
-
-        app(DeleteLegacyReceivablePaymentAction::class)->handle($payment->refresh());
-
-        $this->assertSame('10000.00', $legacy->refresh()->remaining_receivable_amount);
     }
 
     public function test_payment_amount_cannot_exceed_remaining_receivable(): void
@@ -89,7 +79,7 @@ class LegacyReceivableTest extends TestCase
 
         $this->expectException(ValidationException::class);
 
-        app(RecordLegacyReceivablePaymentAction::class)->handle($legacy, [
+        app(RecordReceivablePaymentAction::class)->handle($legacy, [
             'amount' => '10000.01',
             'paid_at' => '2026-06-01',
         ], $user);

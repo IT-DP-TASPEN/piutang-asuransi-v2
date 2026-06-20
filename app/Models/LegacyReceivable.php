@@ -64,11 +64,11 @@ class LegacyReceivable extends Model
     }
 
     /**
-     * @return HasMany<LegacyReceivablePayment, $this>
+     * @return HasMany<ReceivablePayment, $this>
      */
     public function payments(): HasMany
     {
-        return $this->hasMany(LegacyReceivablePayment::class);
+        return $this->hasMany(ReceivablePayment::class, 'legacy_receivable_id');
     }
 
     /**

@@ -8,6 +8,31 @@ use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
 
 class InsuranceReceivableObserver
 {
+    public function saving(InsuranceReceivable $insuranceReceivable): void
+    {
+        if ($insuranceReceivable->workflow_status !== InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED) {
+            return;
+        }
+
+        if (! $insuranceReceivable->isDirty('workflow_status') && ! $insuranceReceivable->isDirty('receivable_amount')) {
+            return;
+        }
+
+        if ($insuranceReceivable->receivable_amount === null) {
+            return;
+        }
+
+        if ($insuranceReceivable->exists && $insuranceReceivable->payments()->exists()) {
+            return;
+        }
+
+        if (! in_array((string) $insuranceReceivable->remaining_receivable_amount, ['', '0', '0.00'], true)) {
+            return;
+        }
+
+        $insuranceReceivable->remaining_receivable_amount = $insuranceReceivable->receivable_amount;
+    }
+
     public function created(InsuranceReceivable $insuranceReceivable): void
     {
         app(InsuranceReceivableStageLogger::class)->log(

@@ -6,10 +6,10 @@ use App\Filament\Resources\LegacyReceivables\Pages\CreateLegacyReceivable;
 use App\Filament\Resources\LegacyReceivables\Pages\EditLegacyReceivable;
 use App\Filament\Resources\LegacyReceivables\Pages\ListLegacyReceivables;
 use App\Filament\Resources\LegacyReceivables\Pages\ViewLegacyReceivable;
-use App\Filament\Resources\LegacyReceivables\RelationManagers\LegacyReceivablePaymentsRelationManager;
 use App\Filament\Resources\LegacyReceivables\Schemas\LegacyReceivableForm;
 use App\Filament\Resources\LegacyReceivables\Schemas\LegacyReceivableInfolist;
 use App\Filament\Resources\LegacyReceivables\Tables\LegacyReceivablesTable;
+use App\Filament\Resources\RelationManagers\ReceivablePaymentsRelationManager;
 use App\Models\LegacyReceivable;
 use App\Models\User;
 use App\Support\Access\RoleScope;
@@ -74,7 +74,7 @@ class LegacyReceivableResource extends Resource
     public static function getRelations(): array
     {
         return [
-            LegacyReceivablePaymentsRelationManager::class,
+            ReceivablePaymentsRelationManager::class,
         ];
     }
 

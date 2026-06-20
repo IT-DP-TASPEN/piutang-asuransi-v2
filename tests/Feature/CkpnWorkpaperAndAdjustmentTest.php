@@ -14,7 +14,7 @@ use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
 use App\Actions\CkpnWorkpaper\ApproveCkpnWorkpaperAction;
 use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
 use App\Actions\InsuranceReceivable\CancelInsuranceReceivableAction;
-use App\Actions\LegacyReceivable\RecordLegacyReceivablePaymentAction;
+use App\Actions\ReceivablePayment\RecordReceivablePaymentAction;
 use App\Jobs\GenerateCkpnWorkpaperJob;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
@@ -127,7 +127,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame(2, $centralWorkpaper->refresh()->items()->count());
     }
 
-    public function test_workpaper_generation_includes_legacy_receivables_with_period_end_outstanding(): void
+    public function test_workpaper_generation_uses_current_legacy_remaining_amount_not_payment_period_cutoff(): void
     {
         $this->seedDependencies();
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
@@ -139,11 +139,11 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         ]);
         $maker = $this->userWithRole('accounting_maker', '000');
 
-        app(RecordLegacyReceivablePaymentAction::class)->handle($legacy, [
+        app(RecordReceivablePaymentAction::class)->handle($legacy, [
             'amount' => '3000.00',
             'paid_at' => '2026-06-30',
         ], $maker);
-        app(RecordLegacyReceivablePaymentAction::class)->handle($legacy->refresh(), [
+        app(RecordReceivablePaymentAction::class)->handle($legacy->refresh(), [
             'amount' => '2000.00',
             'paid_at' => '2026-07-01',
         ], $maker);
@@ -155,11 +155,11 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame(LegacyReceivable::class, $item->receivable_type);
         $this->assertSame($legacy->id, $item->receivable_id);
         $this->assertSame('Legacy', $item->source_label);
-        $this->assertSame('7000.00', $item->receivable_amount);
-        $this->assertSame('7000.00', $workpaper->total_receivable_amount);
+        $this->assertSame('5000.00', $item->receivable_amount);
+        $this->assertSame('5000.00', $workpaper->total_receivable_amount);
     }
 
-    public function test_workpaper_generation_excludes_fully_paid_legacy_as_of_period(): void
+    public function test_workpaper_generation_excludes_fully_paid_legacy_by_current_remaining_amount(): void
     {
         $this->seedDependencies();
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
@@ -170,7 +170,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         ]);
         $maker = $this->userWithRole('accounting_maker', '000');
 
-        app(RecordLegacyReceivablePaymentAction::class)->handle($legacy, [
+        app(RecordReceivablePaymentAction::class)->handle($legacy, [
             'amount' => '10000.00',
             'paid_at' => '2026-06-30',
         ], $maker);
@@ -181,6 +181,62 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame(0, $workpaper->items()->count());
         $this->assertSame('0.00', $workpaper->total_receivable_amount);
         $this->assertSame('0.00', $workpaper->total_effective_ckpn_amount);
+    }
+
+    public function test_workpaper_generation_uses_current_insurance_remaining_amount(): void
+    {
+        $this->seedDependencies();
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $receivable = $this->receivable($branch, [
+            'receivable_formation_date' => '2026-01-01',
+            'receivable_amount' => '10000.00',
+            'remaining_receivable_amount' => '10000.00',
+        ]);
+        $maker = $this->userWithRole('accounting_maker', '000');
+
+        app(RecordReceivablePaymentAction::class)->handle($receivable, [
+            'amount' => '3000.00',
+            'paid_at' => '2026-07-01',
+        ], $maker);
+
+        $workpaper = CkpnWorkpaper::query()->create(['period' => '2026-06-30', 'branch_office_id' => $branch->id]);
+        $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
+        $item = $workpaper->items()->sole();
+
+        $this->assertSame(InsuranceReceivable::class, $item->receivable_type);
+        $this->assertSame('7000.00', $item->receivable_amount);
+        $this->assertSame('7000.00', $workpaper->total_receivable_amount);
+    }
+
+    public function test_payment_after_locked_workpaper_does_not_mutate_existing_item_and_affects_next_generation(): void
+    {
+        $this->seedDependencies();
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $receivable = $this->receivable($branch, [
+            'receivable_formation_date' => '2026-01-01',
+            'receivable_amount' => '10000.00',
+            'remaining_receivable_amount' => '10000.00',
+        ]);
+        $maker = $this->userWithRole('accounting_maker', '000');
+
+        $lockedWorkpaper = CkpnWorkpaper::query()->create(['period' => '2026-06-30', 'branch_office_id' => $branch->id]);
+        $lockedWorkpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($lockedWorkpaper);
+        $lockedItem = $lockedWorkpaper->items()->sole();
+        $lockedWorkpaper->forceFill(['status' => CkpnWorkpaper::STATUS_LOCKED])->save();
+
+        app(RecordReceivablePaymentAction::class)->handle($receivable, [
+            'amount' => '3000.00',
+            'paid_at' => '2026-07-01',
+        ], $maker);
+
+        $this->assertSame('10000.00', $lockedItem->refresh()->receivable_amount);
+        $this->assertSame('10000.00', $lockedWorkpaper->refresh()->total_receivable_amount);
+
+        $nextWorkpaper = CkpnWorkpaper::query()->create(['period' => '2026-07-31', 'branch_office_id' => $branch->id]);
+        $nextWorkpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($nextWorkpaper);
+
+        $this->assertSame('7000.00', $nextWorkpaper->items()->sole()->receivable_amount);
+        $this->assertSame('7000.00', $nextWorkpaper->total_receivable_amount);
     }
 
     public function test_recalculate_is_blocked_after_submit(): void

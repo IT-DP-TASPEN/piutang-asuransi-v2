@@ -32,6 +32,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'end_period',
     'receivable_formation_date',
     'receivable_amount',
+    'remaining_receivable_amount',
     'workflow_status',
     'system_status',
     'last_error_message',
@@ -282,6 +283,14 @@ class InsuranceReceivable extends Model
     }
 
     /**
+     * @return HasMany<ReceivablePayment, $this>
+     */
+    public function payments(): HasMany
+    {
+        return $this->hasMany(ReceivablePayment::class, 'insurance_receivable_id');
+    }
+
+    /**
      * @return HasMany<ClaimStatusChangeRequest, $this>
      */
     public function claimStatusChangeRequests(): HasMany
@@ -337,6 +346,7 @@ class InsuranceReceivable extends Model
             'end_period' => 'date',
             'receivable_formation_date' => 'date',
             'receivable_amount' => 'decimal:2',
+            'remaining_receivable_amount' => 'decimal:2',
             'submitted_at' => 'datetime',
             'approved_at' => 'datetime',
             'inquiry_completed_at' => 'datetime',

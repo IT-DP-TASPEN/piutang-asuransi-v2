@@ -87,6 +87,10 @@ class InsuranceReceivableForm
                             ->label('Receivable amount')
                             ->disabled()
                             ->dehydrated(false),
+                        TextInput::make('remaining_receivable_amount')
+                            ->label('Remaining receivable')
+                            ->disabled()
+                            ->dehydrated(false),
                         TextInput::make('credit_limit')
                             ->label('Credit limit')
                             ->disabled()

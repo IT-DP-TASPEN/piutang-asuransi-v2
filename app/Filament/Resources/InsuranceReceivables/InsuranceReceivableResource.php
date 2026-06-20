@@ -13,6 +13,7 @@ use App\Filament\Resources\InsuranceReceivables\RelationManagers\StageLogsRelati
 use App\Filament\Resources\InsuranceReceivables\Schemas\InsuranceReceivableForm;
 use App\Filament\Resources\InsuranceReceivables\Schemas\InsuranceReceivableInfolist;
 use App\Filament\Resources\InsuranceReceivables\Tables\InsuranceReceivablesTable;
+use App\Filament\Resources\RelationManagers\ReceivablePaymentsRelationManager;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Support\Access\RoleScope;
@@ -78,6 +79,7 @@ class InsuranceReceivableResource extends Resource
     {
         return [
             StageLogsRelationManager::class,
+            ReceivablePaymentsRelationManager::class,
             DocumentsRelationManager::class,
             ClaimStatusChangeRequestsRelationManager::class,
             InsuranceCoverLettersRelationManager::class,

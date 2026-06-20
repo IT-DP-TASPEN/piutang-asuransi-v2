@@ -41,6 +41,10 @@ class InsuranceReceivablesTable
                     ->label('Outstanding')
                     ->numeric(2)
                     ->sortable(),
+                TextColumn::make('remaining_receivable_amount')
+                    ->label('Remaining')
+                    ->numeric(2)
+                    ->sortable(),
                 TextColumn::make('workflow_status')
                     ->label('Workflow')
                     ->badge()

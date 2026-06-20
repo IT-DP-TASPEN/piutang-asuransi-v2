@@ -1,0 +1,114 @@
+<?php
+
+namespace App\Actions\ReceivablePayment;
+
+use App\Models\InsuranceReceivable;
+use App\Models\LegacyReceivable;
+use App\Models\ReceivablePayment;
+use App\Models\User;
+use Brick\Math\BigDecimal;
+use Brick\Math\Exception\MathException;
+use Brick\Math\RoundingMode;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+
+class RecordReceivablePaymentAction
+{
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function handle(LegacyReceivable|InsuranceReceivable $receivable, array $data, User $user): ReceivablePayment
+    {
+        return DB::transaction(function () use ($receivable, $data, $user): ReceivablePayment {
+            $locked = $this->lockedReceivable($receivable);
+            $this->validateReceivable($locked);
+
+            $amount = $this->validatedAmount($data['amount'] ?? null);
+            $remaining = BigDecimal::of($locked->remaining_receivable_amount)->toScale(2, RoundingMode::HalfUp);
+
+            if (BigDecimal::of($amount)->isGreaterThan($remaining)) {
+                throw ValidationException::withMessages([
+                    'amount' => 'Payment amount cannot exceed current remaining receivable amount.',
+                ]);
+            }
+
+            $payment = ReceivablePayment::query()->create([
+                'legacy_receivable_id' => $locked instanceof LegacyReceivable ? $locked->id : null,
+                'insurance_receivable_id' => $locked instanceof InsuranceReceivable ? $locked->id : null,
+                'amount' => $amount,
+                'paid_at' => $data['paid_at'] ?? now()->toDateString(),
+                'created_by' => $user->id,
+            ]);
+
+            $locked->forceFill([
+                'remaining_receivable_amount' => (string) $remaining->minus($amount)->toScale(2, RoundingMode::HalfUp),
+            ])->save();
+
+            return $payment->refresh();
+        });
+    }
+
+    private function lockedReceivable(LegacyReceivable|InsuranceReceivable $receivable): LegacyReceivable|InsuranceReceivable
+    {
+        $locked = $receivable->newQueryWithoutScopes()
+            ->whereKey($receivable->getKey())
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        if (! $locked instanceof LegacyReceivable && ! $locked instanceof InsuranceReceivable) {
+            throw ValidationException::withMessages([
+                'receivable' => 'Unsupported receivable type.',
+            ]);
+        }
+
+        return $locked;
+    }
+
+    private function validateReceivable(LegacyReceivable|InsuranceReceivable $receivable): void
+    {
+        if ($receivable->trashed()) {
+            throw ValidationException::withMessages([
+                'receivable' => 'Payments cannot be recorded for deleted receivables.',
+            ]);
+        }
+
+        if (! $receivable instanceof InsuranceReceivable) {
+            return;
+        }
+
+        if (! in_array($receivable->workflow_status, [
+            InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
+            InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED,
+            InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED,
+        ], true)) {
+            throw ValidationException::withMessages([
+                'workflow_status' => 'Insurance receivable payments can only be recorded after receivable formation.',
+            ]);
+        }
+    }
+
+    private function validatedAmount(mixed $amount): string
+    {
+        if ($amount === null || $amount === '') {
+            throw ValidationException::withMessages([
+                'amount' => 'Payment amount is required.',
+            ]);
+        }
+
+        try {
+            $decimal = BigDecimal::of((string) $amount);
+        } catch (MathException) {
+            throw ValidationException::withMessages([
+                'amount' => 'Payment amount must be numeric.',
+            ]);
+        }
+
+        if (! $decimal->isGreaterThan('0')) {
+            throw ValidationException::withMessages([
+                'amount' => 'Payment amount must be greater than 0.',
+            ]);
+        }
+
+        return (string) $decimal->toScale(2, RoundingMode::HalfUp);
+    }
+}

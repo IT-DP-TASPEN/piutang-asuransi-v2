@@ -32,6 +32,7 @@ class InsuranceReceivableInfolist
                     ->schema([
                         TextEntry::make('loan_outstanding')->label('Loan outstanding')->numeric(2),
                         TextEntry::make('receivable_amount')->label('Receivable amount')->numeric(2),
+                        TextEntry::make('remaining_receivable_amount')->label('Remaining receivable')->numeric(2),
                         TextEntry::make('credit_limit')->label('Credit limit')->numeric(2),
                         TextEntry::make('collectability'),
                         TextEntry::make('dpd')->label('DPD'),

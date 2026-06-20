@@ -33,6 +33,7 @@ return new class extends Migration
             $table->date('end_period')->nullable();
             $table->date('receivable_formation_date')->nullable();
             $table->decimal('receivable_amount', 20, 2)->nullable();
+            $table->decimal('remaining_receivable_amount', 20, 2)->default(0);
             $table->string('workflow_status')->default('draft');
             $table->string('stage')->nullable();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();

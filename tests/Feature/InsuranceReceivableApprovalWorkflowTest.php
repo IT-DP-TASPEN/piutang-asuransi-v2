@@ -22,6 +22,7 @@ use Database\Seeders\ClaimStatusSeeder;
 use Database\Seeders\InsuranceCompanySeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use LogicException;
 use Tests\TestCase;
@@ -126,6 +127,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED, $receivable->workflow_status);
         $this->assertSame('2026-05-31', $receivable->receivable_formation_date?->toDateString());
         $this->assertSame('230929055.00', $receivable->receivable_amount);
+        $this->assertSame('230929055.00', $receivable->remaining_receivable_amount);
         $this->assertSame(ReceivableFormationJournal::STATUS_APPROVED, $journal->status);
         $this->assertSame($accountingApprover->id, $journal->approved_by);
         $this->assertSame(2, ApprovalRequest::query()->count());
@@ -146,7 +148,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         try {
             app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable->refresh(), $maker);
             $this->fail('Already submitted receivable should not be auto-submitted again.');
-        } catch (\Illuminate\Validation\ValidationException) {
+        } catch (ValidationException) {
         }
 
         $this->assertSame(1, $receivable->approvalRequests()
@@ -158,7 +160,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_CANCELLED,
         ]);
 
-        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $this->expectException(ValidationException::class);
         app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($cancelled, $maker);
     }
 

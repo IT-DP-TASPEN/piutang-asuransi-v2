@@ -45,7 +45,7 @@ class RolePermissionSeeder extends Seeder
             'InsuranceReceivableDocument',
             'InsuranceReceivableFieldChangeLog',
             'LegacyReceivable',
-            'LegacyReceivablePayment',
+            'ReceivablePayment',
             'ReceivableFormationJournal',
             'EarlyTerminationTransaction',
             'ClaimStatusChangeRequest',
@@ -62,10 +62,16 @@ class RolePermissionSeeder extends Seeder
         ];
 
         $permissions = collect($subjects)
-            ->flatMap(fn(string $subject): array => array_map(
-                fn(string $action): string => "{$action}:{$subject}",
-                $actions,
-            ))
+            ->flatMap(function (string $subject) use ($actions): array {
+                $subjectActions = $subject === 'ReceivablePayment'
+                    ? ['ViewAny', 'View', 'Create']
+                    : $actions;
+
+                return array_map(
+                    fn (string $action): string => "{$action}:{$subject}",
+                    $subjectActions,
+                );
+            })
             ->merge([
                 'RunInquiry:InsuranceReceivable',
                 'SubmitForApproval:InsuranceReceivable',
@@ -103,7 +109,7 @@ class RolePermissionSeeder extends Seeder
                 'ExecuteGlToGl:CkpnJournal',
             ]);
 
-        $permissions->each(fn(string $permission): Permission => Permission::query()->firstOrCreate([
+        $permissions->each(fn (string $permission): Permission => Permission::query()->firstOrCreate([
             'name' => $permission,
             'guard_name' => $guardName,
         ]));
@@ -118,7 +124,7 @@ class RolePermissionSeeder extends Seeder
             'business_maker',
             'business_approver',
             'auditor',
-        ])->mapWithKeys(fn(string $role): array => [
+        ])->mapWithKeys(fn (string $role): array => [
             $role => Role::query()->firstOrCreate(['name' => $role, 'guard_name' => $guardName]),
         ]);
 
@@ -131,7 +137,7 @@ class RolePermissionSeeder extends Seeder
 
         /** @var Collection<int, string> $viewPermissions */
         $viewPermissions = $permissions->filter(
-            fn(string $permission): bool => str_starts_with($permission, 'ViewAny:')
+            fn (string $permission): bool => str_starts_with($permission, 'ViewAny:')
                 || str_starts_with($permission, 'View:'),
         );
 
@@ -152,8 +158,8 @@ class RolePermissionSeeder extends Seeder
             'View:InsuranceReceivableFieldChangeLog',
             'ViewAny:LegacyReceivable',
             'View:LegacyReceivable',
-            'ViewAny:LegacyReceivablePayment',
-            'View:LegacyReceivablePayment',
+            'ViewAny:ReceivablePayment',
+            'View:ReceivablePayment',
             'ViewAny:ReceivableFormationJournal',
             'View:ReceivableFormationJournal',
             'ViewAny:EarlyTerminationTransaction',
@@ -189,9 +195,7 @@ class RolePermissionSeeder extends Seeder
             'Update:ReceivableFormationJournal',
             'Create:LegacyReceivable',
             'Update:LegacyReceivable',
-            'Create:LegacyReceivablePayment',
-            'Update:LegacyReceivablePayment',
-            'Delete:LegacyReceivablePayment',
+            'Create:ReceivablePayment',
             'Create:CkpnWorkpaper',
             'Update:CkpnWorkpaper',
             'Generate:CkpnWorkpaper',
@@ -232,9 +236,7 @@ class RolePermissionSeeder extends Seeder
             'GenerateDraft:InsuranceCoverLetter',
             'Create:LegacyReceivable',
             'Update:LegacyReceivable',
-            'Create:LegacyReceivablePayment',
-            'Update:LegacyReceivablePayment',
-            'Delete:LegacyReceivablePayment',
+            'Create:ReceivablePayment',
         ]);
 
         $roles->get('business_approver')->syncPermissions([
@@ -270,8 +272,8 @@ class RolePermissionSeeder extends Seeder
             'View:ClaimStatusChangeRequest',
             'ViewAny:LegacyReceivable',
             'View:LegacyReceivable',
-            'ViewAny:LegacyReceivablePayment',
-            'View:LegacyReceivablePayment',
+            'ViewAny:ReceivablePayment',
+            'View:ReceivablePayment',
             'ViewAny:InsuranceCoverLetter',
             'View:InsuranceCoverLetter',
             'ViewAny:CkpnWorkpaper',
@@ -302,8 +304,8 @@ class RolePermissionSeeder extends Seeder
             'View:ClaimStatusChangeRequest',
             'ViewAny:LegacyReceivable',
             'View:LegacyReceivable',
-            'ViewAny:LegacyReceivablePayment',
-            'View:LegacyReceivablePayment',
+            'ViewAny:ReceivablePayment',
+            'View:ReceivablePayment',
             'ViewAny:InsuranceCoverLetter',
             'View:InsuranceCoverLetter',
             'ViewAny:CkpnWorkpaper',

@@ -94,6 +94,7 @@ class ApprovalFinalizationService
             $receivable->forceFill([
                 'receivable_formation_date' => $snapshot['journal_date'] ?? $journal->journal_date,
                 'receivable_amount' => $snapshot['amount'] ?? $journal->amount,
+                'remaining_receivable_amount' => $snapshot['amount'] ?? $journal->amount,
                 'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
                 'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED,
                 'last_error_message' => null,
