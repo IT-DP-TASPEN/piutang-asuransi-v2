@@ -20,6 +20,7 @@ use App\Policies\InsuranceCompanyPolicy;
 use App\Policies\InsuranceReceivableDocumentPolicy;
 use App\Policies\InsuranceReceivablePolicy;
 use App\Policies\RolePolicy;
+use App\RateLimit\WhatsAppRateLimit;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Spatie\Permission\Models\Role;
@@ -48,6 +49,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(InsuranceReceivableDocument::class, InsuranceReceivableDocumentPolicy::class);
         Gate::policy(ApiIntegrationLog::class, ApiIntegrationLogPolicy::class);
         Gate::policy(Role::class, RolePolicy::class);
+
+        WhatsAppRateLimit::onAppBoot();
 
         InsuranceReceivable::observe(InsuranceReceivableObserver::class);
     }

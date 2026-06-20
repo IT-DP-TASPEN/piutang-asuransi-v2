@@ -35,4 +35,18 @@ return [
         ],
     ],
 
+    'whatsapp' => [
+        'enabled' => env('WHATSAPP_API_ENABLED', true),
+        'endpoint' => env('WHATSAPP_API_ENDPOINT'),
+        'token' => env('WHATSAPP_API_TOKEN'),
+        'device_id' => env('WHATSAPP_API_DEVICE_ID'),
+        'queue' => env('WHATSAPP_QUEUE', 'whatsapp'),
+        'rate_limit_per_minute' => env('WHATSAPP_RATE_LIMIT_PER_MINUTE', 5),
+        'rate_limit_key' => env('WHATSAPP_RATE_LIMIT_KEY', 'global'),
+        'timeout' => env('WHATSAPP_API_TIMEOUT', 10),
+        'otp_ttl_minutes' => env('WHATSAPP_OTP_TTL_MINUTES', 5),
+        'otp_rate_limit_max' => env('WHATSAPP_OTP_RATE_LIMIT_MAX', 3),
+        'otp_rate_limit_minutes' => env('WHATSAPP_OTP_RATE_LIMIT_MINUTES', 1),
+    ],
+
 ];
