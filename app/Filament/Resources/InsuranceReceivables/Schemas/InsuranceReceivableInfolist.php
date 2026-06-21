@@ -72,6 +72,9 @@ class InsuranceReceivableInfolist
                                 TextEntry::make('product_name')
                                     ->label('Product')
                                     ->icon(Heroicon::OutlinedDocumentText),
+                                TextEntry::make('saving_account_for_loan_repayment')
+                                    ->label('Saving account for loan repayment')
+                                    ->icon(Heroicon::OutlinedBanknotes),
                                 TextEntry::make('start_period')
                                     ->date()
                                     ->icon(Heroicon::OutlinedCalendarDays),

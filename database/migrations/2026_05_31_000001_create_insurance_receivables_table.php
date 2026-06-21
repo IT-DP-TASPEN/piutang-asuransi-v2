@@ -29,6 +29,7 @@ return new class extends Migration
             $table->integer('dpd')->nullable();
             $table->string('product_id')->nullable();
             $table->string('product_name')->nullable();
+            $table->string('saving_account_for_loan_repayment')->nullable();
             $table->date('start_period')->nullable();
             $table->date('end_period')->nullable();
             $table->date('receivable_formation_date')->nullable();

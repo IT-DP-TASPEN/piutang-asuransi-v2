@@ -69,6 +69,7 @@ class PerformLoanInquiryAction
             'dpd' => $this->integerValue($data['dpd'] ?? null),
             'product_id' => $this->stringValue($data['productID'] ?? null),
             'product_name' => $this->stringValue($data['productName'] ?? null),
+            'saving_account_for_loan_repayment' => $this->stringValue($data['saForLoanRepayment'] ?? null),
             'start_period' => $this->dateValue($data['startPeriod'] ?? null),
             'end_period' => $this->dateValue($data['endPeriod'] ?? null),
             'credit_limit' => $this->moneyValue($data['creditLimit'] ?? null),
