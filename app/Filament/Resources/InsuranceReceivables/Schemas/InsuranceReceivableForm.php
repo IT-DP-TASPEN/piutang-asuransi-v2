@@ -40,7 +40,7 @@ class InsuranceReceivableForm
                         Select::make('claim_status_id')
                             ->label('Claim status')
                             ->relationship('claimStatus', 'name')
-                            ->default(fn (): ?int => ClaimStatus::query()
+                            ->default(fn(): ?int => ClaimStatus::query()
                                 ->where('code', ClaimStatus::DEFAULT_CODE)
                                 ->value('id'))
                             ->disabled()
@@ -108,6 +108,10 @@ class InsuranceReceivableForm
                             ->dehydrated(false),
                         TextInput::make('product_name')
                             ->label('Product name')
+                            ->disabled()
+                            ->dehydrated(false),
+                        TextInput::make('saving_account_for_loan_repayment')
+                            ->label('Saving account for loan repayment')
                             ->disabled()
                             ->dehydrated(false),
                         DatePicker::make('start_period')
