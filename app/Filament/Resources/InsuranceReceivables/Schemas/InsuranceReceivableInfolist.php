@@ -105,32 +105,40 @@ class InsuranceReceivableInfolist
                             ->schema([
                                 TextEntry::make('accounting_validation_journal_date')
                                     ->label('Journal date')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->journal_date?->toDateString()),
+                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->journal_date?->toDateString())
+                                    ->date()
+                                    ->icon(Heroicon::OutlinedCalendarDays),
                                 TextEntry::make('accounting_validation_amount')
                                     ->label('Amount')
                                     ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->amount)
-                                    ->numeric(2),
+                                    ->money('IDR', 0, 'id_ID'),
                                 TextEntry::make('accounting_validation_debit_account')
                                     ->label('Debit account')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->debit_account),
+                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->debit_account)
+                                    ->icon(Heroicon::OutlinedBanknotes),
                                 TextEntry::make('accounting_validation_credit_account')
                                     ->label('Credit account')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->credit_account),
+                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->credit_account)
+                                    ->icon(Heroicon::OutlinedBanknotes),
                                 TextEntry::make('accounting_validation_description')
                                     ->label('Description')
                                     ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->description)
-                                    ->columnSpanFull(),
+                                    ->columnSpanFull()
+                                    ->icon(Heroicon::OutlinedDocumentText),
                                 TextEntry::make('accounting_validation_notes')
                                     ->label('Notes')
                                     ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->notes)
-                                    ->columnSpanFull(),
+                                    ->columnSpanFull()
+                                    ->icon(Heroicon::OutlinedDocumentText),
                                 TextEntry::make('accounting_validation_submitter')
                                     ->label('Submitted by')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->submitter?->name),
+                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->submitter?->name)
+                                    ->icon(Heroicon::OutlinedUser),
                                 TextEntry::make('accounting_validation_submitted_at')
                                     ->label('Submitted at')
                                     ->state(fn(InsuranceReceivable $record): mixed => self::latestAccountingValidation($record)?->submitted_at)
-                                    ->dateTime(),
+                                    ->dateTime()
+                                    ->icon(Heroicon::OutlinedCalendarDays),
                                 TextEntry::make('accounting_validation_status')
                                     ->label('Status')
                                     ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->status)
