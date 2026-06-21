@@ -68,7 +68,7 @@ class AutoSubmitInsuranceReceivableForBranchApprovalAction
                 approvable: $insuranceReceivable,
                 workflowCode: ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH,
                 actor: $user,
-                notes: 'Automatically submitted after successful inquiry and branch validation.',
+                notes: 'Submitted for BM approval.',
             );
 
             $insuranceReceivable->forceFill([

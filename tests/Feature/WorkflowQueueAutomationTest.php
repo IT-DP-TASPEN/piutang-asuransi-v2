@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Actions\CkpnJournal\ApproveCkpnJournalAction;
 use App\Actions\CkpnJournal\ExecuteGlToGlTransferAction;
 use App\Actions\CkpnJournal\SubmitCkpnJournalAction;
+use App\Actions\ClaimStatusChangeRequest\ApproveClaimStatusChangeRequestAction;
+use App\Actions\ClaimStatusChangeRequest\CreateAndSubmitClaimStatusChangeFromReceivableAction;
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\AutoSubmitInsuranceReceivableForBranchApprovalAction;
 use App\Actions\InsuranceReceivable\CancelInsuranceReceivableAction;
@@ -13,9 +15,8 @@ use App\Actions\InsuranceReceivable\CreateInsuranceReceivableAction;
 use App\Actions\InsuranceReceivable\ExecuteEarlyTerminationAction;
 use App\Actions\InsuranceReceivable\PerformLoanInquiryAction;
 use App\Actions\InsuranceReceivable\ResolveEarlyTerminationManuallyAction;
+use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
-use App\Actions\ClaimStatusChangeRequest\ApproveClaimStatusChangeRequestAction;
-use App\Actions\ClaimStatusChangeRequest\CreateAndSubmitClaimStatusChangeFromReceivableAction;
 use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
 use App\Filament\Resources\InsuranceReceivables\Pages\EditInsuranceReceivable;
 use App\Filament\Resources\InsuranceReceivables\Pages\ViewInsuranceReceivable;
@@ -158,6 +159,79 @@ class WorkflowQueueAutomationTest extends TestCase
             ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
             ->assertActionHidden('retryInquiry')
             ->assertActionHidden('cancelReceivable');
+    }
+
+    public function test_branch_returned_receivable_save_queues_reinquiry(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('branch_maker', '001');
+        $approver = $this->userWithRole('branch_approver', '001');
+        $receivable = $this->receivableReadyForSubmit($maker);
+
+        app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
+        $returned = app(ReturnInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $approver, 'revise');
+
+        Queue::fake();
+
+        Livewire::actingAs($maker)
+            ->test(EditInsuranceReceivable::class, ['record' => $returned->id])
+            ->set('data.cif_no', 'CIF-REVISED')
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        Queue::assertPushed(RunLoanInquiryJob::class, fn (RunLoanInquiryJob $job): bool => $job->insuranceReceivableId === $returned->id);
+        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_INQUIRY_QUEUED, $returned->refresh()->system_status);
+        $this->assertTrue($returned->stageLogs()->where('event', 'branch_return_reinquiry_queued')->exists());
+    }
+
+    public function test_branch_returned_receivable_resubmits_after_successful_reinquiry(): void
+    {
+        config(['core_banking.base_url' => 'http://core.test', 'core_banking.signature_secret' => 'secret-key']);
+        $this->seedDependencies();
+        $maker = $this->userWithRole('branch_maker', '001');
+        $approver = $this->userWithRole('branch_approver', '001');
+        $receivable = $this->receivableReadyForSubmit($maker);
+
+        $submitted = app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
+        $originalRequest = $submitted->approvalRequests()
+            ->where('workflow_code', ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH)
+            ->sole();
+        $returned = app(ReturnInsuranceReceivableApprovalAction::class)->handle($submitted->refresh(), $approver, 'revise');
+
+        Queue::fake();
+
+        Livewire::actingAs($maker)
+            ->test(EditInsuranceReceivable::class, ['record' => $returned->id])
+            ->set('data.cif_no', 'CIF-REVISED')
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        Http::fake([
+            'http://core.test/inquiry/detail/loan' => Http::response([
+                'responseCode' => '00',
+                'description' => 'Success',
+                'data' => [
+                    'branchCode' => '001',
+                    'loanOutStanding' => '230929055.00',
+                    'accountNumber' => $returned->loan_account_number,
+                    'altNumber' => 'ALT-1',
+                    'cifNo' => 'CIF-REVISED',
+                    'customerName' => 'Jane Customer',
+                ],
+            ]),
+        ]);
+
+        $this->runInquiryJob($returned->refresh());
+
+        $this->assertSame(ApprovalRequest::STATUS_RETURNED, $originalRequest->refresh()->status);
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED, $returned->refresh()->workflow_status);
+        $this->assertSame(2, $returned->approvalRequests()
+            ->where('workflow_code', ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH)
+            ->count());
+        $this->assertSame(1, $returned->approvalRequests()
+            ->where('workflow_code', ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH)
+            ->where('status', ApprovalRequest::STATUS_SUBMITTED)
+            ->count());
     }
 
     public function test_technical_inquiry_failure_can_be_cancelled_then_operational_actions_hide(): void
