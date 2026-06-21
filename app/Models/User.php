@@ -15,7 +15,7 @@ use Illuminate\Notifications\Notifiable;
 use Override;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['branch_office_id', 'name', 'email', 'username', 'password'])]
+#[Fillable(['branch_office_id', 'name', 'email', 'phone_number', 'username', 'password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser
 {
