@@ -37,6 +37,14 @@ class InsuranceReceivableInfolist
                                 TextEntry::make('insuranceCompany.name')
                                     ->label('Insurance company')
                                     ->icon(Heroicon::OutlinedShieldCheck),
+                                TextEntry::make('date_of_death')
+                                    ->label('Date of death')
+                                    ->date()
+                                    ->icon(Heroicon::OutlinedCalendarDays),
+                                TextEntry::make('receivable_formation_date')
+                                    ->label('Receivable formation date')
+                                    ->date()
+                                    ->icon(Heroicon::OutlinedCalendarDays),
                                 TextEntry::make('claimStatus.name')
                                     ->label('Claim status')
                                     ->badge(),
@@ -46,7 +54,9 @@ class InsuranceReceivableInfolist
                                 TextEntry::make('system_status')
                                     ->label('System status')
                                     ->badge(),
-                                TextEntry::make('last_error_message')->label('Last error')->columnSpanFull(),
+                                TextEntry::make('last_error_message')
+                                    ->label('Last error')
+                                    ->visible(fn(InsuranceReceivable $record): bool => $record->last_error_message !== null),
                             ]),
                         Tabs\Tab::make('Loan snapshot')
                             ->columns(1)
