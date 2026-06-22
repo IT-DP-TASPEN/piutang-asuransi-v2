@@ -2,7 +2,6 @@
 
 namespace App\Filament\Pages\Auth;
 
-use App\Models\User;
 use Filament\Auth\Pages\Login as BaseAuth;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Component;
@@ -36,7 +35,7 @@ class Login extends BaseAuth
     {
         return [
             'username' => $data['username'],
-            'password'  => $data['password'],
+            'password' => $data['password'],
         ];
     }
 

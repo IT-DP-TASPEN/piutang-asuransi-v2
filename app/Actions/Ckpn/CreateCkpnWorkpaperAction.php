@@ -7,6 +7,7 @@ use App\Models\CkpnWorkpaper;
 use App\Models\User;
 use App\Services\Ckpn\CkpnWorkpaperReadinessValidator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class CreateCkpnWorkpaperAction
 {
@@ -20,7 +21,7 @@ class CreateCkpnWorkpaperAction
     public function handle(array $data, User $user): CkpnWorkpaper
     {
         if (! $user->can('create', CkpnWorkpaper::class)) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
+            throw ValidationException::withMessages([
                 'permission' => 'Only accounting maker can create CKPN workpapers.',
             ]);
         }

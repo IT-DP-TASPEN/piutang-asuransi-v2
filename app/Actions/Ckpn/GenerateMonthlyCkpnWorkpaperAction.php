@@ -53,7 +53,7 @@ class GenerateMonthlyCkpnWorkpaperAction
 
             $candidates = $this->collectCurrentReceivableCandidatesAction->handle($workpaper)
                 ->concat($this->collectLegacyReceivableCandidatesAction->handle($workpaper))
-                ->sortBy(fn(CkpnReceivableCandidate $candidate): string => "{$candidate->receivableType}:{$candidate->receivableId}")
+                ->sortBy(fn (CkpnReceivableCandidate $candidate): string => "{$candidate->receivableType}:{$candidate->receivableId}")
                 ->values();
 
             foreach ($candidates as $candidate) {

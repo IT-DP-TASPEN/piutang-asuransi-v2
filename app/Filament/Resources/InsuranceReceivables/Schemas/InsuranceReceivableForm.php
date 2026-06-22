@@ -5,7 +5,6 @@ namespace App\Filament\Resources\InsuranceReceivables\Schemas;
 use App\Models\ClaimStatus;
 use App\Models\InsuranceReceivable;
 use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
@@ -30,7 +29,11 @@ class InsuranceReceivableForm
                             ->maxLength(255),
                         DatePicker::make('date_of_death')
                             ->label('Date of death')
-                            ->required(),
+                            ->helperText('Missing value produces a non-blocking checklist warning.'),
+                        Select::make('death_document_condition')
+                            ->label('Death document condition')
+                            ->options(InsuranceReceivable::deathDocumentConditionOptions())
+                            ->helperText('Controls the conditional death document checklist.'),
                         Select::make('insurance_company_id')
                             ->label('Insurance company')
                             ->relationship('insuranceCompany', 'name')
@@ -40,25 +43,13 @@ class InsuranceReceivableForm
                         Select::make('claim_status_id')
                             ->label('Claim status')
                             ->relationship('claimStatus', 'name')
-                            ->default(fn(): ?int => ClaimStatus::query()
+                            ->default(fn (): ?int => ClaimStatus::query()
                                 ->where('code', ClaimStatus::DEFAULT_CODE)
                                 ->value('id'))
                             ->disabled()
                             ->dehydrated()
                             ->required(),
                     ]),
-                Section::make('Required documents')
-                    ->inlineLabel()
-                    ->columnSpanFull()
-                    ->schema([
-                        FileUpload::make('supporting_document_file_path')
-                            ->label('Supporting document')
-                            ->disk(InsuranceReceivable::DOCUMENT_DISK)
-                            ->directory('insurance-receivable-documents')
-                            ->storeFileNamesIn('supporting_document_original_filename')
-                            ->required(),
-                    ])
-                    ->visibleOn('create'),
                 Section::make('Inquiry snapshot')
                     ->inlineLabel()
                     ->columnSpanFull()

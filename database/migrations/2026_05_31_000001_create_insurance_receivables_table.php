@@ -20,7 +20,8 @@ return new class extends Migration
             $table->string('loan_account_number');
             $table->string('alt_number')->nullable();
             $table->string('customer_name')->nullable();
-            $table->date('date_of_death');
+            $table->date('date_of_death')->nullable();
+            $table->string('death_document_condition')->nullable();
             $table->foreignId('insurance_company_id')->constrained()->restrictOnDelete();
             $table->foreignId('claim_status_id')->constrained()->restrictOnDelete();
             $table->decimal('credit_limit', 20, 2)->nullable();

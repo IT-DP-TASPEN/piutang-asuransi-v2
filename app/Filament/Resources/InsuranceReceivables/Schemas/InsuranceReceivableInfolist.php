@@ -36,10 +36,16 @@ class InsuranceReceivableInfolist
                                 TextEntry::make('insuranceCompany.name')
                                     ->label('Insurance company')
                                     ->icon(Heroicon::OutlinedShieldCheck),
+                                TextEntry::make('insuranceCompany.claim_type')
+                                    ->label('Claim type')
+                                    ->badge(),
                                 TextEntry::make('date_of_death')
                                     ->label('Date of death')
                                     ->date()
                                     ->icon(Heroicon::OutlinedCalendarDays),
+                                TextEntry::make('death_document_condition')
+                                    ->label('Death document condition')
+                                    ->formatStateUsing(fn (?string $state): string => InsuranceReceivable::deathDocumentConditionOptions()[$state] ?? '-'),
                                 TextEntry::make('receivable_formation_date')
                                     ->label('Receivable formation date')
                                     ->date()
@@ -55,7 +61,7 @@ class InsuranceReceivableInfolist
                                     ->badge(),
                                 TextEntry::make('last_error_message')
                                     ->label('Last error')
-                                    ->visible(fn(InsuranceReceivable $record): bool => $record->last_error_message !== null),
+                                    ->visible(fn (InsuranceReceivable $record): bool => $record->last_error_message !== null),
                             ]),
                         Tabs\Tab::make('Loan snapshot')
                             ->columns(1)
@@ -99,66 +105,66 @@ class InsuranceReceivableInfolist
                             ]),
                         Tabs\Tab::make('Pending approval')
                             ->columnSpan(1)
-                            ->visible(fn(InsuranceReceivable $record): bool => $record->approvalRequests()
+                            ->visible(fn (InsuranceReceivable $record): bool => $record->approvalRequests()
                                 ->where('status', ApprovalRequest::STATUS_SUBMITTED)
                                 ->exists())
                             ->schema([
                                 TextEntry::make('pending_approval')
                                     ->label('Request')
-                                    ->state(fn(InsuranceReceivable $record): ?string => $record->approvalRequests()
+                                    ->state(fn (InsuranceReceivable $record): ?string => $record->approvalRequests()
                                         ->where('status', ApprovalRequest::STATUS_SUBMITTED)
                                         ->latest('id')
                                         ->first()?->workflow_code),
                             ]),
                         Tabs\Tab::make('Accounting validation')
                             ->columnSpan(1)
-                            ->visible(fn(InsuranceReceivable $record): bool => $record->receivableFormationJournals()->exists()
+                            ->visible(fn (InsuranceReceivable $record): bool => $record->receivableFormationJournals()->exists()
                                 && (auth()->user()?->can('view', $record) ?? false))
                             ->schema([
                                 TextEntry::make('accounting_validation_journal_date')
                                     ->label('Journal date')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->journal_date?->toDateString())
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->journal_date?->toDateString())
                                     ->date()
                                     ->icon(Heroicon::OutlinedCalendarDays),
                                 TextEntry::make('accounting_validation_amount')
                                     ->label('Amount')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->amount)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->amount)
                                     ->money('IDR', 0, 'id_ID'),
                                 TextEntry::make('accounting_validation_debit_account')
                                     ->label('Debit account')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->debit_account)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->debit_account)
                                     ->icon(Heroicon::OutlinedBanknotes),
                                 TextEntry::make('accounting_validation_credit_account')
                                     ->label('Credit account')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->credit_account)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->credit_account)
                                     ->icon(Heroicon::OutlinedBanknotes),
                                 TextEntry::make('accounting_validation_description')
                                     ->label('Description')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->description)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->description)
                                     ->columnSpanFull()
                                     ->icon(Heroicon::OutlinedDocumentText),
                                 TextEntry::make('accounting_validation_notes')
                                     ->label('Notes')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->notes)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->notes)
                                     ->columnSpanFull()
                                     ->icon(Heroicon::OutlinedDocumentText),
                                 TextEntry::make('accounting_validation_submitter')
                                     ->label('Submitted by')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->submitter?->name)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->submitter?->name)
                                     ->icon(Heroicon::OutlinedUser),
                                 TextEntry::make('accounting_validation_submitted_at')
                                     ->label('Submitted at')
-                                    ->state(fn(InsuranceReceivable $record): mixed => self::latestAccountingValidation($record)?->submitted_at)
+                                    ->state(fn (InsuranceReceivable $record): mixed => self::latestAccountingValidation($record)?->submitted_at)
                                     ->dateTime()
                                     ->icon(Heroicon::OutlinedCalendarDays),
                                 TextEntry::make('accounting_validation_status')
                                     ->label('Status')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->status)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->status)
                                     ->badge(),
                             ]),
                         Tabs\Tab::make('Pending claim status update')
                             ->columnSpan(1)
-                            ->visible(fn(InsuranceReceivable $record): bool => $record->claimStatusChangeRequests()
+                            ->visible(fn (InsuranceReceivable $record): bool => $record->claimStatusChangeRequests()
                                 ->where('status', ClaimStatusChangeRequest::STATUS_SUBMITTED)
                                 ->exists())
                             ->schema([

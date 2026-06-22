@@ -50,7 +50,7 @@ class ReceivablePaymentsRelationManager extends RelationManager
             ])
             ->headerActions([
                 CreateAction::make()
-                    ->visible(fn(): bool => auth()->user()?->can('Create:ReceivablePayment') ?? false)
+                    ->visible(fn (): bool => auth()->user()?->can('Create:ReceivablePayment') ?? false)
                     ->using(function (array $data): ReceivablePayment {
                         $user = auth()->user();
 

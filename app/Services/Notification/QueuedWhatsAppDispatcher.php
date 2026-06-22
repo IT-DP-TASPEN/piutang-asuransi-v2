@@ -27,6 +27,6 @@ class QueuedWhatsAppDispatcher
             return str_repeat('*', strlen($normalized));
         }
 
-        return str_repeat('*', max(strlen($normalized) - 4, 1)) . substr($normalized, -4);
+        return str_repeat('*', max(strlen($normalized) - 4, 1)).substr($normalized, -4);
     }
 }

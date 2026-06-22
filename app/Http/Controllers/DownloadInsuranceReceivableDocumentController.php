@@ -20,7 +20,7 @@ class DownloadInsuranceReceivableDocumentController extends Controller
 
         return $disk->download(
             $document->file_path,
-            $document->original_filename ?: basename($document->file_path),
+            $document->original_file_name ?: basename($document->file_path),
         );
     }
 }

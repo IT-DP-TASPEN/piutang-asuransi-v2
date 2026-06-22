@@ -8,11 +8,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'insurance_receivable_id',
-    'document_type',
+    'claim_document_type_id',
     'file_path',
-    'original_filename',
+    'original_file_name',
     'mime_type',
     'uploaded_by',
+    'uploaded_at',
 ])]
 class InsuranceReceivableDocument extends Model
 {
@@ -27,10 +28,25 @@ class InsuranceReceivableDocument extends Model
     }
 
     /**
+     * @return BelongsTo<ClaimDocumentType, $this>
+     */
+    public function claimDocumentType(): BelongsTo
+    {
+        return $this->belongsTo(ClaimDocumentType::class);
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function uploader(): BelongsTo
     {
         return $this->belongsTo(User::class, 'uploaded_by');
+    }
+
+    protected function casts(): array
+    {
+        return [
+            'uploaded_at' => 'datetime',
+        ];
     }
 }

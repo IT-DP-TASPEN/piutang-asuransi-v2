@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources\Users\Schemas;
 
-use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
@@ -35,7 +34,7 @@ class UserForm
                             ->relationship(
                                 'branchOffice',
                                 'branch_name',
-                                fn($query) => $query->where('is_active', true)->orderBy('branch_code'),
+                                fn ($query) => $query->where('is_active', true)->orderBy('branch_code'),
                             )
                             ->required(),
                         Select::make('roles')
@@ -48,15 +47,15 @@ class UserForm
                             ->revealable()
                             ->label('Password')
                             ->minLength(8)
-                            ->required(fn(string $context) => $context === 'create')
+                            ->required(fn (string $context) => $context === 'create')
                             ->confirmed()
-                            ->dehydrated(fn($state) => filled($state))
-                            ->dehydrateStateUsing(fn($state) => Hash::make($state)),
+                            ->dehydrated(fn ($state) => filled($state))
+                            ->dehydrateStateUsing(fn ($state) => Hash::make($state)),
                         TextInput::make('password_confirmation')
                             ->password()
                             ->revealable()
                             ->label('Confirm Password')
-                            ->required(fn(string $context) => $context === 'create')
+                            ->required(fn (string $context) => $context === 'create')
                             ->dehydrated(false),
                     ]),
             ]);

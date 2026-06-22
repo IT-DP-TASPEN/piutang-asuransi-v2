@@ -773,6 +773,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         return InsuranceCompany::query()->create([
             'code' => null,
             'name' => $name,
+            'claim_type' => InsuranceCompany::CLAIM_TYPE_AJK,
             'ckpn_weight' => $weight,
             'sla_description' => null,
             'is_active' => true,

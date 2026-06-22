@@ -17,12 +17,13 @@ class InsuranceCompaniesTable
     {
         return $table
             ->columns([
-                TextColumn::make('code')
-                    ->searchable()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('name')
                     ->searchable()
+                    ->sortable(),
+                TextColumn::make('claim_type')
+                    ->label('Claim type')
+                    ->badge()
+                    ->formatStateUsing(fn (string $state): string => strtoupper($state))
                     ->sortable(),
                 TextColumn::make('ckpn_weight')
                     ->label('CKPN weight')

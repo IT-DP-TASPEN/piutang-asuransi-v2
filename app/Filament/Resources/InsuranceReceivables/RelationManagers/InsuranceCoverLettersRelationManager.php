@@ -2,20 +2,15 @@
 
 namespace App\Filament\Resources\InsuranceReceivables\RelationManagers;
 
-use App\Actions\InsuranceCoverLetter\GenerateInsuranceCoverLetterDraftAction;
+use App\Actions\InsuranceCoverLetter\GenerateInsuranceCoverLetterAction;
 use App\Models\InsuranceCoverLetter;
 use App\Models\User;
+use App\Services\InsuranceCoverLetter\InsuranceCoverLetterPreflight;
 use Filament\Actions\Action;
-use Filament\Actions\CreateAction;
-use Filament\Actions\EditAction;
-use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
-use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
@@ -25,85 +20,81 @@ class InsuranceCoverLettersRelationManager extends RelationManager
 
     protected static ?string $title = 'Cover letters';
 
-    public function form(Schema $schema): Schema
-    {
-        return $schema
-            ->components([
-                TextInput::make('letter_number')
-                    ->maxLength(255),
-                DatePicker::make('letter_date'),
-                Select::make('insurance_company_id')
-                    ->label('Insurance company')
-                    ->relationship('insuranceCompany', 'name')
-                    ->default(fn (): int => $this->getOwnerRecord()->insurance_company_id)
-                    ->searchable()
-                    ->preload()
-                    ->required(),
-                TextInput::make('recipient_name')
-                    ->maxLength(255),
-                TextInput::make('subject')
-                    ->maxLength(255)
-                    ->columnSpanFull(),
-                Textarea::make('body')
-                    ->columnSpanFull()
-                    ->maxLength(65535),
-                TextInput::make('generated_file_path')
-                    ->label('Generated file path')
-                    ->maxLength(255),
-            ]);
-    }
-
     public function table(Table $table): Table
     {
         return $table
-            ->recordTitleAttribute('subject')
+            ->recordTitleAttribute('letter_number')
             ->columns([
-                TextColumn::make('letter_number')
-                    ->label('Letter #')
-                    ->searchable()
-                    ->sortable(),
-                TextColumn::make('letter_date')
-                    ->date()
-                    ->sortable(),
-                TextColumn::make('insuranceCompany.name')
-                    ->label('Insurance company')
-                    ->sortable(),
-                TextColumn::make('subject')
-                    ->searchable(),
-                TextColumn::make('status')
-                    ->badge()
-                    ->sortable(),
-                TextColumn::make('creator.name')
-                    ->label('Created by')
-                    ->sortable(),
+                TextColumn::make('letter_number')->label('Letter #')->searchable()->sortable(),
+                TextColumn::make('claim_type')->badge()->sortable(),
+                TextColumn::make('letter_date')->date()->sortable(),
+                TextColumn::make('recipient_name')->label('Recipient'),
+                TextColumn::make('status')->badge(),
+                TextColumn::make('creator.name')->label('Created by'),
             ])
             ->headerActions([
-                Action::make('generateDraft')
-                    ->label('Generate draft')
-                    ->visible(fn (): bool => auth()->user()?->can('GenerateDraft:InsuranceCoverLetter') ?? false)
-                    ->action(function (): void {
+                Action::make('generate')
+                    ->label('Generate / reuse letter')
+                    ->icon(Heroicon::OutlinedDocumentText)
+                    ->visible(fn (): bool => auth()->user()?->can('Generate:InsuranceCoverLetter') ?? false)
+                    ->requiresConfirmation()
+                    ->modalDescription(fn (): string => $this->generationDescription())
+                    ->form([
+                        DatePicker::make('letter_date')->default(now())->required(),
+                    ])
+                    ->action(function (array $data): void {
                         $user = auth()->user();
 
                         if (! $user instanceof User) {
                             return;
                         }
 
-                        app(GenerateInsuranceCoverLetterDraftAction::class)->handle($this->getOwnerRecord(), $user);
+                        $letter = app(GenerateInsuranceCoverLetterAction::class)->handle(
+                            $this->getOwnerRecord(),
+                            $user,
+                            $data['letter_date'],
+                        );
 
-                        Notification::make()->success()->title('Cover letter draft generated')->send();
+                        if (blank($letter->generated_file_path)) {
+                            Notification::make()
+                                ->warning()
+                                ->title('Letter generated; PDF unavailable')
+                                ->body('Use HTML preview/print while PDF rendering is unavailable.')
+                                ->send();
+
+                            return;
+                        }
+
+                        Notification::make()->success()->title('Immutable cover letter ready')->send();
                     }),
-                CreateAction::make()
-                    ->visible(fn (): bool => auth()->user()?->can('Create:InsuranceCoverLetter') ?? false)
-                    ->mutateDataUsing(fn (array $data): array => [
-                        ...$data,
-                        'insurance_company_id' => $data['insurance_company_id'] ?? $this->getOwnerRecord()->insurance_company_id,
-                        'status' => $data['status'] ?? InsuranceCoverLetter::STATUS_DRAFT,
-                        'created_by' => $data['created_by'] ?? auth()->id(),
-                    ]),
             ])
             ->recordActions([
-                ViewAction::make(),
-                EditAction::make(),
+                Action::make('preview')
+                    ->icon(Heroicon::OutlinedEye)
+                    ->url(fn (InsuranceCoverLetter $record): string => route('insurance-cover-letters.preview', $record))
+                    ->openUrlInNewTab(),
+                Action::make('downloadPdf')
+                    ->label('PDF')
+                    ->icon(Heroicon::OutlinedArrowDownTray)
+                    ->visible(fn (InsuranceCoverLetter $record): bool => filled($record->generated_file_path))
+                    ->url(fn (InsuranceCoverLetter $record): string => route('insurance-cover-letters.download', $record)),
             ]);
+    }
+
+    private function generationDescription(): string
+    {
+        $owner = $this->getOwnerRecord();
+        $claimType = $owner->insuranceCompany?->claim_type;
+        $existing = $owner->insuranceCoverLetters()->where('claim_type', $claimType)->first();
+
+        if ($existing instanceof InsuranceCoverLetter) {
+            return "Existing immutable letter {$existing->letter_number} will be reused.";
+        }
+
+        $warnings = app(InsuranceCoverLetterPreflight::class)->handle($owner)->warnings;
+
+        return $warnings === []
+            ? 'Checklist complete. A new immutable letter number will be generated.'
+            : 'Warnings: '.implode(' • ', $warnings).' Generation remains allowed.';
     }
 }

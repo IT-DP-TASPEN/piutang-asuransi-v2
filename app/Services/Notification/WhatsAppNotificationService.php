@@ -26,7 +26,7 @@ class WhatsAppNotificationService
             return false;
         }
 
-        if (!str_ends_with($to, '@s.whatsapp.net')) {
+        if (! str_ends_with($to, '@s.whatsapp.net')) {
             $to .= '@s.whatsapp.net';
         }
 
@@ -52,7 +52,7 @@ class WhatsAppNotificationService
                 ]);
             }
 
-            $response = $request->post($endpoint . '/send/message', $payload);
+            $response = $request->post($endpoint.'/send/message', $payload);
 
             if ($response->successful()) {
                 return true;

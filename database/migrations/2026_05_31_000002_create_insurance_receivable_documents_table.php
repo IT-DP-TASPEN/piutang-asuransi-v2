@@ -14,12 +14,15 @@ return new class extends Migration
         Schema::create('insurance_receivable_documents', function (Blueprint $table) {
             $table->id();
             $table->foreignId('insurance_receivable_id')->constrained()->cascadeOnDelete();
-            $table->string('document_type');
-            $table->string('file_path');
-            $table->string('original_filename')->nullable();
+            $table->foreignId('claim_document_type_id')->constrained()->restrictOnDelete();
+            $table->string('file_path')->nullable();
+            $table->string('original_file_name')->nullable();
             $table->string('mime_type')->nullable();
             $table->foreignId('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('uploaded_at')->nullable();
             $table->timestamps();
+
+            $table->unique(['insurance_receivable_id', 'claim_document_type_id'], 'receivable_document_type_unique');
         });
     }
 

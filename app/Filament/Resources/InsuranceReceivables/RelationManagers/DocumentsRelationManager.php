@@ -2,20 +2,17 @@
 
 namespace App\Filament\Resources\InsuranceReceivables\RelationManagers;
 
+use App\Actions\InsuranceReceivable\StoreClaimDocumentAction;
+use App\Data\ClaimDocuments\ClaimDocumentChecklist;
+use App\Data\ClaimDocuments\ClaimDocumentChecklistItem;
 use App\Models\InsuranceReceivable;
-use App\Models\InsuranceReceivableDocument;
 use App\Models\User;
+use App\Services\InsuranceReceivable\ResolveClaimDocumentChecklist;
 use Filament\Actions\Action;
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
-use Filament\Actions\ViewAction;
 use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Select;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
-use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -24,87 +21,141 @@ class DocumentsRelationManager extends RelationManager
 {
     protected static string $relationship = 'documents';
 
-    public function form(Schema $schema): Schema
-    {
-        return $schema
-            ->components([
-                TextInput::make('document_type')
-                    ->label('Document type')
-                    ->required()
-                    ->maxLength(255),
-                FileUpload::make('file_path')
-                    ->label('File')
-                    ->disk(InsuranceReceivable::DOCUMENT_DISK)
-                    ->directory('insurance-receivable-documents')
-                    ->storeFileNamesIn('original_filename')
-                    ->required(),
-            ]);
-    }
+    protected static ?string $title = 'Claim document checklist';
 
     public function table(Table $table): Table
     {
         return $table
-            ->recordTitleAttribute('document_type')
+            ->records(fn () => $this->checklist()->tableRecords())
+            ->recordAction(null)
+            ->recordUrl(null)
+            ->paginated(false)
+            ->heading(fn (): string => $this->checklist()->progressLabel())
+            ->description(fn (): string => implode(' • ', $this->checklist()->warnings))
             ->columns([
-                TextColumn::make('document_type')
-                    ->label('Document type')
-                    ->searchable()
-                    ->sortable(),
-                TextColumn::make('original_filename')
-                    ->label('Original filename')
-                    ->searchable(),
-                TextColumn::make('uploader.name')
-                    ->label('Uploaded by')
-                    ->sortable(),
-                TextColumn::make('created_at')
-                    ->label('Uploaded')
-                    ->dateTime()
-                    ->sortable(),
+                TextColumn::make('name')
+                    ->label('Document / data')
+                    ->description(fn (array $record): ?string => $record['description']),
+                TextColumn::make('conditional')
+                    ->label('Requirement')
+                    ->badge()
+                    ->formatStateUsing(fn (bool $state): string => $state ? 'Conditional' : 'Required')
+                    ->color(fn (bool $state): string => $state ? 'warning' : 'primary'),
+                TextColumn::make('status')
+                    ->badge()
+                    ->formatStateUsing(fn (string $state): string => str($state)->replace('_', ' ')->headline()->toString())
+                    ->color(fn (string $state): string => match ($state) {
+                        ClaimDocumentChecklistItem::STATUS_COMPLETE,
+                        ClaimDocumentChecklistItem::STATUS_UPLOADED => 'success',
+                        ClaimDocumentChecklistItem::STATUS_MISSING,
+                        ClaimDocumentChecklistItem::STATUS_MISSING_DATA => 'danger',
+                        ClaimDocumentChecklistItem::STATUS_PENDING_CONDITION => 'warning',
+                        default => 'gray',
+                    }),
+                TextColumn::make('original_file_name')->label('File'),
+                TextColumn::make('uploaded_by')->label('Uploaded by'),
+                TextColumn::make('uploaded_at')->label('Uploaded at')->dateTime(),
             ])
             ->headerActions([
-                CreateAction::make()
-                    ->visible(fn (): bool => $this->canMutateParentDocuments())
-                    ->mutateDataUsing(function (array $data): array {
-                        return [
-                            ...$data,
-                            'uploaded_by' => auth()->id(),
-                        ];
+                Action::make('setDeathDocumentCondition')
+                    ->label('Set death condition')
+                    ->icon(Heroicon::OutlinedAdjustmentsHorizontal)
+                    ->visible(fn (): bool => $this->canMutateDocuments())
+                    ->fillForm(fn (): array => [
+                        'death_document_condition' => $this->getOwnerRecord()->death_document_condition,
+                    ])
+                    ->form([
+                        Select::make('death_document_condition')
+                            ->label('Death document condition')
+                            ->options(InsuranceReceivable::deathDocumentConditionOptions())
+                            ->required(),
+                    ])
+                    ->action(function (array $data): void {
+                        $this->getOwnerRecord()->forceFill([
+                            'death_document_condition' => $data['death_document_condition'],
+                        ])->save();
+
+                        $this->resetTable();
+                        Notification::make()->success()->title('Death condition updated')->send();
                     }),
             ])
             ->recordActions([
-                ViewAction::make(),
                 Action::make('download')
                     ->label('Download')
                     ->icon(Heroicon::OutlinedArrowDownTray)
-                    ->url(fn (InsuranceReceivableDocument $record): string => route('insurance-receivable-documents.download', $record))
+                    ->visible(fn (array $record): bool => filled($record['uploaded_document_id']))
+                    ->url(fn (array $record): string => route('insurance-receivable-documents.download', $record['uploaded_document_id']))
                     ->openUrlInNewTab(),
-                EditAction::make()
-                    ->visible(fn (InsuranceReceivableDocument $record): bool => auth()->user()?->can('update', $record) ?? false),
-                DeleteAction::make()
-                    ->visible(fn (InsuranceReceivableDocument $record): bool => auth()->user()?->can('delete', $record) ?? false),
-            ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make()
-                        ->visible(fn (): bool => $this->canMutateParentDocuments()),
-                ]),
+                Action::make('upload')
+                    ->label(fn (array $record): string => filled($record['uploaded_document_id']) ? 'Replace' : 'Upload')
+                    ->icon(Heroicon::OutlinedArrowUpTray)
+                    ->visible(fn (array $record): bool => $this->canUpload($record))
+                    ->form([
+                        FileUpload::make('file_path')
+                            ->label('PDF file')
+                            ->disk(InsuranceReceivable::DOCUMENT_DISK)
+                            ->directory('insurance-receivable-documents')
+                            ->acceptedFileTypes(['application/pdf'])
+                            ->storeFileNamesIn('original_file_name')
+                            ->required(),
+                    ])
+                    ->action(function (array $data, array $record): void {
+                        $user = auth()->user();
+
+                        if (! $user instanceof User) {
+                            return;
+                        }
+
+                        app(StoreClaimDocumentAction::class)->handle(
+                            insuranceReceivable: $this->getOwnerRecord(),
+                            claimDocumentTypeId: (int) $record['document_type_id'],
+                            filePath: $this->singleFilePath($data['file_path']),
+                            originalFileName: $this->singleFilePath($data['original_file_name'] ?? null),
+                            user: $user,
+                        );
+
+                        $this->getOwnerRecord()->unsetRelation('documents');
+                        $this->resetTable();
+                        Notification::make()->success()->title('Claim document saved')->send();
+                    }),
             ]);
     }
 
-    private function canMutateParentDocuments(): bool
+    private function checklist(): ClaimDocumentChecklist
+    {
+        $this->getOwnerRecord()->unsetRelation('documents');
+
+        return app(ResolveClaimDocumentChecklist::class)->handle($this->getOwnerRecord());
+    }
+
+    /** @param array<string, mixed> $record */
+    private function canUpload(array $record): bool
+    {
+        return $this->canMutateDocuments()
+            && $record['uploadable']
+            && in_array($record['status'], [
+                ClaimDocumentChecklistItem::STATUS_MISSING,
+                ClaimDocumentChecklistItem::STATUS_UPLOADED,
+            ], true);
+    }
+
+    private function canMutateDocuments(): bool
     {
         $user = auth()->user();
         $owner = $this->getOwnerRecord();
 
-        if (! $user instanceof User || ! $owner instanceof InsuranceReceivable) {
-            return false;
+        return $user instanceof User
+            && $owner instanceof InsuranceReceivable
+            && ($user->can('Create:InsuranceReceivableDocument') || $user->can('Update:InsuranceReceivableDocument'))
+            && ($user->can('view', $owner) ?? false);
+    }
+
+    private function singleFilePath(mixed $value): string
+    {
+        if (is_array($value)) {
+            $value = reset($value);
         }
 
-        if (! ($user->can('Create:InsuranceReceivableDocument') ?? false)) {
-            return false;
-        }
-
-        return ! $user->hasRole('branch_maker')
-            || $user->can('update', $owner);
+        return (string) $value;
     }
 }

@@ -6,7 +6,6 @@ use App\Models\InsuranceReceivable;
 use App\Models\InsuranceReceivableDocument;
 use App\Models\User;
 use App\Support\Access\RoleScope;
-use Illuminate\Support\Facades\Gate;
 
 class InsuranceReceivableDocumentPolicy
 {
@@ -96,13 +95,6 @@ class InsuranceReceivableDocumentPolicy
 
     private function canMutateForParentState(User $user, InsuranceReceivableDocument $insuranceReceivableDocument): bool
     {
-        if (! $user->hasRole('branch_maker')) {
-            return true;
-        }
-
-        $receivable = $insuranceReceivableDocument->insuranceReceivable;
-
-        return $receivable instanceof InsuranceReceivable
-            && Gate::forUser($user)->allows('update', $receivable);
+        return $insuranceReceivableDocument->insuranceReceivable instanceof InsuranceReceivable;
     }
 }

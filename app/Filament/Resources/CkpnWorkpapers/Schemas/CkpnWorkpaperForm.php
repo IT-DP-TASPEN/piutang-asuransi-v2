@@ -24,7 +24,7 @@ class CkpnWorkpaperForm
                             ->relationship(
                                 'branchOffice',
                                 'branch_name',
-                                fn($query) => $query->where('is_active', true)->orderBy('branch_code'),
+                                fn ($query) => $query->where('is_active', true)->orderBy('branch_code'),
                             )
                             ->searchable()
                             ->required()

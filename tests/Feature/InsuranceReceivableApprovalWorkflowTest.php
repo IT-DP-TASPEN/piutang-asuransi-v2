@@ -14,10 +14,12 @@ use App\Models\ApprovalLog;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\BranchOffice;
+use App\Models\ClaimDocumentType;
 use App\Models\InsuranceReceivable;
 use App\Models\ReceivableFormationJournal;
 use App\Models\User;
 use Database\Seeders\BranchOfficeSeeder;
+use Database\Seeders\ClaimDocumentSeeder;
 use Database\Seeders\ClaimStatusSeeder;
 use Database\Seeders\InsuranceCompanySeeder;
 use Database\Seeders\RolePermissionSeeder;
@@ -104,7 +106,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         Livewire::actingAs($accountingApprover)
             ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
             ->assertSee('Accounting validation')
-            ->assertSee('230,929,055.00')
+            ->assertSee('230.929.055')
             ->assertSee('D-1')
             ->assertSee('C-1')
             ->assertSee('Accounting maker notes');
@@ -302,8 +304,16 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         $this->actingAs($maker)
             ->get(InsuranceReceivableResource::getUrl('edit', ['record' => $accountingStage]))
             ->assertForbidden();
-        $this->assertFalse($maker->can('update', $accountingStage->documents()->firstOrFail()));
-        $this->assertFalse($maker->can('delete', $accountingStage->documents()->firstOrFail()));
+        $document = $accountingStage->documents()->create([
+            'claim_document_type_id' => ClaimDocumentType::query()->firstOrFail()->id,
+            'file_path' => 'testing/document.pdf',
+            'original_file_name' => 'document.pdf',
+            'mime_type' => 'application/pdf',
+            'uploaded_by' => $maker->id,
+            'uploaded_at' => now(),
+        ]);
+        $this->assertTrue($maker->can('update', $document));
+        $this->assertTrue($maker->can('delete', $document));
     }
 
     public function test_it_collectability_confirmation_does_not_change_collectability_and_writes_stage_log(): void
@@ -328,6 +338,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
             BranchOfficeSeeder::class,
             InsuranceCompanySeeder::class,
             ClaimStatusSeeder::class,
+            ClaimDocumentSeeder::class,
             RolePermissionSeeder::class,
         ]);
     }

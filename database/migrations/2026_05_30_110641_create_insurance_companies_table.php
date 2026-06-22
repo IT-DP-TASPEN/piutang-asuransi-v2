@@ -15,6 +15,10 @@ return new class extends Migration
             $table->id();
             $table->string('code')->nullable();
             $table->string('name');
+            $table->enum('claim_type', ['ajk', 'credit']);
+            $table->string('legal_name')->nullable();
+            $table->string('letter_recipient_name')->nullable();
+            $table->text('letter_recipient_address')->nullable();
             $table->decimal('ckpn_weight', 8, 4);
             $table->text('sla_description')->nullable();
             $table->boolean('is_active')->default(true);

@@ -15,7 +15,6 @@ use App\Models\GeneratedExport;
 use App\Models\GlToGlTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
-use App\Services\CoreBanking\PayloadBuilders\GlToGlPayloadBuilder;
 use Database\Seeders\BranchOfficeSeeder;
 use Database\Seeders\ClaimStatusSeeder;
 use Database\Seeders\InsuranceCompanySeeder;
@@ -398,7 +397,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
         foreach ($reader->getSheetIterator() as $sheet) {
             foreach ($sheet->getRowIterator() as $row) {
                 $rows[] = array_map(
-                    fn($cell): bool|\DateInterval|\DateTimeInterface|float|int|string|null => $cell->getValue(),
+                    fn ($cell): bool|\DateInterval|\DateTimeInterface|float|int|string|null => $cell->getValue(),
                     $row->getCells(),
                 );
             }

@@ -45,7 +45,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
-use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -70,28 +69,28 @@ class WorkflowQueueAutomationTest extends TestCase
             'loan_account_number' => '3010001000054745',
             'date_of_death' => '2026-05-01',
             'insurance_company_id' => InsuranceCompany::query()->firstOrFail()->id,
-            'supporting_document_file_path' => 'testing/supporting-document.pdf',
         ], $maker);
 
         Queue::assertPushed(RunLoanInquiryJob::class, fn (RunLoanInquiryJob $job): bool => $job->insuranceReceivableId === $receivable->id);
         $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_INQUIRY_QUEUED, $receivable->refresh()->system_status);
-        $this->assertTrue($receivable->hasCompleteRequiredDocuments());
+        $this->assertCount(0, $receivable->documents);
         $this->assertSame(['record_created', 'inquiry_queued'], $receivable->stageLogs()->pluck('event')->reverse()->values()->all());
     }
 
-    public function test_creating_receivable_requires_required_document_file_path(): void
+    public function test_creating_receivable_allows_documents_to_be_uploaded_later(): void
     {
         $this->seedDependencies();
         Queue::fake();
         $maker = $this->userWithRole('branch_maker', '001');
 
-        $this->expectException(ValidationException::class);
-
-        app(CreateInsuranceReceivableAction::class)->handle([
+        $receivable = app(CreateInsuranceReceivableAction::class)->handle([
             'loan_account_number' => '3010001000054745',
             'date_of_death' => '2026-05-01',
             'insurance_company_id' => InsuranceCompany::query()->firstOrFail()->id,
         ], $maker);
+
+        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_INQUIRY_QUEUED, $receivable->system_status);
+        $this->assertCount(0, $receivable->documents);
     }
 
     public function test_inquiry_job_success_maps_response_and_writes_status_log(): void

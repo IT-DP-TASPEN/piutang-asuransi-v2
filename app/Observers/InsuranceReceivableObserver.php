@@ -67,7 +67,7 @@ class InsuranceReceivableObserver
             return;
         }
 
-        if ($insuranceReceivable->isTerminal() || ! $insuranceReceivable->hasCompleteRequiredDocuments()) {
+        if ($insuranceReceivable->isTerminal()) {
             return;
         }
 

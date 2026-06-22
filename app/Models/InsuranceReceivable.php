@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'alt_number',
     'customer_name',
     'date_of_death',
+    'death_document_condition',
     'insurance_company_id',
     'claim_status_id',
     'credit_limit',
@@ -97,14 +98,31 @@ class InsuranceReceivable extends Model
 
     public const SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED = 'early_termination_resolved';
 
-    /**
-     * @var list<string>
-     */
-    public const REQUIRED_DOCUMENT_TYPES = [
-        'supporting_document',
-    ];
-
     public const DOCUMENT_DISK = 'local';
+
+    public const DEATH_DOCUMENT_CONDITION_HOSPITAL = 'hospital';
+
+    public const DEATH_DOCUMENT_CONDITION_ACCIDENT = 'accident';
+
+    public const DEATH_DOCUMENT_CONDITION_OVERSEAS = 'overseas';
+
+    public const DEATH_DOCUMENT_CONDITION_HOME = 'home';
+
+    public const DEATH_DOCUMENT_CONDITION_CIVIL_REGISTRY = 'civil_registry';
+
+    /**
+     * @return array<string, string>
+     */
+    public static function deathDocumentConditionOptions(): array
+    {
+        return [
+            self::DEATH_DOCUMENT_CONDITION_HOSPITAL => 'Meninggal di rumah sakit',
+            self::DEATH_DOCUMENT_CONDITION_ACCIDENT => 'Meninggal karena kecelakaan',
+            self::DEATH_DOCUMENT_CONDITION_OVERSEAS => 'Meninggal di luar negeri',
+            self::DEATH_DOCUMENT_CONDITION_HOME => 'Meninggal di rumah',
+            self::DEATH_DOCUMENT_CONDITION_CIVIL_REGISTRY => 'Akta kematian Dukcapil',
+        ];
+    }
 
     /**
      * @return array<string, string>
@@ -191,23 +209,6 @@ class InsuranceReceivable extends Model
     {
         return ! $this->isTerminal()
             && $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_FAILED;
-    }
-
-    public function hasCompleteRequiredDocuments(): bool
-    {
-        foreach (self::REQUIRED_DOCUMENT_TYPES as $documentType) {
-            $exists = $this->documents()
-                ->where('document_type', $documentType)
-                ->whereNotNull('file_path')
-                ->where('file_path', '!=', '')
-                ->exists();
-
-            if (! $exists) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /**

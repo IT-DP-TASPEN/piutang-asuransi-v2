@@ -7,7 +7,7 @@ use App\Actions\ClaimStatusChangeRequest\CancelClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\PrepareClaimStatusChangeRequestDataAction;
 use App\Actions\ClaimStatusChangeRequest\RejectClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\SubmitClaimStatusChangeRequestAction;
-use App\Actions\InsuranceCoverLetter\GenerateInsuranceCoverLetterDraftAction;
+use App\Actions\InsuranceCoverLetter\GenerateInsuranceCoverLetterAction;
 use App\Models\ApprovalLog;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
@@ -18,10 +18,13 @@ use App\Models\InsuranceCoverLetter;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
 use Database\Seeders\BranchOfficeSeeder;
+use Database\Seeders\ClaimDocumentSeeder;
 use Database\Seeders\ClaimStatusSeeder;
 use Database\Seeders\InsuranceCompanySeeder;
+use Database\Seeders\InsuranceCoverLetterSettingSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ClaimStatusChangeRequestWorkflowTest extends TestCase
@@ -130,6 +133,7 @@ class ClaimStatusChangeRequestWorkflowTest extends TestCase
     public function test_cover_letter_draft_can_be_generated_from_receivable(): void
     {
         $this->seedDependencies();
+        Storage::fake('local');
         $user = $this->userWithRole('business_maker', '000');
         $receivable = InsuranceReceivable::factory()->create([
             'loan_account_number' => '3010010000000068',
@@ -138,15 +142,15 @@ class ClaimStatusChangeRequestWorkflowTest extends TestCase
             'loan_outstanding' => '230929055.00',
         ]);
 
-        $letter = app(GenerateInsuranceCoverLetterDraftAction::class)->handle($receivable, $user);
+        $letter = app(GenerateInsuranceCoverLetterAction::class)->handle($receivable, $user);
 
         $this->assertSame($receivable->id, $letter->insurance_receivable_id);
         $this->assertSame($receivable->insurance_company_id, $letter->insurance_company_id);
         $this->assertSame($user->id, $letter->created_by);
-        $this->assertSame(InsuranceCoverLetter::STATUS_DRAFT, $letter->status);
+        $this->assertSame(InsuranceCoverLetter::STATUS_GENERATED, $letter->status);
         $this->assertSame('Pengajuan Klaim Asuransi 3010010000000068', $letter->subject);
-        $this->assertStringContainsString('Jane Customer', $letter->body);
-        $this->assertStringContainsString('230929055.00', $letter->body);
+        $this->assertStringContainsString('Jane Customer', $letter->rendered_html);
+        $this->assertStringContainsString('Rp 230.929.055', $letter->rendered_html);
     }
 
     private function seedDependencies(): void
@@ -155,6 +159,8 @@ class ClaimStatusChangeRequestWorkflowTest extends TestCase
             BranchOfficeSeeder::class,
             InsuranceCompanySeeder::class,
             ClaimStatusSeeder::class,
+            ClaimDocumentSeeder::class,
+            InsuranceCoverLetterSettingSeeder::class,
             RolePermissionSeeder::class,
         ]);
     }

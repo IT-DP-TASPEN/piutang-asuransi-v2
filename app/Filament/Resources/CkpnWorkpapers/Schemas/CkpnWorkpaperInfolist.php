@@ -35,12 +35,12 @@ class CkpnWorkpaperInfolist
                                 TextEntry::make('status')->badge(),
                                 TextEntry::make('generation_status')
                                     ->label('Generation status')
-                                    ->state(fn(CkpnWorkpaper $record): string => self::generationStatus($record))
+                                    ->state(fn (CkpnWorkpaper $record): string => self::generationStatus($record))
                                     ->badge(),
                                 TextEntry::make('generation_message')
                                     ->label('Generation message')
-                                    ->state(fn(CkpnWorkpaper $record): ?string => self::generationMessage($record))
-                                    ->visible(fn(CkpnWorkpaper $record): bool => self::generationMessage($record) !== null)
+                                    ->state(fn (CkpnWorkpaper $record): ?string => self::generationMessage($record))
+                                    ->visible(fn (CkpnWorkpaper $record): bool => self::generationMessage($record) !== null)
                                     ->columnSpanFull(),
                                 TextEntry::make('total_receivable_amount')
                                     ->label('Total receivable')
@@ -73,33 +73,33 @@ class CkpnWorkpaperInfolist
                                     ->icon(Heroicon::OutlinedCalendar),
                             ]),
                         Tabs\Tab::make('Pending CKPN adjustments')
-                            ->visible(fn(CkpnWorkpaper $record): bool => self::pendingAdjustmentCount($record) > 0)
-                            ->badge(fn(CkpnWorkpaper $record): string => (string) self::pendingAdjustmentCount($record))
+                            ->visible(fn (CkpnWorkpaper $record): bool => self::pendingAdjustmentCount($record) > 0)
+                            ->badge(fn (CkpnWorkpaper $record): string => (string) self::pendingAdjustmentCount($record))
                             ->schema([
                                 TextEntry::make('pending_adjustment_summary')
                                     ->label('Blocking adjustments')
-                                    ->state(fn(CkpnWorkpaper $record): string => self::pendingAdjustmentSummary($record))
+                                    ->state(fn (CkpnWorkpaper $record): string => self::pendingAdjustmentSummary($record))
                                     ->columnSpanFull(),
                             ]),
                         Tabs\Tab::make('Pending approval')
-                            ->visible(fn(CkpnWorkpaper $record): bool => $record->approvalRequests()
+                            ->visible(fn (CkpnWorkpaper $record): bool => $record->approvalRequests()
                                 ->where('status', ApprovalRequest::STATUS_SUBMITTED)
                                 ->exists())
                             ->schema([
                                 TextEntry::make('latest_approval_summary')
                                     ->label('Request')
-                                    ->state(fn(CkpnWorkpaper $record): ?string => self::approvalSummary($record))
+                                    ->state(fn (CkpnWorkpaper $record): ?string => self::approvalSummary($record))
                                     ->columnSpanFull(),
                             ]),
                         Tabs\Tab::make('Output status')
                             ->schema([
                                 TextEntry::make('latest_journal_summary')
                                     ->label('Latest journal')
-                                    ->state(fn(CkpnWorkpaper $record): string => self::journalSummary($record))
+                                    ->state(fn (CkpnWorkpaper $record): string => self::journalSummary($record))
                                     ->columnSpanFull(),
                                 TextEntry::make('latest_export_summary')
                                     ->label('Latest export')
-                                    ->state(fn(CkpnWorkpaper $record): string => self::exportSummary($record))
+                                    ->state(fn (CkpnWorkpaper $record): string => self::exportSummary($record))
                                     ->columnSpanFull(),
                             ]),
                     ]),
@@ -151,7 +151,7 @@ class CkpnWorkpaperInfolist
 
         $summary = $adjustments
             ->take(10)
-            ->map(fn(CkpnAdjustment $adjustment): string => "#{$adjustment->id} ({$adjustment->status})")
+            ->map(fn (CkpnAdjustment $adjustment): string => "#{$adjustment->id} ({$adjustment->status})")
             ->join(', ');
 
         $suffix = $adjustments->count() > 10 ? ', ...' : '';
@@ -172,7 +172,7 @@ class CkpnWorkpaperInfolist
         }
 
         $pendingStep = $approval->steps
-            ->first(fn(ApprovalStep $step): bool => $step->status === ApprovalStep::STATUS_PENDING);
+            ->first(fn (ApprovalStep $step): bool => $step->status === ApprovalStep::STATUS_PENDING);
 
         return collect([
             "Workflow: {$approval->workflow_code}",
@@ -217,7 +217,7 @@ class CkpnWorkpaperInfolist
             "Export #{$export->id}",
             "Type: {$export->export_type}",
             "Status: {$export->status}",
-            $export->file_path ? 'File: ' . basename($export->file_path) : null,
+            $export->file_path ? 'File: '.basename($export->file_path) : null,
             $export->generated_at ? "Generated at: {$export->generated_at->toDateTimeString()}" : null,
         ])->filter()->join("\n");
     }

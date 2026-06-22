@@ -27,7 +27,7 @@ class InsuranceCoverLetterPolicy
 
     public function update(User $user, InsuranceCoverLetter $insuranceCoverLetter): bool
     {
-        return $this->can($user, 'Update') && $this->canAccessRecord($user, $insuranceCoverLetter);
+        return false;
     }
 
     public function delete(User $user, InsuranceCoverLetter $insuranceCoverLetter): bool
@@ -70,9 +70,9 @@ class InsuranceCoverLetterPolicy
         return $this->can($user, 'Reorder');
     }
 
-    public function generateDraft(User $user, InsuranceCoverLetter $insuranceCoverLetter): bool
+    public function generate(User $user, InsuranceCoverLetter $insuranceCoverLetter): bool
     {
-        return $this->can($user, 'GenerateDraft') && $this->canAccessRecord($user, $insuranceCoverLetter);
+        return $this->can($user, 'Generate') && $this->canAccessRecord($user, $insuranceCoverLetter);
     }
 
     private function can(User $user, string $action): bool

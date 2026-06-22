@@ -39,7 +39,7 @@ class ViewCkpnWorkpaper extends ViewRecord
     {
         return [
             EditAction::make()
-                ->visible(fn(): bool => $this->isEditable()
+                ->visible(fn (): bool => $this->isEditable()
                     && (auth()->user()?->can('update', $this->workpaper()) ?? false)),
             ActionGroup::make([
                 $this->retryGenerationAction(),
@@ -50,7 +50,7 @@ class ViewCkpnWorkpaper extends ViewRecord
                 ->icon(Heroicon::OutlinedDocumentText)
                 ->button()
                 ->color('primary')
-                ->visible(fn(): bool => $this->hasVisibleWorkpaperActions()),
+                ->visible(fn (): bool => $this->hasVisibleWorkpaperActions()),
             ActionGroup::make([
                 $this->approveAction(),
                 $this->rejectAction(),
@@ -60,7 +60,7 @@ class ViewCkpnWorkpaper extends ViewRecord
                 ->icon(Heroicon::OutlinedCheckCircle)
                 ->button()
                 ->color('success')
-                ->visible(fn(): bool => $this->hasVisibleApprovalActions()),
+                ->visible(fn (): bool => $this->hasVisibleApprovalActions()),
             ActionGroup::make([
                 $this->createJournalAction(),
                 $this->generateSakepExportAction(),
@@ -70,7 +70,7 @@ class ViewCkpnWorkpaper extends ViewRecord
                 ->icon(Heroicon::OutlinedDocumentArrowDown)
                 ->button()
                 ->color('warning')
-                ->visible(fn(): bool => $this->hasVisibleOutputActions()),
+                ->visible(fn (): bool => $this->hasVisibleOutputActions()),
             ActionGroup::make([
                 $this->retryGlToGlAction(),
                 $this->viewGeneratedExportsAction(),
@@ -81,7 +81,7 @@ class ViewCkpnWorkpaper extends ViewRecord
                 ->icon(Heroicon::OutlinedCog6Tooth)
                 ->button()
                 ->color('gray')
-                ->visible(fn(): bool => $this->hasVisibleSystemActions()),
+                ->visible(fn (): bool => $this->hasVisibleSystemActions()),
         ];
     }
 
@@ -91,7 +91,7 @@ class ViewCkpnWorkpaper extends ViewRecord
             ->label('Retry Generation')
             ->color('danger')
             ->requiresConfirmation()
-            ->visible(fn(): bool => $this->canRetryGeneration())
+            ->visible(fn (): bool => $this->canRetryGeneration())
             ->action(function (): void {
                 $user = auth()->user();
 
@@ -116,7 +116,7 @@ class ViewCkpnWorkpaper extends ViewRecord
     {
         return Action::make('recalculate')
             ->requiresConfirmation()
-            ->visible(fn(): bool => $this->canRecalculate())
+            ->visible(fn (): bool => $this->canRecalculate())
             ->action(function (): void {
                 $user = auth()->user();
 
@@ -135,7 +135,7 @@ class ViewCkpnWorkpaper extends ViewRecord
     {
         return Action::make('submit')
             ->requiresConfirmation()
-            ->visible(fn(): bool => $this->canSubmit())
+            ->visible(fn (): bool => $this->canSubmit())
             ->form([
                 Textarea::make('notes')->maxLength(65535),
             ])
@@ -157,7 +157,7 @@ class ViewCkpnWorkpaper extends ViewRecord
     {
         return Action::make('approve')
             ->requiresConfirmation()
-            ->visible(fn(): bool => $this->canApprove())
+            ->visible(fn (): bool => $this->canApprove())
             ->form([
                 Textarea::make('notes')->maxLength(65535),
             ])
@@ -180,7 +180,7 @@ class ViewCkpnWorkpaper extends ViewRecord
         return Action::make('reject')
             ->color('danger')
             ->requiresConfirmation()
-            ->visible(fn(): bool => $this->canReject())
+            ->visible(fn (): bool => $this->canReject())
             ->form([
                 Textarea::make('notes')->required()->maxLength(65535),
             ])
@@ -204,7 +204,7 @@ class ViewCkpnWorkpaper extends ViewRecord
             ->label('Return')
             ->color('warning')
             ->requiresConfirmation()
-            ->visible(fn(): bool => $this->canReturn())
+            ->visible(fn (): bool => $this->canReturn())
             ->form([
                 Textarea::make('notes')->required()->maxLength(65535),
             ])
@@ -226,8 +226,8 @@ class ViewCkpnWorkpaper extends ViewRecord
     {
         return Action::make('createJournal')
             ->label('Create CKPN journal')
-            ->visible(fn(): bool => $this->canAttemptCreateJournal())
-            ->modalDescription(fn(): ?string => $this->journalBlockingMessage())
+            ->visible(fn (): bool => $this->canAttemptCreateJournal())
+            ->modalDescription(fn (): ?string => $this->journalBlockingMessage())
             ->form([
                 DatePicker::make('journal_date')
                     ->default(now())
@@ -267,7 +267,7 @@ class ViewCkpnWorkpaper extends ViewRecord
     {
         return Action::make('generateSakepExport')
             ->label('Generate SAKEP XLSX')
-            ->visible(fn(): bool => $this->canGenerateExport())
+            ->visible(fn (): bool => $this->canGenerateExport())
             ->action(function (): void {
                 $user = auth()->user();
 
@@ -293,8 +293,8 @@ class ViewCkpnWorkpaper extends ViewRecord
         return Action::make('downloadLatestSakepExport')
             ->label('Download latest SAKEP')
             ->icon(Heroicon::OutlinedArrowDownTray)
-            ->visible(fn(): bool => $this->latestGeneratedExport() instanceof GeneratedExport)
-            ->url(fn(): ?string => ($export = $this->latestGeneratedExport()) instanceof GeneratedExport
+            ->visible(fn (): bool => $this->latestGeneratedExport() instanceof GeneratedExport)
+            ->url(fn (): ?string => ($export = $this->latestGeneratedExport()) instanceof GeneratedExport
                 ? route('generated-exports.download', $export)
                 : null)
             ->openUrlInNewTab();
@@ -306,7 +306,7 @@ class ViewCkpnWorkpaper extends ViewRecord
             ->label('Retry GL-to-GL')
             ->color('danger')
             ->requiresConfirmation()
-            ->visible(fn(): bool => $this->canRetryGlToGl())
+            ->visible(fn (): bool => $this->canRetryGlToGl())
             ->action(function (): void {
                 $user = auth()->user();
                 $journal = $this->latestFailedGlJournal();
@@ -327,24 +327,24 @@ class ViewCkpnWorkpaper extends ViewRecord
     {
         return Action::make('viewGeneratedExports')
             ->label('View Export Logs')
-            ->visible(fn(): bool => auth()->user()?->can('ViewAny:GeneratedExport') ?? false)
-            ->url(fn(): string => GeneratedExportResource::getUrl('index'));
+            ->visible(fn (): bool => auth()->user()?->can('ViewAny:GeneratedExport') ?? false)
+            ->url(fn (): string => GeneratedExportResource::getUrl('index'));
     }
 
     private function viewGlToGlTransactionsAction(): Action
     {
         return Action::make('viewGlToGlTransactions')
             ->label('View GL-to-GL Logs')
-            ->visible(fn(): bool => auth()->user()?->can('ViewAny:GlToGlTransaction') ?? false)
-            ->url(fn(): string => GlToGlTransactionResource::getUrl('index'));
+            ->visible(fn (): bool => auth()->user()?->can('ViewAny:GlToGlTransaction') ?? false)
+            ->url(fn (): string => GlToGlTransactionResource::getUrl('index'));
     }
 
     private function viewApiLogsAction(): Action
     {
         return Action::make('viewApiLogs')
             ->label('View API Logs')
-            ->visible(fn(): bool => auth()->user()?->can('ViewAny:ApiIntegrationLog') ?? false)
-            ->url(fn(): string => ApiIntegrationLogResource::getUrl('index'));
+            ->visible(fn (): bool => auth()->user()?->can('ViewAny:ApiIntegrationLog') ?? false)
+            ->url(fn (): string => ApiIntegrationLogResource::getUrl('index'));
     }
 
     private function hasVisibleWorkpaperActions(): bool
@@ -503,7 +503,7 @@ class ViewCkpnWorkpaper extends ViewRecord
 
         $summary = $pending
             ->take(10)
-            ->map(fn($adjustment): string => "#{$adjustment->id} ({$adjustment->status})")
+            ->map(fn ($adjustment): string => "#{$adjustment->id} ({$adjustment->status})")
             ->join(', ');
 
         $suffix = $pending->count() > 10 ? ', ...' : '';

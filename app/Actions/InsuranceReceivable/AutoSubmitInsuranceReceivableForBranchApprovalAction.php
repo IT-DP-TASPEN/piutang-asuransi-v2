@@ -47,12 +47,6 @@ class AutoSubmitInsuranceReceivableForBranchApprovalAction
                 ]);
             }
 
-            if (! $insuranceReceivable->hasCompleteRequiredDocuments()) {
-                throw ValidationException::withMessages([
-                    'documents' => 'Required documents must be complete before branch approval auto-submit.',
-                ]);
-            }
-
             $activeBranchApproval = $this->approvalService->latestActiveRequest(
                 $insuranceReceivable,
                 ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH,

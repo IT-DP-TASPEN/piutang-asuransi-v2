@@ -74,6 +74,7 @@ class CkpnCalculationTest extends TestCase
         $insuranceCompany = InsuranceCompany::query()->create([
             'code' => 'TEST',
             'name' => 'TEST INSURANCE',
+            'claim_type' => InsuranceCompany::CLAIM_TYPE_AJK,
             'ckpn_weight' => '3.0000',
             'sla_description' => null,
             'is_active' => true,

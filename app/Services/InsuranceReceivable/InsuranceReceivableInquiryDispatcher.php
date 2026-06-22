@@ -17,12 +17,6 @@ class InsuranceReceivableInquiryDispatcher
             ]);
         }
 
-        if (! $receivable->hasCompleteRequiredDocuments()) {
-            throw ValidationException::withMessages([
-                'documents' => 'Required documents must be complete before loan inquiry.',
-            ]);
-        }
-
         DB::transaction(function () use ($receivable, $event): void {
             $fromStatus = $receivable->system_status;
 

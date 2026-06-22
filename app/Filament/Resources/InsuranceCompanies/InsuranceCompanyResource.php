@@ -5,7 +5,9 @@ namespace App\Filament\Resources\InsuranceCompanies;
 use App\Filament\Resources\InsuranceCompanies\Pages\CreateInsuranceCompany;
 use App\Filament\Resources\InsuranceCompanies\Pages\EditInsuranceCompany;
 use App\Filament\Resources\InsuranceCompanies\Pages\ListInsuranceCompanies;
+use App\Filament\Resources\InsuranceCompanies\Pages\ViewInsuranceCompany;
 use App\Filament\Resources\InsuranceCompanies\Schemas\InsuranceCompanyForm;
+use App\Filament\Resources\InsuranceCompanies\Schemas\InsuranceCompanyInfolist;
 use App\Filament\Resources\InsuranceCompanies\Tables\InsuranceCompaniesTable;
 use App\Models\InsuranceCompany;
 use BackedEnum;
@@ -40,6 +42,11 @@ class InsuranceCompanyResource extends Resource
         return InsuranceCompaniesTable::configure($table);
     }
 
+    public static function infolist(Schema $schema): Schema
+    {
+        return InsuranceCompanyInfolist::configure($schema);
+    }
+
     public static function getRelations(): array
     {
         return [
@@ -52,6 +59,7 @@ class InsuranceCompanyResource extends Resource
         return [
             'index' => ListInsuranceCompanies::route('/'),
             'create' => CreateInsuranceCompany::route('/create'),
+            'view' => ViewInsuranceCompany::route('/{record}'),
             'edit' => EditInsuranceCompany::route('/{record}/edit'),
         ];
     }

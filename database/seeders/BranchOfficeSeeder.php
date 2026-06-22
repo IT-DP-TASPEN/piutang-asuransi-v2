@@ -28,7 +28,7 @@ class BranchOfficeSeeder extends Seeder
                 ['branch_code' => $branchOffice['branch_code']],
                 [
                     'branch_name' => $branchOffice['branch_name'],
-                    'is_active' => $branchOffice['is_active']
+                    'is_active' => $branchOffice['is_active'],
                 ]
             );
         }

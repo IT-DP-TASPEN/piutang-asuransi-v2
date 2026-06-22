@@ -21,6 +21,8 @@ class DatabaseSeeder extends Seeder
         $this->call([
             BranchOfficeSeeder::class,
             InsuranceCompanySeeder::class,
+            ClaimDocumentSeeder::class,
+            InsuranceCoverLetterSettingSeeder::class,
             ClaimStatusSeeder::class,
             CkpnAgeBucketSeeder::class,
             CkpnCalculationRuleSeeder::class,
@@ -95,7 +97,7 @@ class DatabaseSeeder extends Seeder
             'business_maker',
             'business_approver',
             'auditor',
-        ])->each(fn(string $role) => $upsertUser(
+        ])->each(fn (string $role) => $upsertUser(
             role: $role,
             branchOffice: $centralBranch,
             email: "{$role}@example.com",

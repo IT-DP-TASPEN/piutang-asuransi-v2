@@ -4,11 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\BranchOffice;
 use App\Models\CkpnWorkpaper;
+use App\Models\ClaimDocumentType;
 use App\Models\GeneratedExport;
 use App\Models\InsuranceReceivable;
 use App\Models\InsuranceReceivableDocument;
 use App\Models\User;
 use Database\Seeders\BranchOfficeSeeder;
+use Database\Seeders\ClaimDocumentSeeder;
 use Database\Seeders\ClaimStatusSeeder;
 use Database\Seeders\InsuranceCompanySeeder;
 use Database\Seeders\RolePermissionSeeder;
@@ -26,13 +28,13 @@ class PrivateDownloadRoutesTest extends TestCase
         Storage::fake(InsuranceReceivableDocument::DISK);
         $maker = $this->userWithRole('branch_maker', '001');
         $receivable = $this->receivableFor($maker);
-        $document = $receivable->documents()->firstOrFail();
+        $document = $this->documentFor($receivable, $maker);
         Storage::disk(InsuranceReceivableDocument::DISK)->put($document->file_path, 'document-content');
 
         $this->actingAs($maker)
             ->get(route('insurance-receivable-documents.download', $document))
             ->assertOk()
-            ->assertDownload($document->original_filename);
+            ->assertDownload($document->original_file_name);
     }
 
     public function test_unauthorized_user_cannot_download_insurance_receivable_attachment(): void
@@ -41,7 +43,7 @@ class PrivateDownloadRoutesTest extends TestCase
         Storage::fake(InsuranceReceivableDocument::DISK);
         $owner = $this->userWithRole('branch_maker', '001');
         $other = $this->userWithRole('branch_maker', '002');
-        $document = $this->receivableFor($owner)->documents()->firstOrFail();
+        $document = $this->documentFor($this->receivableFor($owner), $owner);
         Storage::disk(InsuranceReceivableDocument::DISK)->put($document->file_path, 'document-content');
 
         $this->actingAs($other)
@@ -94,6 +96,7 @@ class PrivateDownloadRoutesTest extends TestCase
             BranchOfficeSeeder::class,
             InsuranceCompanySeeder::class,
             ClaimStatusSeeder::class,
+            ClaimDocumentSeeder::class,
             RolePermissionSeeder::class,
         ]);
     }
@@ -104,6 +107,20 @@ class PrivateDownloadRoutesTest extends TestCase
             'branch_office_id' => $user->branch_office_id,
             'branch_code' => $user->branchOffice->branch_code,
             'created_by' => $user->id,
+        ]);
+    }
+
+    private function documentFor(InsuranceReceivable $receivable, User $user): InsuranceReceivableDocument
+    {
+        $type = ClaimDocumentType::query()->where('code', 'insurance_certificate_copy')->firstOrFail();
+
+        return $receivable->documents()->create([
+            'claim_document_type_id' => $type->id,
+            'file_path' => "testing/{$receivable->id}-certificate.pdf",
+            'original_file_name' => 'certificate.pdf',
+            'mime_type' => 'application/pdf',
+            'uploaded_by' => $user->id,
+            'uploaded_at' => now(),
         ]);
     }
 

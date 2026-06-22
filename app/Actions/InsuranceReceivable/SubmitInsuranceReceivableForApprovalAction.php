@@ -47,12 +47,6 @@ class SubmitInsuranceReceivableForApprovalAction
             ]);
         }
 
-        if (! $insuranceReceivable->hasCompleteRequiredDocuments()) {
-            throw ValidationException::withMessages([
-                'documents' => 'Required documents must be complete before submission.',
-            ]);
-        }
-
         return DB::transaction(function () use ($insuranceReceivable, $user, $notes): InsuranceReceivable {
             $activeRequest = $this->approvalService->latestActiveRequest(
                 $insuranceReceivable,

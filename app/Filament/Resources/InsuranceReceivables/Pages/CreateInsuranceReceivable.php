@@ -5,8 +5,8 @@ namespace App\Filament\Resources\InsuranceReceivables\Pages;
 use App\Actions\InsuranceReceivable\CreateInsuranceReceivableAction;
 use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
 use App\Models\User;
-use Illuminate\Database\Eloquent\Model;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Database\Eloquent\Model;
 
 class CreateInsuranceReceivable extends CreateRecord
 {

@@ -153,7 +153,7 @@ class InsuranceReceivablePolicy
 
     private function can(User $user, string $action): bool
     {
-        return $user->can("{$action}:" . self::SUBJECT);
+        return $user->can("{$action}:".self::SUBJECT);
     }
 
     private function canAccessRecord(User $user, InsuranceReceivable $insuranceReceivable): bool

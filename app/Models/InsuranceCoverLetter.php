@@ -8,12 +8,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'insurance_receivable_id',
+    'claim_type',
     'letter_number',
+    'sequence_base',
+    'sequence_number',
     'letter_date',
+    'template_key',
     'insurance_company_id',
     'recipient_name',
+    'recipient_address',
     'subject',
-    'body',
+    'rendered_html',
     'generated_file_path',
     'status',
     'created_by',
@@ -21,6 +26,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class InsuranceCoverLetter extends Model
 {
     public const STATUS_DRAFT = 'draft';
+
+    public const STATUS_GENERATED = 'generated';
+
+    /** @var list<string> */
+    private const IMMUTABLE_ATTRIBUTES = [
+        'insurance_receivable_id',
+        'claim_type',
+        'letter_number',
+        'sequence_base',
+        'sequence_number',
+        'letter_date',
+        'template_key',
+        'insurance_company_id',
+        'recipient_name',
+        'recipient_address',
+        'subject',
+        'rendered_html',
+    ];
 
     /**
      * @return BelongsTo<InsuranceReceivable, $this>
@@ -55,6 +78,21 @@ class InsuranceCoverLetter extends Model
     {
         return [
             'letter_date' => 'date',
+            'sequence_base' => 'integer',
+            'sequence_number' => 'integer',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (InsuranceCoverLetter $letter): void {
+            foreach (self::IMMUTABLE_ATTRIBUTES as $attribute) {
+                if (! $letter->isDirty($attribute) || $letter->getRawOriginal($attribute) === null) {
+                    continue;
+                }
+
+                throw new \LogicException("Insurance cover letter {$attribute} is immutable.");
+            }
+        });
     }
 }
