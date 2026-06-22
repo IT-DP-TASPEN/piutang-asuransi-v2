@@ -39,11 +39,11 @@ class InsuranceReceivablesTable
                     ->sortable(),
                 TextColumn::make('loan_outstanding')
                     ->label('Outstanding')
-                    ->numeric(2)
+                    ->money('IDR', 0, 'id_ID')
                     ->sortable(),
                 TextColumn::make('remaining_receivable_amount')
                     ->label('Remaining')
-                    ->numeric(2)
+                    ->money('IDR', 0, 'id_ID')
                     ->sortable(),
                 TextColumn::make('workflow_status')
                     ->label('Workflow')
@@ -84,7 +84,7 @@ class InsuranceReceivablesTable
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()
-                    ->visible(fn (InsuranceReceivable $record): bool => auth()->user()?->can('update', $record) ?? false),
+                    ->visible(fn(InsuranceReceivable $record): bool => auth()->user()?->can('update', $record) ?? false),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
