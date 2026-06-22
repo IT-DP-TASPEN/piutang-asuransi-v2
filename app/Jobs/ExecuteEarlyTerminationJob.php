@@ -2,13 +2,14 @@
 
 namespace App\Jobs;
 
-use App\Actions\InsuranceReceivable\ExecuteEarlyTerminationAction;
+use App\Actions\InsuranceReceivable\ExecuteEarlyTerminationWithRepaymentTopUpAction;
 use App\Models\EarlyTerminationTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Throwable;
 
 class ExecuteEarlyTerminationJob implements ShouldQueue
@@ -20,7 +21,20 @@ class ExecuteEarlyTerminationJob implements ShouldQueue
     public function __construct(
         public readonly int $insuranceReceivableId,
         public readonly ?int $requestedBy = null,
+        public readonly bool $manualTopUpConfirmed = false,
     ) {}
+
+    /**
+     * @return list<object>
+     */
+    public function middleware(): array
+    {
+        return [
+            (new WithoutOverlapping("early-termination-{$this->insuranceReceivableId}"))
+                ->dontRelease()
+                ->expireAfter(600),
+        ];
+    }
 
     /**
      * @return list<int>
@@ -30,7 +44,7 @@ class ExecuteEarlyTerminationJob implements ShouldQueue
         return [10, 30, 60];
     }
 
-    public function handle(ExecuteEarlyTerminationAction $action, InsuranceReceivableStageLogger $logger): void
+    public function handle(ExecuteEarlyTerminationWithRepaymentTopUpAction $action, InsuranceReceivableStageLogger $logger): void
     {
         $receivable = InsuranceReceivable::query()->findOrFail($this->insuranceReceivableId);
         $actor = $this->requestedBy ? User::query()->find($this->requestedBy) : null;
@@ -60,9 +74,14 @@ class ExecuteEarlyTerminationJob implements ShouldQueue
         );
 
         try {
-            $transaction = $action->handle($receivable, $actor);
+            $transaction = $action->handle($receivable, $actor, $this->manualTopUpConfirmed);
+
+            if (! $transaction instanceof EarlyTerminationTransaction) {
+                return;
+            }
 
             if ($transaction->status === EarlyTerminationTransaction::STATUS_SUCCESS) {
+                $successfulFromStatus = $receivable->system_status;
                 $receivable->forceFill([
                     'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED,
                     'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_EXECUTED,
@@ -73,7 +92,7 @@ class ExecuteEarlyTerminationJob implements ShouldQueue
                 $logger->log(
                     receivable: $receivable,
                     event: 'early_termination_executed',
-                    fromStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING,
+                    fromStatus: $successfulFromStatus,
                     toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_EXECUTED,
                     description: 'Early termination executed.',
                     metadata: ['transaction_id' => $transaction->id],
@@ -110,10 +129,15 @@ class ExecuteEarlyTerminationJob implements ShouldQueue
         ?User $actor,
     ): void {
         if ($receivable->isTerminal()
-            || $receivable->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED) {
+            || in_array($receivable->system_status, [
+                InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED,
+                InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED,
+                InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED,
+            ], true)) {
             return;
         }
 
+        $fromStatus = $receivable->system_status;
         $receivable->forceFill([
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED,
             'last_error_message' => $message,
@@ -122,7 +146,7 @@ class ExecuteEarlyTerminationJob implements ShouldQueue
         $logger->log(
             receivable: $receivable,
             event: 'early_termination_failed',
-            fromStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING,
+            fromStatus: $fromStatus,
             toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED,
             description: $message,
             actor: $actor,

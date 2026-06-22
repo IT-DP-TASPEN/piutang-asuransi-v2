@@ -19,6 +19,10 @@ class GlToGlTransactionInfolist
                     ->inlineLabel()
                     ->columnSpanFull()
                     ->schema([
+                        TextEntry::make('purpose')->badge(),
+                        TextEntry::make('insuranceReceivable.loan_account_number')
+                            ->label('Insurance receivable loan account')
+                            ->placeholder('-'),
                         TextEntry::make('reference_number')
                             ->label('Reference number')
                             ->fontFamily(FontFamily::Mono)

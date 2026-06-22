@@ -7,8 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
+    'purpose',
     'ckpn_journal_id',
     'ckpn_workpaper_id',
+    'insurance_receivable_id',
     'reference_number',
     'receipt_number',
     'request_payload',
@@ -21,6 +23,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class GlToGlTransaction extends Model
 {
+    public const PURPOSE_CKPN_JOURNAL = 'ckpn_journal';
+
+    public const PURPOSE_EARLY_TERMINATION_REPAYMENT_TOP_UP = 'early_termination_repayment_top_up';
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_SUCCESS = 'success';
@@ -41,6 +47,14 @@ class GlToGlTransaction extends Model
     public function ckpnWorkpaper(): BelongsTo
     {
         return $this->belongsTo(CkpnWorkpaper::class);
+    }
+
+    /**
+     * @return BelongsTo<InsuranceReceivable, $this>
+     */
+    public function insuranceReceivable(): BelongsTo
+    {
+        return $this->belongsTo(InsuranceReceivable::class);
     }
 
     /**

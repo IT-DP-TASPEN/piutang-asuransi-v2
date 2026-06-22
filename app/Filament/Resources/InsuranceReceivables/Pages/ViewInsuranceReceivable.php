@@ -9,19 +9,18 @@ use App\Actions\ClaimStatusChangeRequest\ReturnClaimStatusChangeRequestAction;
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\CancelInsuranceReceivableAction;
 use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
+use App\Actions\InsuranceReceivable\QueueEarlyTerminationAction;
 use App\Actions\InsuranceReceivable\RejectInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\ResolveEarlyTerminationManuallyAction;
 use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
 use App\Filament\Resources\ApiIntegrationLogs\ApiIntegrationLogResource;
 use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
-use App\Jobs\ExecuteEarlyTerminationJob;
 use App\Models\ClaimStatus;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\InsuranceReceivable\InsuranceReceivableInquiryDispatcher;
-use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\EditAction;
@@ -57,6 +56,8 @@ class ViewInsuranceReceivable extends ViewRecord
             ActionGroup::make([
                 $this->retryInquiryAction(),
                 $this->cancelReceivableAction(),
+                $this->executeEarlyTerminationAction(),
+                $this->confirmManualTopUpAndExecuteEarlyTerminationAction(),
                 $this->retryEarlyTerminationAction(),
                 $this->resolveEarlyTerminationAction(),
                 $this->confirmCollectabilityChangeAction(),
@@ -215,26 +216,61 @@ class ViewInsuranceReceivable extends ViewRecord
                 && $this->getRecord()->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED)
             ->action(function (): void {
                 $user = auth()->user();
-                $record = $this->getRecord();
-                $fromStatus = $record->system_status;
 
-                $record->forceFill([
-                    'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED,
-                    'last_error_message' => null,
-                ])->save();
-
-                app(InsuranceReceivableStageLogger::class)->log(
-                    receivable: $record,
-                    event: 'early_termination_retry_queued',
-                    fromStatus: $fromStatus,
-                    toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED,
-                    description: 'Early termination retry queued.',
-                    actor: $user instanceof User ? $user : null,
-                );
-
-                ExecuteEarlyTerminationJob::dispatch($record->id, $user instanceof User ? $user->id : null)->afterCommit();
+                if ($user instanceof User) {
+                    app(QueueEarlyTerminationAction::class)->handle($this->getRecord(), $user);
+                }
 
                 Notification::make()->success()->title('Early termination retry queued')->send();
+            });
+    }
+
+    private function executeEarlyTerminationAction(): Action
+    {
+        return Action::make('executeEarlyTermination')
+            ->label('Execute Early Termination')
+            ->requiresConfirmation()
+            ->modalDescription('The repayment account balance will be checked and an automatic GL-to-GL top up may be executed before early termination.')
+            ->visible(fn (): bool => (auth()->user()?->can('executeEarlyTermination', $this->getRecord()) ?? false)
+                && ! $this->getRecord()->isTerminal()
+                && in_array($this->getRecord()->system_status, [
+                    InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
+                    InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED,
+                ], true))
+            ->action(function (): void {
+                $user = auth()->user();
+
+                if ($user instanceof User) {
+                    app(QueueEarlyTerminationAction::class)->handle($this->getRecord(), $user);
+                }
+
+                Notification::make()->success()->title('Early termination queued')->send();
+            });
+    }
+
+    private function confirmManualTopUpAndExecuteEarlyTerminationAction(): Action
+    {
+        return Action::make('confirmManualTopUpAndExecuteEarlyTermination')
+            ->label('Confirm Manual Top Up & Execute Early Termination')
+            ->color('warning')
+            ->requiresConfirmation()
+            ->modalDescription(function (): string {
+                $reason = $this->getRecord()->last_error_message
+                    ?: 'Manual top up is required for the empty or OPER account.';
+
+                return "{$reason} Confirm that manual top up is complete. Automatic inquiry balance and GL-to-GL top up will be skipped.";
+            })
+            ->visible(fn (): bool => (auth()->user()?->can('executeEarlyTermination', $this->getRecord()) ?? false)
+                && ! $this->getRecord()->isTerminal()
+                && $this->getRecord()->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED)
+            ->action(function (): void {
+                $user = auth()->user();
+
+                if ($user instanceof User) {
+                    app(QueueEarlyTerminationAction::class)->handle($this->getRecord(), $user, true);
+                }
+
+                Notification::make()->success()->title('Manual top up confirmed; early termination queued')->send();
             });
     }
 
@@ -442,6 +478,17 @@ class ViewInsuranceReceivable extends ViewRecord
             && ! $record->isTerminal()
             && $record->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED;
 
+        $canExecuteEarlyTermination = ($user?->can('executeEarlyTermination', $record) ?? false)
+            && ! $record->isTerminal()
+            && in_array($record->system_status, [
+                InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
+                InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED,
+            ], true);
+
+        $canConfirmManualTopUp = ($user?->can('executeEarlyTermination', $record) ?? false)
+            && ! $record->isTerminal()
+            && $record->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED;
+
         $canCancel = ($user?->can('cancel', $record) ?? false)
             && $record->canCancelFailedInquiry();
 
@@ -450,6 +497,8 @@ class ViewInsuranceReceivable extends ViewRecord
 
         return $canRetryInquiry
             || $canCancel
+            || $canExecuteEarlyTermination
+            || $canConfirmManualTopUp
             || $canRetryEarlyTermination
             || $canResolveEarlyTermination
             || (($user?->can('confirmCollectabilityChange', $record) ?? false)

@@ -3,7 +3,6 @@
 namespace App\Services\Approval;
 
 use App\Actions\CkpnAdjustment\ApplyApprovedCkpnAdjustmentAction;
-use App\Jobs\ExecuteEarlyTerminationJob;
 use App\Jobs\ExecuteGlToGlJob;
 use App\Models\ApprovalRequest;
 use App\Models\CkpnAdjustment;
@@ -96,7 +95,7 @@ class ApprovalFinalizationService
                 'receivable_amount' => $snapshot['amount'] ?? $journal->amount,
                 'remaining_receivable_amount' => $snapshot['amount'] ?? $journal->amount,
                 'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
-                'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED,
+                'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
                 'last_error_message' => null,
                 'approved_at' => now(),
             ])->save();
@@ -117,17 +116,16 @@ class ApprovalFinalizationService
 
             $this->stageLogger->log(
                 receivable: $receivable,
-                event: 'early_termination_queued',
+                event: 'early_termination_confirmation_pending',
                 fromStatus: null,
-                toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED,
-                description: 'Early termination queued after accounting approval.',
+                toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
+                description: 'Awaiting Accounting confirmation to execute early termination.',
                 metadata: ['receivable_formation_journal_id' => $journal->id],
                 actor: $actor,
                 approvalRequest: $approvalRequest,
             );
         });
 
-        ExecuteEarlyTerminationJob::dispatch($receivable->id, $actor->id)->afterCommit();
     }
 
     private function finalizeClaimStatusUpdate(ApprovalRequest $approvalRequest, User $actor, ?string $notes): void

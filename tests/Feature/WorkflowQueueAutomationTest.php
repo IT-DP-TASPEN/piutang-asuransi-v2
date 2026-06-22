@@ -12,7 +12,7 @@ use App\Actions\InsuranceReceivable\AutoSubmitInsuranceReceivableForBranchApprov
 use App\Actions\InsuranceReceivable\CancelInsuranceReceivableAction;
 use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
 use App\Actions\InsuranceReceivable\CreateInsuranceReceivableAction;
-use App\Actions\InsuranceReceivable\ExecuteEarlyTerminationAction;
+use App\Actions\InsuranceReceivable\ExecuteEarlyTerminationWithRepaymentTopUpAction;
 use App\Actions\InsuranceReceivable\PerformLoanInquiryAction;
 use App\Actions\InsuranceReceivable\ResolveEarlyTerminationManuallyAction;
 use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
@@ -260,7 +260,7 @@ class WorkflowQueueAutomationTest extends TestCase
             ->assertActionHidden('returnApproval');
     }
 
-    public function test_accounting_approval_queues_early_termination(): void
+    public function test_accounting_approval_waits_for_early_termination_confirmation(): void
     {
         $this->seedDependencies();
         $maker = $this->userWithRole('branch_maker', '001');
@@ -280,9 +280,9 @@ class WorkflowQueueAutomationTest extends TestCase
         Queue::fake();
         $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $accountingApprover);
 
-        Queue::assertPushed(ExecuteEarlyTerminationJob::class, fn (ExecuteEarlyTerminationJob $job): bool => $job->insuranceReceivableId === $receivable->id);
-        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED, $receivable->system_status);
-        $this->assertTrue($receivable->stageLogs()->where('event', 'early_termination_queued')->exists());
+        Queue::assertNotPushed(ExecuteEarlyTerminationJob::class);
+        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING, $receivable->system_status);
+        $this->assertTrue($receivable->stageLogs()->where('event', 'early_termination_confirmation_pending')->exists());
     }
 
     public function test_early_termination_job_failure_then_retry_reuses_reference(): void
@@ -294,18 +294,24 @@ class WorkflowQueueAutomationTest extends TestCase
         $receivable = $this->receivableReadyForSubmit($maker, [
             'loan_outstanding' => '230929055.00',
             'alt_number' => 'ALT-1',
+            'saving_account_for_loan_repayment' => '1000010000000691',
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED,
         ]);
 
         Http::fake([
+            'http://core.test/account/balance*' => Http::response([
+                'responseCode' => '00',
+                'description' => 'Success',
+                'data' => ['availableBalance' => '230929055.00'],
+            ]),
             'http://core.test/loan/earlytermination/' => Http::sequence()
                 ->push(['responseCode' => '99', 'description' => 'Temporary failure', 'data' => []])
                 ->push(['responseCode' => '00', 'description' => 'Success', 'data' => ['transactionId' => 'TRX-1']]),
         ]);
 
         (new ExecuteEarlyTerminationJob($receivable->id, $maker->id))->handle(
-            app(ExecuteEarlyTerminationAction::class),
+            app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class),
             app(InsuranceReceivableStageLogger::class),
         );
 
@@ -314,7 +320,7 @@ class WorkflowQueueAutomationTest extends TestCase
         $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED, $receivable->refresh()->system_status);
 
         (new ExecuteEarlyTerminationJob($receivable->id, $maker->id))->handle(
-            app(ExecuteEarlyTerminationAction::class),
+            app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class),
             app(InsuranceReceivableStageLogger::class),
         );
 

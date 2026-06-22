@@ -69,6 +69,7 @@ class ExecuteGlToGlTransferAction
     private function findOrCreateTransaction(CkpnJournal $journal, ?User $user): GlToGlTransaction
     {
         $existing = $journal->glToGlTransactions()
+            ->where('purpose', GlToGlTransaction::PURPOSE_CKPN_JOURNAL)
             ->where(fn ($query) => $query
                 ->whereNull('status')
                 ->orWhere('status', '!=', GlToGlTransaction::STATUS_SUCCESS))
@@ -86,6 +87,7 @@ class ExecuteGlToGlTransferAction
 
             try {
                 return $journal->glToGlTransactions()->create([
+                    'purpose' => GlToGlTransaction::PURPOSE_CKPN_JOURNAL,
                     'ckpn_workpaper_id' => $journal->ckpn_workpaper_id,
                     'reference_number' => $referenceNumber,
                     'receipt_number' => $receiptNumber,

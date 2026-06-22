@@ -23,7 +23,8 @@ class CoreBankingClient
      *     description: string|null,
      *     data: array<string, mixed>,
      *     raw_body: string|null,
-     *     log_id: int|null
+     *     log_id: int|null,
+     *     error_message: string|null
      * }
      */
     public function inquireLoan(string $accountNumber, ?Model $related = null, ?User $requestedBy = null): array
@@ -37,6 +38,77 @@ class CoreBankingClient
     }
 
     /**
+     * @return array{
+     *     ok: bool,
+     *     status: int|null,
+     *     response_code: string|null,
+     *     description: string|null,
+     *     data: array<string, mixed>,
+     *     raw_body: string|null,
+     *     log_id: int|null,
+     *     error_message: string|null
+     * }
+     */
+    public function inquireBalance(string $account, ?Model $related = null, ?User $requestedBy = null): array
+    {
+        $endpoint = '/account/balance';
+        $query = ['account' => $account];
+        $headers = ['Accept' => 'application/json'];
+        $status = null;
+        $responseBody = null;
+        $responseCode = null;
+        $description = null;
+        $data = [];
+        $errorMessage = null;
+        $responseBodyForLog = [];
+
+        try {
+            $response = Http::withHeaders($headers)->get($this->url($endpoint), $query);
+
+            $status = $response->status();
+            $responseBody = $response->body();
+            $decoded = $this->decodeResponse($responseBody);
+            $responseBodyForLog = $this->responseBodyForLog($responseBody);
+            $responseCode = isset($decoded['responseCode']) ? (string) $decoded['responseCode'] : null;
+            $description = isset($decoded['description']) ? (string) $decoded['description'] : null;
+            $data = is_array($decoded['data'] ?? null) ? $decoded['data'] : [];
+        } catch (Throwable $exception) {
+            $errorMessage = $exception->getMessage();
+        }
+
+        $ok = $responseCode === '00' && $errorMessage === null;
+
+        $log = ApiIntegrationLog::query()->create([
+            'service_name' => 'core_banking',
+            'endpoint' => $endpoint,
+            'method' => 'GET',
+            'request_headers' => $headers,
+            'request_body' => $query,
+            'response_status' => $status,
+            'response_body' => $responseBodyForLog,
+            'response_code' => $responseCode,
+            'response_description' => $description,
+            'is_success' => $ok,
+            'error_message' => $errorMessage,
+            'related_type' => $related?->getMorphClass(),
+            'related_id' => $related?->getKey(),
+            'requested_by' => $requestedBy?->id,
+            'requested_at' => now(),
+        ]);
+
+        return [
+            'ok' => $ok,
+            'status' => $status,
+            'response_code' => $responseCode,
+            'description' => $description,
+            'data' => $data,
+            'raw_body' => $responseBody,
+            'log_id' => $log->id,
+            'error_message' => $errorMessage,
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      * @return array{
      *     ok: bool,
@@ -45,7 +117,8 @@ class CoreBankingClient
      *     description: string|null,
      *     data: array<string, mixed>,
      *     raw_body: string|null,
-     *     log_id: int|null
+     *     log_id: int|null,
+     *     error_message: string|null
      * }
      */
     public function earlyTerminateLoan(array $payload, ?Model $related = null, ?User $requestedBy = null): array
@@ -67,7 +140,8 @@ class CoreBankingClient
      *     description: string|null,
      *     data: array<string, mixed>,
      *     raw_body: string|null,
-     *     log_id: int|null
+     *     log_id: int|null,
+     *     error_message: string|null
      * }
      */
     public function transferGlToGl(array $payload, ?Model $related = null, ?User $requestedBy = null): array
@@ -89,7 +163,8 @@ class CoreBankingClient
      *     description: string|null,
      *     data: array<string, mixed>,
      *     raw_body: string|null,
-     *     log_id: int|null
+     *     log_id: int|null,
+     *     error_message: string|null
      * }
      */
     private function post(string $endpoint, array $payload, ?Model $related, ?User $requestedBy): array
@@ -158,6 +233,7 @@ class CoreBankingClient
             'data' => $data,
             'raw_body' => $responseBody,
             'log_id' => $log->id,
+            'error_message' => $errorMessage,
         ];
     }
 

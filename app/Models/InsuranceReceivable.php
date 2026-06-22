@@ -90,6 +90,14 @@ class InsuranceReceivable extends Model
 
     public const SYSTEM_STATUS_EARLY_TERMINATION_QUEUED = 'early_termination_queued';
 
+    public const SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING = 'early_termination_confirmation_pending';
+
+    public const SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED = 'early_termination_manual_top_up_required';
+
+    public const SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED = 'early_termination_top_up_failed';
+
+    public const SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_EXECUTED = 'early_termination_top_up_executed';
+
     public const SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING = 'early_termination_processing';
 
     public const SYSTEM_STATUS_EARLY_TERMINATION_EXECUTED = 'early_termination_executed';
@@ -159,6 +167,10 @@ class InsuranceReceivable extends Model
             self::SYSTEM_STATUS_INQUIRY_FAILED => 'Inquiry failed',
             self::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED => 'Branch validation failed',
             self::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED => 'Early termination queued',
+            self::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING => 'Early termination confirmation pending',
+            self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED => 'Early termination manual top up required',
+            self::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED => 'Early termination top up failed',
+            self::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_EXECUTED => 'Early termination top up executed',
             self::SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING => 'Early termination processing',
             self::SYSTEM_STATUS_EARLY_TERMINATION_EXECUTED => 'Early termination executed',
             self::SYSTEM_STATUS_EARLY_TERMINATION_FAILED => 'Early termination failed',
@@ -281,6 +293,22 @@ class InsuranceReceivable extends Model
     public function earlyTerminationTransactions(): HasMany
     {
         return $this->hasMany(EarlyTerminationTransaction::class);
+    }
+
+    /**
+     * @return HasMany<GlToGlTransaction, $this>
+     */
+    public function glToGlTransactions(): HasMany
+    {
+        return $this->hasMany(GlToGlTransaction::class);
+    }
+
+    /**
+     * @return MorphMany<ApiIntegrationLog, $this>
+     */
+    public function apiIntegrationLogs(): MorphMany
+    {
+        return $this->morphMany(ApiIntegrationLog::class, 'related');
     }
 
     /**
