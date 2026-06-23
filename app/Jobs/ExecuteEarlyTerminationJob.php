@@ -21,7 +21,6 @@ class ExecuteEarlyTerminationJob implements ShouldQueue
     public function __construct(
         public readonly int $insuranceReceivableId,
         public readonly ?int $requestedBy = null,
-        public readonly bool $manualTopUpConfirmed = false,
     ) {}
 
     /**
@@ -74,7 +73,7 @@ class ExecuteEarlyTerminationJob implements ShouldQueue
         );
 
         try {
-            $transaction = $action->handle($receivable, $actor, $this->manualTopUpConfirmed);
+            $transaction = $action->handle($receivable, $actor);
 
             if (! $transaction instanceof EarlyTerminationTransaction) {
                 return;
@@ -131,7 +130,7 @@ class ExecuteEarlyTerminationJob implements ShouldQueue
         if ($receivable->isTerminal()
             || in_array($receivable->system_status, [
                 InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED,
-                InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED,
+                InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
                 InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED,
             ], true)) {
             return;

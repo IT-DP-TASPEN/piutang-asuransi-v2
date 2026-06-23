@@ -50,7 +50,7 @@ class ResolveClaimDocumentChecklist
         $requirements = ClaimDocumentRequirement::query()
             ->with('claimDocumentType')
             ->where('claim_type', $claimType)
-            ->whereHas('claimDocumentType', fn ($query) => $query->where('active', true))
+            ->whereHas('claimDocumentType', fn($query) => $query->where('active', true))
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -113,7 +113,7 @@ class ResolveClaimDocumentChecklist
         }
 
         if ($missingDocuments !== []) {
-            $warnings[] = count($missingDocuments).' required claim document(s) are missing.';
+            $warnings[] = count($missingDocuments) . ' required claim document(s) are missing.';
         }
 
         $warnings = [...$missingDataWarnings, ...$warnings];
@@ -138,7 +138,7 @@ class ResolveClaimDocumentChecklist
             key: 'data:date_of_death',
             code: 'date_of_death',
             name: 'Tanggal Debitur Meninggal',
-            description: 'Data field pada piutang asuransi; bukan dokumen upload.',
+            description: null,
             uploadable: false,
             required: true,
             conditional: false,

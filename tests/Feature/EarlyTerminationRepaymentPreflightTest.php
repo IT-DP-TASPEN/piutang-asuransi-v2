@@ -90,7 +90,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             && ! $request->hasHeader('Signature'));
     }
 
-    public function test_empty_and_oper_accounts_require_manual_top_up_without_api_calls(): void
+    public function test_empty_and_oper_accounts_require_manual_early_termination_without_api_calls(): void
     {
         Http::fake();
         $action = app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class);
@@ -100,20 +100,21 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
 
         $this->assertNull($action->handle($empty, $user));
         $this->assertSame(
-            InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED,
+            InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
             $empty->refresh()->system_status,
         );
         $this->assertSame(
-            'Manual top up required because repayment saving account is empty.',
+            'Manual Early Termination execution required because repayment saving account is empty.',
             $empty->last_error_message,
         );
 
         $this->assertNull($action->handle($oper, $user));
         $this->assertSame(
-            InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED,
+            InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
             $oper->refresh()->system_status,
         );
-        $this->assertSame('Manual top up required for OPER account.', $oper->last_error_message);
+        $this->assertSame('Manual Early Termination execution required for OPER account.', $oper->last_error_message);
+        $this->assertTrue($oper->stageLogs()->where('event', 'early_termination_manual_execution_required')->exists());
         $this->assertDatabaseCount('gl_to_gl_transactions', 0);
         $this->assertDatabaseCount('early_termination_transactions', 0);
         Http::assertNothingSent();
@@ -331,46 +332,6 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertDatabaseCount('gl_to_gl_transactions', 1);
         $this->assertSame(1, ApiIntegrationLog::query()->where('endpoint', '/account/balance')->count());
         $this->assertSame(1, ApiIntegrationLog::query()->where('endpoint', '/trx/transfer/gl-to-gl')->count());
-    }
-
-    public function test_manual_confirmation_skips_balance_and_gl_and_is_authorized_in_ui(): void
-    {
-        $receivable = $this->receivable([
-            'saving_account_for_loan_repayment' => 'OPER-01',
-            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED,
-            'last_error_message' => 'Manual top up required for OPER account.',
-        ]);
-        $approver = $this->accountingApprover();
-        Http::fake([
-            'http://core.test/loan/earlytermination/' => Http::response($this->earlyTerminationSuccess()),
-        ]);
-
-        $result = app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class)
-            ->handle($receivable, $approver, true);
-
-        $this->assertSame(EarlyTerminationTransaction::STATUS_SUCCESS, $result?->status);
-        $this->assertSame(1, ApiIntegrationLog::query()->where('endpoint', '/loan/earlytermination/')->count());
-        $this->assertSame(0, ApiIntegrationLog::query()->where('endpoint', '/account/balance')->count());
-        $this->assertDatabaseCount('gl_to_gl_transactions', 0);
-
-        Queue::fake();
-        $receivable->forceFill([
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
-            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED,
-        ])->saveQuietly();
-        Livewire::actingAs($approver)
-            ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
-            ->assertActionVisible('confirmManualTopUpAndExecuteEarlyTermination')
-            ->callAction('confirmManualTopUpAndExecuteEarlyTermination');
-        Queue::assertPushed(ExecuteEarlyTerminationJob::class, fn (ExecuteEarlyTerminationJob $job): bool => $job->manualTopUpConfirmed);
-
-        $unauthorized = $this->userWithRole('accounting_maker', '000');
-        $receivable->forceFill([
-            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED,
-        ])->saveQuietly();
-        Livewire::actingAs($unauthorized)
-            ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
-            ->assertActionHidden('confirmManualTopUpAndExecuteEarlyTermination');
     }
 
     public function test_authorized_accounting_user_can_queue_initial_execution_only_once(): void

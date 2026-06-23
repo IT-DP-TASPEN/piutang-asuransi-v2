@@ -57,7 +57,6 @@ class ViewInsuranceReceivable extends ViewRecord
                 $this->retryInquiryAction(),
                 $this->cancelReceivableAction(),
                 $this->executeEarlyTerminationAction(),
-                $this->confirmManualTopUpAndExecuteEarlyTerminationAction(),
                 $this->retryEarlyTerminationAction(),
                 $this->resolveEarlyTerminationAction(),
                 $this->confirmCollectabilityChangeAction(),
@@ -248,32 +247,6 @@ class ViewInsuranceReceivable extends ViewRecord
             });
     }
 
-    private function confirmManualTopUpAndExecuteEarlyTerminationAction(): Action
-    {
-        return Action::make('confirmManualTopUpAndExecuteEarlyTermination')
-            ->label('Confirm Manual Top Up & Execute Early Termination')
-            ->color('warning')
-            ->requiresConfirmation()
-            ->modalDescription(function (): string {
-                $reason = $this->getRecord()->last_error_message
-                    ?: 'Manual top up is required for the empty or OPER account.';
-
-                return "{$reason} Confirm that manual top up is complete. Automatic inquiry balance and GL-to-GL top up will be skipped.";
-            })
-            ->visible(fn (): bool => (auth()->user()?->can('executeEarlyTermination', $this->getRecord()) ?? false)
-                && ! $this->getRecord()->isTerminal()
-                && $this->getRecord()->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED)
-            ->action(function (): void {
-                $user = auth()->user();
-
-                if ($user instanceof User) {
-                    app(QueueEarlyTerminationAction::class)->handle($this->getRecord(), $user, true);
-                }
-
-                Notification::make()->success()->title('Manual top up confirmed; early termination queued')->send();
-            });
-    }
-
     private function cancelReceivableAction(): Action
     {
         return Action::make('cancelReceivable')
@@ -303,6 +276,7 @@ class ViewInsuranceReceivable extends ViewRecord
             ->label('Resolve Early Termination')
             ->color('warning')
             ->requiresConfirmation()
+            ->modalDescription('Use this only after Accounting has executed Early Termination manually in core banking. The app will only verify the loan account through inquiry and resolve it when core returns response code 77 (Data Not Found).')
             ->visible(fn (): bool => (auth()->user()?->can('resolveEarlyTermination', $this->getRecord()) ?? false)
                 && $this->getRecord()->canResolveEarlyTermination())
             ->form([
@@ -485,10 +459,6 @@ class ViewInsuranceReceivable extends ViewRecord
                 InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED,
             ], true);
 
-        $canConfirmManualTopUp = ($user?->can('executeEarlyTermination', $record) ?? false)
-            && ! $record->isTerminal()
-            && $record->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED;
-
         $canCancel = ($user?->can('cancel', $record) ?? false)
             && $record->canCancelFailedInquiry();
 
@@ -498,7 +468,6 @@ class ViewInsuranceReceivable extends ViewRecord
         return $canRetryInquiry
             || $canCancel
             || $canExecuteEarlyTermination
-            || $canConfirmManualTopUp
             || $canRetryEarlyTermination
             || $canResolveEarlyTermination
             || (($user?->can('confirmCollectabilityChange', $record) ?? false)

@@ -332,6 +332,7 @@ class WorkflowQueueAutomationTest extends TestCase
 
     public function test_early_termination_failure_can_be_resolved_manually_and_remains_non_terminal(): void
     {
+        config(['core_banking.base_url' => 'http://core.test', 'core_banking.signature_secret' => 'secret-key']);
         $this->seedDependencies();
         $accountingMaker = $this->userWithRole('accounting_maker', '000');
         $businessMaker = $this->userWithRole('business_maker', '000');
@@ -341,13 +342,20 @@ class WorkflowQueueAutomationTest extends TestCase
             'receivable_formation_date' => '2026-05-31',
             'receivable_amount' => '1000.00',
         ]);
+        Http::fake([
+            'http://core.test/inquiry/detail/loan' => Http::response([
+                'responseCode' => '77',
+                'description' => 'Data Not Found',
+                'data' => [],
+            ]),
+        ]);
 
         $resolved = app(ResolveEarlyTerminationManuallyAction::class)->handle($receivable, $accountingMaker);
 
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED, $resolved->workflow_status);
         $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED, $resolved->system_status);
         $this->assertFalse($resolved->isTerminal());
-        $this->assertTrue($resolved->stageLogs()->where('event', 'early_termination_resolved_manually')->exists());
+        $this->assertTrue($resolved->stageLogs()->where('event', 'early_termination_resolved_after_manual_core_execution')->exists());
 
         Livewire::actingAs($businessMaker)
             ->test(ViewInsuranceReceivable::class, ['record' => $resolved->id])

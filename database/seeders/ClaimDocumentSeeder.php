@@ -21,7 +21,7 @@ class ClaimDocumentSeeder extends Seeder
             ['code' => 'debtor_family_card', 'name' => 'KK Debitur', 'description' => null],
             ['code' => 'heir_family_card', 'name' => 'KK Ahli Waris', 'description' => null],
             ['code' => 'credit_agreement', 'name' => 'Surat Perjanjian Kredit', 'description' => null],
-            ['code' => 'account_statement', 'name' => 'Rekening Statement 1 & 2', 'description' => 'Satu PDF gabungan.'],
+            ['code' => 'account_statement', 'name' => 'Rekening Statement 1 & 2', 'description' => null],
             ['code' => 'installment_schedule', 'name' => 'Jadwal Angsuran', 'description' => null],
             ['code' => 'death_certificate_hospital', 'name' => 'Surat Keterangan dari Rumah Sakit', 'description' => 'Jika debitur meninggal di rumah sakit.'],
             ['code' => 'death_certificate_police', 'name' => 'Surat Keterangan dari Kepolisian', 'description' => 'Jika debitur meninggal karena kecelakaan.'],

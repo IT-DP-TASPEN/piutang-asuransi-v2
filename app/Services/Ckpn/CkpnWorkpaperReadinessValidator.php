@@ -41,7 +41,7 @@ class CkpnWorkpaperReadinessValidator
             InsuranceReceivable::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED,
             InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED,
             InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
-            InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED,
+            InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
             InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED,
             InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_EXECUTED,
             InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING,

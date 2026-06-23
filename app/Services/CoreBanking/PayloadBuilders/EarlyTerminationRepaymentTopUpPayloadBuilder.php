@@ -30,7 +30,7 @@ class EarlyTerminationRepaymentTopUpPayloadBuilder
 
         return [
             'referenceNumber' => $referenceNumber,
-            'trxType' => 'DISTRIBUSIDAPEM',
+            'trxType' => 'PiutangAsuransi',
             'termType' => '',
             'termId' => 'FINCLOUD',
             'receiptNumber' => $receiptNumber,

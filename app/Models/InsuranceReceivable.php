@@ -92,7 +92,7 @@ class InsuranceReceivable extends Model
 
     public const SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING = 'early_termination_confirmation_pending';
 
-    public const SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED = 'early_termination_manual_top_up_required';
+    public const SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED = 'early_termination_manual_execution_required';
 
     public const SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED = 'early_termination_top_up_failed';
 
@@ -168,7 +168,7 @@ class InsuranceReceivable extends Model
             self::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED => 'Branch validation failed',
             self::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED => 'Early termination queued',
             self::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING => 'Early termination confirmation pending',
-            self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED => 'Early termination manual top up required',
+            self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED => 'Manual Early Termination Required',
             self::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED => 'Early termination top up failed',
             self::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_EXECUTED => 'Early termination top up executed',
             self::SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING => 'Early termination processing',
@@ -220,7 +220,15 @@ class InsuranceReceivable extends Model
     public function canResolveEarlyTermination(): bool
     {
         return ! $this->isTerminal()
-            && $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_FAILED;
+            && in_array($this->system_status, [
+                self::SYSTEM_STATUS_EARLY_TERMINATION_FAILED,
+                self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
+            ], true);
+    }
+
+    public function requiresManualEarlyTerminationExecution(): bool
+    {
+        return $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED;
     }
 
     /**

@@ -25,29 +25,28 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
     public function handle(
         InsuranceReceivable $insuranceReceivable,
         ?User $user = null,
-        bool $manualTopUpConfirmed = false,
     ): ?EarlyTerminationTransaction {
-        if ($manualTopUpConfirmed || $this->successfulTopUpExists($insuranceReceivable)) {
+        if ($this->successfulTopUpExists($insuranceReceivable)) {
             return $this->earlyTerminationAction->handle($insuranceReceivable, $user);
         }
 
         $account = trim((string) $insuranceReceivable->saving_account_for_loan_repayment);
 
         if ($account === '') {
-            $this->stopForManualTopUp(
+            $this->stopForManualExecution(
                 $insuranceReceivable,
                 $user,
-                'Manual top up required because repayment saving account is empty.',
+                'Manual Early Termination execution required because repayment saving account is empty.',
             );
 
             return null;
         }
 
         if (str_contains(strtoupper($account), 'OPER')) {
-            $this->stopForManualTopUp(
+            $this->stopForManualExecution(
                 $insuranceReceivable,
                 $user,
-                'Manual top up required for OPER account.',
+                'Manual Early Termination execution required for OPER account.',
             );
 
             return null;
@@ -134,22 +133,22 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
             ->exists();
     }
 
-    private function stopForManualTopUp(
+    private function stopForManualExecution(
         InsuranceReceivable $insuranceReceivable,
         ?User $user,
         string $message,
     ): void {
         $fromStatus = $insuranceReceivable->system_status;
         $insuranceReceivable->forceFill([
-            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED,
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
             'last_error_message' => $message,
         ])->saveQuietly();
 
         $this->stageLogger->log(
             receivable: $insuranceReceivable,
-            event: 'early_termination_manual_top_up_required',
+            event: 'early_termination_manual_execution_required',
             fromStatus: $fromStatus,
-            toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_TOP_UP_REQUIRED,
+            toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
             description: $message,
             actor: $user,
             triggeredByType: 'job',
