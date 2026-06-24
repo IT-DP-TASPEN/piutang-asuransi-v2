@@ -29,11 +29,11 @@ class InsuranceReceivableForm
                             ->maxLength(255),
                         DatePicker::make('date_of_death')
                             ->label('Date of death')
-                            ->helperText('Missing value produces a non-blocking checklist warning.'),
+                            ->required(),
                         Select::make('death_document_condition')
-                            ->label('Death document condition')
+                            ->label('Death condition')
                             ->options(InsuranceReceivable::deathDocumentConditionOptions())
-                            ->helperText('Controls the conditional death document checklist.'),
+                            ->required(),
                         Select::make('insurance_company_id')
                             ->label('Insurance company')
                             ->relationship('insuranceCompany', 'name')
@@ -43,7 +43,7 @@ class InsuranceReceivableForm
                         Select::make('claim_status_id')
                             ->label('Claim status')
                             ->relationship('claimStatus', 'name')
-                            ->default(fn (): ?int => ClaimStatus::query()
+                            ->default(fn(): ?int => ClaimStatus::query()
                                 ->where('code', ClaimStatus::DEFAULT_CODE)
                                 ->value('id'))
                             ->disabled()
