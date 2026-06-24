@@ -35,6 +35,8 @@ class ApprovalRequest extends Model
 
     public const WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION = 'accounting_receivable_validation';
 
+    public const WORKFLOW_MANUAL_EARLY_TERMINATION_VERIFICATION = 'manual_early_termination_verification';
+
     public const WORKFLOW_CLAIM_STATUS_UPDATE = 'claim_status_update';
 
     public const WORKFLOW_MONTHLY_CKPN_WORKPAPER = 'monthly_ckpn_workpaper';

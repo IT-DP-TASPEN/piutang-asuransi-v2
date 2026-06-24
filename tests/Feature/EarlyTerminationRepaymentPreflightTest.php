@@ -104,6 +104,10 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             $empty->refresh()->system_status,
         );
         $this->assertSame(
+            InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING,
+            $empty->workflow_status,
+        );
+        $this->assertSame(
             'Manual Early Termination execution required because repayment saving account is empty.',
             $empty->last_error_message,
         );
@@ -112,6 +116,10 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertSame(
             InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
             $oper->refresh()->system_status,
+        );
+        $this->assertSame(
+            InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING,
+            $oper->workflow_status,
         );
         $this->assertSame('Manual Early Termination execution required for OPER account.', $oper->last_error_message);
         $this->assertTrue($oper->stageLogs()->where('event', 'early_termination_manual_execution_required')->exists());
@@ -169,7 +177,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         Http::assertSentCount(2);
     }
 
-    public function test_positive_shortage_executes_exact_distribus_idapem_payload_then_early_termination(): void
+    public function test_positive_shortage_executes_exact_piutang_asuransi_payload_then_early_termination(): void
     {
         $receivable = $this->receivable(['loan_outstanding' => '1000.105']);
         Http::fake([
@@ -195,7 +203,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertSame($receivable->id, $transaction->insurance_receivable_id);
         $this->assertSame("ETTOP{$transaction->id}", $transaction->reference_number);
         $this->assertSame($transaction->reference_number, $transaction->receipt_number);
-        $this->assertSame('DISTRIBUSIDAPEM', $transaction->request_payload['trxType']);
+        $this->assertSame('PiutangAsuransi', $transaction->request_payload['trxType']);
         $this->assertSame('', $transaction->request_payload['debitAccount']);
         $this->assertSame('', $transaction->request_payload['creditAccount']);
         $this->assertSame('1000010000000691', $transaction->request_payload['destAccount']);

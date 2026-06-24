@@ -26,6 +26,8 @@ class CkpnWorkpaperReadinessValidator
             InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
             InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER,
             InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
+            InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING,
+            InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_SUBMITTED,
         ];
     }
 

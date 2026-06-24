@@ -37,6 +37,7 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
                 $insuranceReceivable,
                 $user,
                 'Manual Early Termination execution required because repayment saving account is empty.',
+                'empty_repayment_account',
             );
 
             return null;
@@ -47,6 +48,7 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
                 $insuranceReceivable,
                 $user,
                 'Manual Early Termination execution required for OPER account.',
+                'oper_account',
             );
 
             return null;
@@ -137,9 +139,14 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
         InsuranceReceivable $insuranceReceivable,
         ?User $user,
         string $message,
+        string $reason,
     ): void {
-        $fromStatus = $insuranceReceivable->system_status;
+        $fromWorkflowStatus = $insuranceReceivable->workflow_status;
+        $fromSystemStatus = $insuranceReceivable->system_status;
+        $account = trim((string) $insuranceReceivable->saving_account_for_loan_repayment);
+
         $insuranceReceivable->forceFill([
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING,
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
             'last_error_message' => $message,
         ])->saveQuietly();
@@ -147,9 +154,15 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
         $this->stageLogger->log(
             receivable: $insuranceReceivable,
             event: 'early_termination_manual_execution_required',
-            fromStatus: $fromStatus,
+            fromStatus: $fromSystemStatus,
             toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
             description: $message,
+            metadata: [
+                'repayment_saving_account' => $account,
+                'reason' => $reason,
+                'previous_workflow_status' => $fromWorkflowStatus,
+                'previous_system_status' => $fromSystemStatus,
+            ],
             actor: $user,
             triggeredByType: 'job',
         );

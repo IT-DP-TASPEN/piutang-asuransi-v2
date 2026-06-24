@@ -25,6 +25,9 @@ class ApprovalService
         ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION => [
             ['role_name' => 'accounting_approver'],
         ],
+        ApprovalRequest::WORKFLOW_MANUAL_EARLY_TERMINATION_VERIFICATION => [
+            ['role_name' => 'accounting_approver'],
+        ],
         ApprovalRequest::WORKFLOW_CLAIM_STATUS_UPDATE => [
             ['role_name' => 'business_approver'],
         ],

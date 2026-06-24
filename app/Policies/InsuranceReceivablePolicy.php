@@ -137,6 +137,18 @@ class InsuranceReceivablePolicy
             && ! $insuranceReceivable->isTerminal();
     }
 
+    public function submitManualEarlyTerminationConfirmation(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'SubmitManualEarlyTerminationConfirmation')
+            && $this->canAccessRecord($user, $insuranceReceivable)
+            && ! $insuranceReceivable->isTerminal()
+            && $insuranceReceivable->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED
+            && in_array($insuranceReceivable->workflow_status, [
+                InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING,
+                InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_SUBMITTED,
+            ], true);
+    }
+
     public function cancel(User $user, InsuranceReceivable $insuranceReceivable): bool
     {
         return $this->can($user, 'Cancel')

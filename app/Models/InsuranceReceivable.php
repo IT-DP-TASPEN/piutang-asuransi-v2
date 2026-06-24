@@ -74,6 +74,10 @@ class InsuranceReceivable extends Model
 
     public const WORKFLOW_STATUS_RECEIVABLE_FORMED = 'receivable_formed';
 
+    public const WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING = 'manual_early_termination_pending';
+
+    public const WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_SUBMITTED = 'manual_early_termination_submitted';
+
     public const WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED = 'early_termination_executed';
 
     public const WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED = 'early_termination_resolved';
@@ -150,6 +154,8 @@ class InsuranceReceivable extends Model
             self::WORKFLOW_STATUS_CANCELLED => 'Cancelled',
             self::WORKFLOW_STATUS_ACCOUNTING_VALIDATION => 'Accounting validation',
             self::WORKFLOW_STATUS_RECEIVABLE_FORMED => 'Receivable formed',
+            self::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING => 'Manual Early Termination Pending',
+            self::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_SUBMITTED => 'Manual Early Termination Submitted',
             self::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED => 'Early termination executed',
             self::WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED => 'Early termination resolved',
         ];
@@ -219,16 +225,61 @@ class InsuranceReceivable extends Model
 
     public function canResolveEarlyTermination(): bool
     {
-        return ! $this->isTerminal()
-            && in_array($this->system_status, [
-                self::SYSTEM_STATUS_EARLY_TERMINATION_FAILED,
-                self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
-            ], true);
+        if ($this->isTerminal()) {
+            return false;
+        }
+
+        if ($this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_FAILED) {
+            return true;
+        }
+
+        return $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED
+            && $this->workflow_status !== self::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING;
     }
 
     public function requiresManualEarlyTerminationExecution(): bool
     {
         return $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED;
+    }
+
+    public function canSubmitManualEarlyTerminationConfirmation(): bool
+    {
+        return ! $this->isTerminal()
+            && $this->workflow_status === self::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING
+            && $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED;
+    }
+
+    public function manualEarlyTerminationSubmitted(): bool
+    {
+        return ! $this->isTerminal()
+            && $this->workflow_status === self::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_SUBMITTED
+            && $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED;
+    }
+
+    /**
+     * @return array{reason: string, message: string, repayment_account: string}|null
+     */
+    public function manualEarlyTerminationRequirement(): ?array
+    {
+        $account = trim((string) $this->saving_account_for_loan_repayment);
+
+        if ($account === '') {
+            return [
+                'reason' => 'empty_repayment_account',
+                'message' => 'Manual Early Termination execution required because repayment saving account is empty.',
+                'repayment_account' => $account,
+            ];
+        }
+
+        if (str_contains(strtoupper($account), 'OPER')) {
+            return [
+                'reason' => 'oper_account',
+                'message' => 'Manual Early Termination execution required for OPER account.',
+                'repayment_account' => $account,
+            ];
+        }
+
+        return null;
     }
 
     /**

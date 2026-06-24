@@ -334,7 +334,7 @@ class WorkflowQueueAutomationTest extends TestCase
     {
         config(['core_banking.base_url' => 'http://core.test', 'core_banking.signature_secret' => 'secret-key']);
         $this->seedDependencies();
-        $accountingMaker = $this->userWithRole('accounting_maker', '000');
+        $accountingApprover = $this->userWithRole('accounting_approver', '000');
         $businessMaker = $this->userWithRole('business_maker', '000');
         $receivable = $this->receivableReadyForSubmit($this->userWithRole('branch_maker', '001'), [
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
@@ -350,7 +350,7 @@ class WorkflowQueueAutomationTest extends TestCase
             ]),
         ]);
 
-        $resolved = app(ResolveEarlyTerminationManuallyAction::class)->handle($receivable, $accountingMaker);
+        $resolved = app(ResolveEarlyTerminationManuallyAction::class)->handle($receivable, $accountingApprover);
 
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED, $resolved->workflow_status);
         $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED, $resolved->system_status);
@@ -513,6 +513,7 @@ class WorkflowQueueAutomationTest extends TestCase
             'branch_office_id' => $user->branch_office_id,
             'branch_code' => $user->branchOffice->branch_code,
             'loan_account_number' => '3010001000054745',
+            'saving_account_for_loan_repayment' => '1000010000000691',
             'created_by' => $user->id,
             ...$attributes,
         ]);

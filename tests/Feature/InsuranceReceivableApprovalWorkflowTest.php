@@ -322,6 +322,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         $itUser = $this->userWithRole('it_user', '000');
         $receivable = InsuranceReceivable::factory()->create([
             'collectability' => '1',
+            'saving_account_for_loan_repayment' => '1000010000000691',
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
         ]);
 
@@ -352,6 +353,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
             'branch_office_id' => $user->branch_office_id,
             'branch_code' => $user->branchOffice->branch_code,
             'created_by' => $user->id,
+            'saving_account_for_loan_repayment' => '1000010000000691',
             ...$attributes,
         ]);
 

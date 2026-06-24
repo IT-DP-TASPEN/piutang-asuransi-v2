@@ -83,6 +83,7 @@ class RolePermissionSeeder extends Seeder
                 'ReturnApproval:InsuranceReceivable',
                 'ConfirmCollectabilityChange:InsuranceReceivable',
                 'SubmitAccountingValidation:InsuranceReceivable',
+                'SubmitManualEarlyTerminationConfirmation:InsuranceReceivable',
                 'ExecuteEarlyTermination:InsuranceReceivable',
                 'Cancel:InsuranceReceivable',
                 'ResolveEarlyTermination:InsuranceReceivable',
@@ -193,7 +194,7 @@ class RolePermissionSeeder extends Seeder
         $roles->get('accounting_maker')->syncPermissions([
             ...$centralViewPermissions,
             'SubmitAccountingValidation:InsuranceReceivable',
-            'ResolveEarlyTermination:InsuranceReceivable',
+            'SubmitManualEarlyTerminationConfirmation:InsuranceReceivable',
             'Create:ReceivableFormationJournal',
             'Update:ReceivableFormationJournal',
             'Create:LegacyReceivable',
