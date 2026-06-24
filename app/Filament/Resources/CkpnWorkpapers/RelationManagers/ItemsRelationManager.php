@@ -4,8 +4,11 @@ namespace App\Filament\Resources\CkpnWorkpapers\RelationManagers;
 
 use App\Actions\CkpnAdjustment\PrepareCkpnAdjustmentDataAction;
 use App\Actions\CkpnAdjustment\SubmitCkpnAdjustmentAction;
+use App\Actions\GeneratedExport\GenerateCkpnWorkpaperItemsExportAction;
 use App\Models\CkpnAdjustment;
+use App\Models\CkpnWorkpaper;
 use App\Models\CkpnWorkpaperItem;
+use App\Models\GeneratedExport;
 use App\Models\InsuranceReceivable;
 use App\Models\LegacyReceivable;
 use App\Models\User;
@@ -15,9 +18,11 @@ use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Validation\ValidationException;
 
 class ItemsRelationManager extends RelationManager
 {
@@ -86,6 +91,9 @@ class ItemsRelationManager extends RelationManager
                         ->pluck('insurance_company_name', 'insurance_company_name')
                         ->all()),
             ])
+            ->headerActions([
+                $this->exportCkpnItemsAction(),
+            ])
             ->recordActions([
                 Action::make('createAdjustment')
                     ->label('Request CKPN Adjustment')
@@ -134,5 +142,84 @@ class ItemsRelationManager extends RelationManager
                         Notification::make()->success()->title('CKPN adjustment submitted')->send();
                     }),
             ]);
+    }
+
+    protected function exportCkpnItemsAction(): Action
+    {
+        return Action::make('exportCkpnItems')
+            ->label('Export CKPN Items')
+            ->icon(Heroicon::OutlinedArrowDownTray)
+            ->visible(fn (): bool => $this->canExportCkpnItems())
+            ->disabled(fn (): bool => ! $this->hasItemsToExport())
+            ->tooltip(fn (): ?string => $this->hasItemsToExport()
+                ? null
+                : 'CKPN workpaper has no generated items to export.')
+            ->action(function (): void {
+                $user = auth()->user();
+                $workpaper = $this->workpaper();
+
+                if (! $user instanceof User || ! $workpaper instanceof CkpnWorkpaper) {
+                    return;
+                }
+
+                try {
+                    $export = app(GenerateCkpnWorkpaperItemsExportAction::class)->handle($workpaper, $user);
+                } catch (ValidationException $exception) {
+                    Notification::make()
+                        ->danger()
+                        ->title($this->validationMessage($exception))
+                        ->send();
+
+                    return;
+                }
+
+                if ($export->status === GeneratedExport::STATUS_FAILED) {
+                    Notification::make()
+                        ->danger()
+                        ->title('CKPN items export failed')
+                        ->body($export->metadata['error'] ?? null)
+                        ->send();
+
+                    return;
+                }
+
+                Notification::make()
+                    ->success()
+                    ->title('CKPN items XLSX generated')
+                    ->actions([
+                        Action::make('download')
+                            ->label('Download')
+                            ->icon(Heroicon::OutlinedArrowDownTray)
+                            ->url(route('generated-exports.download', $export), true),
+                    ])
+                    ->send();
+            });
+    }
+
+    protected function canExportCkpnItems(): bool
+    {
+        $workpaper = $this->workpaper();
+
+        return $workpaper instanceof CkpnWorkpaper
+            && (auth()->user()?->can('generateExport', $workpaper) ?? false);
+    }
+
+    protected function hasItemsToExport(): bool
+    {
+        return $this->workpaper()?->items()->exists() ?? false;
+    }
+
+    protected function workpaper(): ?CkpnWorkpaper
+    {
+        $record = $this->getOwnerRecord();
+
+        return $record instanceof CkpnWorkpaper ? $record : null;
+    }
+
+    protected function validationMessage(ValidationException $exception): string
+    {
+        return collect($exception->errors())
+            ->flatten()
+            ->first() ?: $exception->getMessage();
     }
 }

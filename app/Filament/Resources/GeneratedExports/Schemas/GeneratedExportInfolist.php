@@ -17,7 +17,9 @@ class GeneratedExportInfolist
                     ->inlineLabel()
                     ->columnSpanFull()
                     ->schema([
-                        TextEntry::make('export_type')->label('Export type'),
+                        TextEntry::make('export_type')
+                            ->label('Export type')
+                            ->formatStateUsing(fn (string $state): string => GeneratedExport::exportTypeOptions()[$state] ?? $state),
                         TextEntry::make('status')->badge(),
                         TextEntry::make('file_name')
                             ->label('File')

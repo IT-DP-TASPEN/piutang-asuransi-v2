@@ -293,8 +293,8 @@ class ViewCkpnWorkpaper extends ViewRecord
         return Action::make('downloadLatestSakepExport')
             ->label('Download latest SAKEP')
             ->icon(Heroicon::OutlinedArrowDownTray)
-            ->visible(fn (): bool => $this->latestGeneratedExport() instanceof GeneratedExport)
-            ->url(fn (): ?string => ($export = $this->latestGeneratedExport()) instanceof GeneratedExport
+            ->visible(fn (): bool => $this->latestSakepExport() instanceof GeneratedExport)
+            ->url(fn (): ?string => ($export = $this->latestSakepExport()) instanceof GeneratedExport
                 ? route('generated-exports.download', $export)
                 : null)
             ->openUrlInNewTab();
@@ -361,7 +361,7 @@ class ViewCkpnWorkpaper extends ViewRecord
     {
         return $this->canAttemptCreateJournal()
             || $this->canGenerateExport()
-            || $this->latestGeneratedExport() instanceof GeneratedExport;
+            || $this->latestSakepExport() instanceof GeneratedExport;
     }
 
     private function hasVisibleSystemActions(): bool
@@ -428,10 +428,11 @@ class ViewCkpnWorkpaper extends ViewRecord
             && $this->workpaper()->status === CkpnWorkpaper::STATUS_APPROVED;
     }
 
-    private function latestGeneratedExport(): ?GeneratedExport
+    private function latestSakepExport(): ?GeneratedExport
     {
         $export = $this->workpaper()
             ->generatedExports()
+            ->where('export_type', GeneratedExport::TYPE_CKPN_WORKPAPER_SAKEP_XLSX)
             ->where('status', GeneratedExport::STATUS_GENERATED)
             ->whereNotNull('file_path')
             ->latest('id')

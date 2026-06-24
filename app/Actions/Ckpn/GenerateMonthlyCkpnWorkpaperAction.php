@@ -128,6 +128,8 @@ class GenerateMonthlyCkpnWorkpaperAction
             'branch_name' => $candidate->branchName,
             'cif_no' => $candidate->cif,
             'loan_account_number' => $candidate->loanAccountNumber,
+            'loan_alt_account_number' => $candidate->alternateLoanAccountNumber,
+            'alt_number' => $candidate->alternateLoanAccountNumber,
             'customer_name' => $candidate->customerName,
             'date_of_death' => $candidate->dateOfDeath,
             'credit_limit' => $candidate->creditLimit,

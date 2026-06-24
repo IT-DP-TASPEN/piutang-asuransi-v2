@@ -30,6 +30,7 @@ class CkpnReceivableCandidate
         public readonly ?string $loanOutstanding = null,
         public readonly ?string $startPeriod = null,
         public readonly ?string $endPeriod = null,
+        public readonly ?string $alternateLoanAccountNumber = null,
     ) {}
 
     public function sourceLabel(): string

@@ -54,6 +54,7 @@ class CollectLegacyReceivableCandidatesAction
                     loanOutstanding: $receivable->loan_outstanding,
                     startPeriod: null,
                     endPeriod: null,
+                    alternateLoanAccountNumber: $receivable->loan_alt_account_number,
                 );
             });
     }

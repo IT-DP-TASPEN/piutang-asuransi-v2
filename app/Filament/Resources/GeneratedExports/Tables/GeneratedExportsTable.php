@@ -16,7 +16,11 @@ class GeneratedExportsTable
     {
         return $table
             ->columns([
-                TextColumn::make('export_type')->label('Export type')->searchable()->sortable(),
+                TextColumn::make('export_type')
+                    ->label('Export type')
+                    ->formatStateUsing(fn (string $state): string => GeneratedExport::exportTypeOptions()[$state] ?? $state)
+                    ->searchable()
+                    ->sortable(),
                 TextColumn::make('file_name')
                     ->label('File')
                     ->state(fn (GeneratedExport $record): ?string => $record->file_path ? basename($record->file_path) : null)
@@ -32,9 +36,7 @@ class GeneratedExportsTable
                         'failed' => 'Failed',
                     ]),
                 SelectFilter::make('export_type')
-                    ->options([
-                        'ckpn_workpaper_sakep_xlsx' => 'CKPN workpaper SAKEP XLSX',
-                    ]),
+                    ->options(GeneratedExport::exportTypeOptions()),
             ])
             ->recordActions([
                 ViewAction::make(),

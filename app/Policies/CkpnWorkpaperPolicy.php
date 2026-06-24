@@ -131,8 +131,7 @@ class CkpnWorkpaperPolicy
     public function generateExport(User $user, CkpnWorkpaper $ckpnWorkpaper): bool
     {
         return $this->can($user, 'GenerateExport')
-            && $this->canAccessRecord($user, $ckpnWorkpaper)
-            && $ckpnWorkpaper->status === CkpnWorkpaper::STATUS_APPROVED;
+            && $this->canAccessRecord($user, $ckpnWorkpaper);
     }
 
     private function can(User $user, string $action): bool

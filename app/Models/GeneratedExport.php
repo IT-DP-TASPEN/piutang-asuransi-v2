@@ -27,6 +27,19 @@ class GeneratedExport extends Model
 
     public const TYPE_CKPN_WORKPAPER_SAKEP_XLSX = 'ckpn_workpaper_sakep_xlsx';
 
+    public const TYPE_CKPN_WORKPAPER_ITEMS_XLSX = 'ckpn_workpaper_items_xlsx';
+
+    /**
+     * @return array<string, string>
+     */
+    public static function exportTypeOptions(): array
+    {
+        return [
+            self::TYPE_CKPN_WORKPAPER_SAKEP_XLSX => 'CKPN workpaper SAKEP XLSX',
+            self::TYPE_CKPN_WORKPAPER_ITEMS_XLSX => 'CKPN workpaper items XLSX',
+        ];
+    }
+
     /**
      * @return MorphTo<Model, $this>
      */

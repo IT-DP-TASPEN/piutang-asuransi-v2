@@ -52,6 +52,7 @@ class CollectCurrentReceivableCandidatesAction
                 loanOutstanding: $receivable->loan_outstanding,
                 startPeriod: $receivable->start_period?->toDateString(),
                 endPeriod: $receivable->end_period?->toDateString(),
+                alternateLoanAccountNumber: $receivable->alt_number,
             ));
     }
 }

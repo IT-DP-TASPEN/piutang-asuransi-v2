@@ -98,7 +98,7 @@ class CkpnWorkpaperInfolist
                                     ->state(fn (CkpnWorkpaper $record): string => self::journalSummary($record))
                                     ->columnSpanFull(),
                                 TextEntry::make('latest_export_summary')
-                                    ->label('Latest export')
+                                    ->label('Latest SAKEP export')
                                     ->state(fn (CkpnWorkpaper $record): string => self::exportSummary($record))
                                     ->columnSpanFull(),
                             ]),
@@ -206,11 +206,12 @@ class CkpnWorkpaperInfolist
     private static function exportSummary(CkpnWorkpaper $record): string
     {
         $export = $record->generatedExports()
+            ->where('export_type', GeneratedExport::TYPE_CKPN_WORKPAPER_SAKEP_XLSX)
             ->latest('id')
             ->first();
 
         if (! $export instanceof GeneratedExport) {
-            return 'No export generated.';
+            return 'No SAKEP export generated.';
         }
 
         return collect([
