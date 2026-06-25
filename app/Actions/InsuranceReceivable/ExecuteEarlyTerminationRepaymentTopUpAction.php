@@ -2,6 +2,7 @@
 
 namespace App\Actions\InsuranceReceivable;
 
+use App\Models\EarlyTerminationBalanceInquiry;
 use App\Models\GlToGlTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
@@ -22,8 +23,9 @@ class ExecuteEarlyTerminationRepaymentTopUpAction
         InsuranceReceivable $insuranceReceivable,
         string $amount,
         ?User $user = null,
+        ?EarlyTerminationBalanceInquiry $balanceInquiry = null,
     ): GlToGlTransaction {
-        $transaction = $this->findOrCreateTransaction($insuranceReceivable, $amount, $user);
+        $transaction = $this->findOrCreateTransaction($insuranceReceivable, $amount, $user, $balanceInquiry);
 
         if ($transaction->status === GlToGlTransaction::STATUS_SUCCESS) {
             return $transaction;
@@ -65,9 +67,10 @@ class ExecuteEarlyTerminationRepaymentTopUpAction
         InsuranceReceivable $insuranceReceivable,
         string $amount,
         ?User $user,
+        ?EarlyTerminationBalanceInquiry $balanceInquiry,
     ): GlToGlTransaction {
         try {
-            return DB::transaction(function () use ($insuranceReceivable, $amount, $user): GlToGlTransaction {
+            return DB::transaction(function () use ($insuranceReceivable, $amount, $user, $balanceInquiry): GlToGlTransaction {
                 $existing = $this->transactionQuery($insuranceReceivable)->lockForUpdate()->first();
 
                 if ($existing instanceof GlToGlTransaction) {
@@ -77,6 +80,7 @@ class ExecuteEarlyTerminationRepaymentTopUpAction
                 $transaction = GlToGlTransaction::query()->create([
                     'purpose' => GlToGlTransaction::PURPOSE_EARLY_TERMINATION_REPAYMENT_TOP_UP,
                     'insurance_receivable_id' => $insuranceReceivable->id,
+                    'early_termination_balance_inquiry_id' => $balanceInquiry?->id,
                     'status' => GlToGlTransaction::STATUS_PENDING,
                     'executed_by' => $user?->id,
                 ]);

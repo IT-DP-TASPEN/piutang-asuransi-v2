@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 #[Fillable([
@@ -40,6 +41,14 @@ class ApiIntegrationLog extends Model
     public function requester(): BelongsTo
     {
         return $this->belongsTo(User::class, 'requested_by');
+    }
+
+    /**
+     * @return HasOne<EarlyTerminationBalanceInquiry, $this>
+     */
+    public function earlyTerminationBalanceInquiry(): HasOne
+    {
+        return $this->hasOne(EarlyTerminationBalanceInquiry::class);
     }
 
     /**

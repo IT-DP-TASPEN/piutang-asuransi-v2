@@ -2,9 +2,9 @@
 
 namespace App\Filament\Resources\InsuranceReceivables\Schemas;
 
-use App\Models\ApiIntegrationLog;
 use App\Models\ApprovalRequest;
 use App\Models\ClaimStatusChangeRequest;
+use App\Models\EarlyTerminationBalanceInquiry;
 use App\Models\GlToGlTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\ReceivableFormationJournal;
@@ -47,7 +47,7 @@ class InsuranceReceivableInfolist
                                     ->icon(Heroicon::OutlinedCalendarDays),
                                 TextEntry::make('death_document_condition')
                                     ->label('Death document condition')
-                                    ->formatStateUsing(fn(?string $state): string => InsuranceReceivable::deathDocumentConditionOptions()[$state] ?? '-'),
+                                    ->formatStateUsing(fn (?string $state): string => InsuranceReceivable::deathDocumentConditionOptions()[$state] ?? '-'),
                                 TextEntry::make('receivable_formation_date')
                                     ->label('Receivable formation date')
                                     ->date()
@@ -57,15 +57,15 @@ class InsuranceReceivableInfolist
                                     ->badge(),
                                 TextEntry::make('workflow_status')
                                     ->label('Workflow status')
-                                    ->formatStateUsing(fn(?string $state): string => InsuranceReceivable::workflowStatusOptions()[$state] ?? (string) $state)
+                                    ->formatStateUsing(fn (?string $state): string => InsuranceReceivable::workflowStatusOptions()[$state] ?? (string) $state)
                                     ->badge(),
                                 TextEntry::make('system_status')
                                     ->label('System status')
-                                    ->formatStateUsing(fn(?string $state): string => InsuranceReceivable::systemStatusOptions()[$state] ?? (string) $state)
+                                    ->formatStateUsing(fn (?string $state): string => InsuranceReceivable::systemStatusOptions()[$state] ?? (string) $state)
                                     ->badge(),
                                 TextEntry::make('last_error_message')
                                     ->label('Last error')
-                                    ->visible(fn(InsuranceReceivable $record): bool => $record->last_error_message !== null),
+                                    ->visible(fn (InsuranceReceivable $record): bool => $record->last_error_message !== null),
                             ]),
                         Tabs\Tab::make('Loan snapshot')
                             ->columns(1)
@@ -109,111 +109,126 @@ class InsuranceReceivableInfolist
                             ]),
                         Tabs\Tab::make('Pending approval')
                             ->columnSpan(1)
-                            ->visible(fn(InsuranceReceivable $record): bool => $record->approvalRequests()
+                            ->visible(fn (InsuranceReceivable $record): bool => $record->approvalRequests()
                                 ->where('status', ApprovalRequest::STATUS_SUBMITTED)
                                 ->exists())
                             ->schema([
                                 TextEntry::make('pending_approval')
                                     ->label('Request')
-                                    ->state(fn(InsuranceReceivable $record): ?string => $record->approvalRequests()
+                                    ->state(fn (InsuranceReceivable $record): ?string => $record->approvalRequests()
                                         ->where('status', ApprovalRequest::STATUS_SUBMITTED)
                                         ->latest('id')
                                         ->first()?->workflow_code),
                             ]),
                         Tabs\Tab::make('Accounting validation')
                             ->columnSpan(1)
-                            ->visible(fn(InsuranceReceivable $record): bool => $record->receivableFormationJournals()->exists()
+                            ->visible(fn (InsuranceReceivable $record): bool => $record->receivableFormationJournals()->exists()
                                 && (auth()->user()?->can('view', $record) ?? false))
                             ->schema([
                                 TextEntry::make('accounting_validation_journal_date')
                                     ->label('Journal date')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->journal_date?->toDateString())
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->journal_date?->toDateString())
                                     ->date()
                                     ->icon(Heroicon::OutlinedCalendarDays),
                                 TextEntry::make('accounting_validation_amount')
                                     ->label('Amount')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->amount)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->amount)
                                     ->money('IDR', 0, 'id_ID'),
                                 TextEntry::make('accounting_validation_debit_account')
                                     ->label('Debit account')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->debit_account)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->debit_account)
                                     ->icon(Heroicon::OutlinedBanknotes),
                                 TextEntry::make('accounting_validation_credit_account')
                                     ->label('Credit account')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->credit_account)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->credit_account)
                                     ->icon(Heroicon::OutlinedBanknotes),
                                 TextEntry::make('accounting_validation_description')
                                     ->label('Description')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->description)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->description)
                                     ->columnSpanFull()
                                     ->icon(Heroicon::OutlinedDocumentText),
                                 TextEntry::make('accounting_validation_notes')
                                     ->label('Notes')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->notes)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->notes)
                                     ->columnSpanFull()
                                     ->icon(Heroicon::OutlinedDocumentText),
                                 TextEntry::make('accounting_validation_submitter')
                                     ->label('Submitted by')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->submitter?->name)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->submitter?->name)
                                     ->icon(Heroicon::OutlinedUser),
                                 TextEntry::make('accounting_validation_submitted_at')
                                     ->label('Submitted at')
-                                    ->state(fn(InsuranceReceivable $record): mixed => self::latestAccountingValidation($record)?->submitted_at)
+                                    ->state(fn (InsuranceReceivable $record): mixed => self::latestAccountingValidation($record)?->submitted_at)
                                     ->dateTime()
                                     ->icon(Heroicon::OutlinedCalendarDays),
                                 TextEntry::make('accounting_validation_status')
                                     ->label('Status')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->status)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestAccountingValidation($record)?->status)
                                     ->badge(),
                             ]),
                         Tabs\Tab::make('Early termination top up')
                             ->columnSpan(1)
-                            ->visible(fn(InsuranceReceivable $record): bool => self::latestBalanceInquiry($record) instanceof ApiIntegrationLog
+                            ->visible(fn (InsuranceReceivable $record): bool => self::latestBalanceInquiry($record) instanceof EarlyTerminationBalanceInquiry
                                 || self::latestTopUp($record) instanceof GlToGlTransaction)
                             ->schema([
                                 TextEntry::make('latest_balance_inquiry_available_balance')
                                     ->label('Latest available balance')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->response_body['data']['availableBalance'] ?? null)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->available_balance)
                                     ->money('IDR', 0, 'id_ID')
+                                    ->placeholder('-'),
+                                TextEntry::make('latest_balance_inquiry_required_top_up_amount')
+                                    ->label('Required top up amount')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->required_top_up_amount)
+                                    ->money('IDR', 0, 'id_ID')
+                                    ->placeholder('-'),
+                                TextEntry::make('latest_balance_inquiry_status')
+                                    ->label('Balance inquiry status')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->status)
+                                    ->badge()
                                     ->placeholder('-'),
                                 TextEntry::make('latest_balance_inquiry_response_code')
                                     ->label('Balance inquiry response code')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->response_code)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->response_code)
                                     ->badge()
                                     ->placeholder('-'),
                                 TextEntry::make('latest_balance_inquiry_description')
                                     ->label('Balance inquiry description')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->response_description
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->response_description
                                         ?? self::latestBalanceInquiry($record)?->error_message)
                                     ->placeholder('-'),
                                 TextEntry::make('latest_balance_inquiry_requested_at')
                                     ->label('Balance inquiry requested at')
-                                    ->state(fn(InsuranceReceivable $record): mixed => self::latestBalanceInquiry($record)?->requested_at)
+                                    ->state(fn (InsuranceReceivable $record): mixed => self::latestBalanceInquiry($record)?->requested_at)
                                     ->dateTime()
+                                    ->placeholder('-'),
+                                TextEntry::make('latest_balance_inquiry_saving_account')
+                                    ->label('Balance inquiry saving account')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->saving_account_number)
+                                    ->copyable()
                                     ->placeholder('-'),
                                 TextEntry::make('latest_top_up_reference')
                                     ->label('Top up reference')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestTopUp($record)?->reference_number)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestTopUp($record)?->reference_number)
                                     ->copyable()
                                     ->placeholder('-'),
                                 TextEntry::make('latest_top_up_amount')
                                     ->label('Top up amount')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestTopUp($record)?->request_payload['amount'] ?? null)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestTopUp($record)?->request_payload['amount'] ?? null)
                                     ->money('IDR', 0, 'id_ID')
                                     ->placeholder('-'),
                                 TextEntry::make('latest_top_up_status')
                                     ->label('Top up status')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestTopUp($record)?->status)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestTopUp($record)?->status)
                                     ->badge()
                                     ->placeholder('-'),
                                 TextEntry::make('latest_top_up_response')
                                     ->label('Top up response')
-                                    ->state(fn(InsuranceReceivable $record): ?string => self::latestTopUp($record)?->response_description)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestTopUp($record)?->response_description)
                                     ->placeholder('-'),
                             ]),
                         Tabs\Tab::make('Pending claim status update')
                             ->columnSpan(1)
-                            ->visible(fn(InsuranceReceivable $record): bool => $record->claimStatusChangeRequests()
+                            ->visible(fn (InsuranceReceivable $record): bool => $record->claimStatusChangeRequests()
                                 ->where('status', ClaimStatusChangeRequest::STATUS_SUBMITTED)
                                 ->exists())
                             ->schema([
@@ -251,19 +266,29 @@ class InsuranceReceivableInfolist
             ->first();
     }
 
-    private static function latestBalanceInquiry(InsuranceReceivable $record): ?ApiIntegrationLog
+    private static function latestBalanceInquiry(InsuranceReceivable $record): ?EarlyTerminationBalanceInquiry
     {
-        return $record->apiIntegrationLogs()
-            ->where('endpoint', '/account/balance')
-            ->latest('id')
-            ->first();
+        self::loadEarlyTerminationTopUpRelations($record);
+
+        $inquiry = $record->getRelation('latestEarlyTerminationBalanceInquiry');
+
+        return $inquiry instanceof EarlyTerminationBalanceInquiry ? $inquiry : null;
     }
 
     private static function latestTopUp(InsuranceReceivable $record): ?GlToGlTransaction
     {
-        return $record->glToGlTransactions()
-            ->where('purpose', GlToGlTransaction::PURPOSE_EARLY_TERMINATION_REPAYMENT_TOP_UP)
-            ->latest('id')
-            ->first();
+        self::loadEarlyTerminationTopUpRelations($record);
+
+        $topUp = $record->getRelation('latestEarlyTerminationTopUpTransaction');
+
+        return $topUp instanceof GlToGlTransaction ? $topUp : null;
+    }
+
+    private static function loadEarlyTerminationTopUpRelations(InsuranceReceivable $record): void
+    {
+        $record->loadMissing([
+            'latestEarlyTerminationBalanceInquiry',
+            'latestEarlyTerminationTopUpTransaction',
+        ]);
     }
 }

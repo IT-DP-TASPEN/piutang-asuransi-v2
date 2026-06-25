@@ -7,6 +7,7 @@ use App\Filament\Resources\InsuranceReceivables\Pages\ViewInsuranceReceivable;
 use App\Jobs\ExecuteEarlyTerminationJob;
 use App\Models\ApiIntegrationLog;
 use App\Models\BranchOffice;
+use App\Models\EarlyTerminationBalanceInquiry;
 use App\Models\EarlyTerminationTransaction;
 use App\Models\GlToGlTransaction;
 use App\Models\InsuranceReceivable;
@@ -20,8 +21,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -51,6 +54,86 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         Carbon::setTestNow();
 
         parent::tearDown();
+    }
+
+    public function test_balance_inquiry_schema_indexes_and_relations_work(): void
+    {
+        $receivable = $this->receivable();
+        $user = $this->accountingApprover();
+        $apiLog = ApiIntegrationLog::query()->create([
+            'service_name' => 'core_banking',
+            'endpoint' => '/account/balance',
+            'method' => 'GET',
+            'is_success' => true,
+            'requested_by' => $user->id,
+        ]);
+        $older = EarlyTerminationBalanceInquiry::query()->create([
+            'insurance_receivable_id' => $receivable->id,
+            'saving_account_number' => '1000010000000691',
+            'loan_outstanding_amount' => '1000.00',
+            'available_balance' => '250.00',
+            'required_top_up_amount' => '750.00',
+            'status' => EarlyTerminationBalanceInquiry::STATUS_SUCCESS,
+            'requested_by' => $user->id,
+            'requested_at' => now()->subMinute(),
+            'completed_at' => now()->subMinute(),
+        ]);
+        $latest = EarlyTerminationBalanceInquiry::query()->create([
+            'insurance_receivable_id' => $receivable->id,
+            'api_integration_log_id' => $apiLog->id,
+            'saving_account_number' => '1000010000000691',
+            'loan_outstanding_amount' => '1000.00',
+            'available_balance' => '400.00',
+            'required_top_up_amount' => '600.00',
+            'response_code' => '00',
+            'response_description' => 'SUCCESS',
+            'status' => EarlyTerminationBalanceInquiry::STATUS_SUCCESS,
+            'requested_by' => $user->id,
+            'requested_at' => now(),
+            'completed_at' => now(),
+        ]);
+        $transaction = GlToGlTransaction::query()->create([
+            'purpose' => GlToGlTransaction::PURPOSE_EARLY_TERMINATION_REPAYMENT_TOP_UP,
+            'insurance_receivable_id' => $receivable->id,
+            'early_termination_balance_inquiry_id' => $latest->id,
+            'reference_number' => 'ETTOP-SCHEMA',
+            'receipt_number' => 'ETTOP-SCHEMA-R',
+            'status' => GlToGlTransaction::STATUS_PENDING,
+        ]);
+
+        $this->assertTrue(Schema::hasTable('early_termination_balance_inquiries'));
+        $this->assertTrue(Schema::hasColumns('early_termination_balance_inquiries', [
+            'insurance_receivable_id',
+            'api_integration_log_id',
+            'saving_account_number',
+            'loan_outstanding_amount',
+            'available_balance',
+            'required_top_up_amount',
+            'response_code',
+            'response_description',
+            'status',
+            'error_message',
+            'requested_by',
+            'requested_at',
+            'completed_at',
+        ]));
+        $this->assertTrue(Schema::hasColumn('gl_to_gl_transactions', 'early_termination_balance_inquiry_id'));
+        $this->assertSqliteIndexExists('early_termination_balance_inquiries', 'et_balance_inquiries_receivable_id_index');
+        $this->assertSqliteIndexExists('early_termination_balance_inquiries', 'et_balance_inquiries_api_log_id_index');
+        $this->assertSqliteIndexExists('early_termination_balance_inquiries', 'et_balance_inquiries_requested_by_index');
+        $this->assertSqliteIndexExists('early_termination_balance_inquiries', 'early_termination_balance_inquiries_requested_at_index');
+        $this->assertSqliteIndexExists('early_termination_balance_inquiries', 'et_balance_inquiries_receivable_id_id_index');
+        $this->assertSqliteIndexExists('gl_to_gl_transactions', 'gl_to_gl_et_balance_inquiry_id_index');
+
+        $this->assertTrue($latest->insuranceReceivable->is($receivable));
+        $this->assertTrue($latest->apiIntegrationLog->is($apiLog));
+        $this->assertTrue($latest->requester->is($user));
+        $this->assertTrue($apiLog->earlyTerminationBalanceInquiry->is($latest));
+        $this->assertTrue($transaction->earlyTerminationBalanceInquiry->is($latest));
+        $this->assertTrue($latest->glToGlTransaction->is($transaction));
+        $this->assertTrue($receivable->latestEarlyTerminationBalanceInquiry->is($latest));
+        $this->assertTrue($receivable->latestEarlyTerminationTopUpTransaction->is($transaction));
+        $this->assertFalse($receivable->latestEarlyTerminationBalanceInquiry->is($older));
     }
 
     public function test_balance_inquiry_is_unsigned_and_logs_success_and_failure(): void
@@ -125,6 +208,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertTrue($oper->stageLogs()->where('event', 'early_termination_manual_execution_required')->exists());
         $this->assertDatabaseCount('gl_to_gl_transactions', 0);
         $this->assertDatabaseCount('early_termination_transactions', 0);
+        $this->assertDatabaseCount('early_termination_balance_inquiries', 0);
         Http::assertNothingSent();
     }
 
@@ -150,7 +234,60 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertSame('Balance service unavailable', $receivable->last_error_message);
         $this->assertDatabaseCount('gl_to_gl_transactions', 0);
         $this->assertDatabaseCount('early_termination_transactions', 0);
+        $inquiry = EarlyTerminationBalanceInquiry::query()->sole();
+        $this->assertSame($receivable->id, $inquiry->insurance_receivable_id);
+        $this->assertSame(EarlyTerminationBalanceInquiry::STATUS_FAILED, $inquiry->status);
+        $this->assertSame('91', $inquiry->response_code);
+        $this->assertSame('Balance service unavailable', $inquiry->response_description);
+        $this->assertNull($inquiry->available_balance);
+        $this->assertNotNull($inquiry->api_integration_log_id);
         Http::assertSentCount(1);
+    }
+
+    public function test_balance_timeout_creates_timeout_inquiry_and_blocks_early_termination(): void
+    {
+        $receivable = $this->receivable();
+        Http::fake([
+            'http://core.test/account/balance*' => fn () => throw new ConnectionException('Connection timed out.'),
+        ]);
+
+        $result = app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class)
+            ->handle($receivable, $this->accountingApprover());
+
+        $this->assertNull($result);
+        $this->assertSame(
+            InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED,
+            $receivable->refresh()->system_status,
+        );
+        $inquiry = EarlyTerminationBalanceInquiry::query()->sole();
+        $this->assertSame(EarlyTerminationBalanceInquiry::STATUS_TIMEOUT, $inquiry->status);
+        $this->assertSame('Connection timed out.', $inquiry->error_message);
+        $this->assertNotNull($inquiry->api_integration_log_id);
+        $this->assertDatabaseCount('gl_to_gl_transactions', 0);
+        $this->assertDatabaseCount('early_termination_transactions', 0);
+    }
+
+    public function test_parse_failed_balance_inquiry_blocks_early_termination(): void
+    {
+        $receivable = $this->receivable();
+        Http::fake([
+            'http://core.test/account/balance*' => Http::response([
+                'responseCode' => '00',
+                'description' => 'SUCCESS',
+                'data' => ['availableBalance' => 'not-a-number'],
+            ]),
+        ]);
+
+        $result = app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class)
+            ->handle($receivable, $this->accountingApprover());
+
+        $this->assertNull($result);
+        $inquiry = EarlyTerminationBalanceInquiry::query()->sole();
+        $this->assertSame(EarlyTerminationBalanceInquiry::STATUS_PARSE_FAILED, $inquiry->status);
+        $this->assertSame('00', $inquiry->response_code);
+        $this->assertNull($inquiry->available_balance);
+        $this->assertDatabaseCount('gl_to_gl_transactions', 0);
+        $this->assertDatabaseCount('early_termination_transactions', 0);
     }
 
     public function test_sufficient_decimal_balance_skips_gl_and_executes_early_termination(): void
@@ -174,6 +311,11 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED,
             $receivable->refresh()->workflow_status,
         );
+        $inquiry = EarlyTerminationBalanceInquiry::query()->sole();
+        $this->assertSame(EarlyTerminationBalanceInquiry::STATUS_SUCCESS, $inquiry->status);
+        $this->assertSame('1000.10', $inquiry->available_balance);
+        $this->assertSame('0.00', $inquiry->required_top_up_amount);
+        $this->assertSame('1000.10', $inquiry->loan_outstanding_amount);
         Http::assertSentCount(2);
     }
 
@@ -201,6 +343,12 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         );
         $this->assertSame(GlToGlTransaction::PURPOSE_EARLY_TERMINATION_REPAYMENT_TOP_UP, $transaction->purpose);
         $this->assertSame($receivable->id, $transaction->insurance_receivable_id);
+        $inquiry = EarlyTerminationBalanceInquiry::query()->sole();
+        $this->assertSame($inquiry->id, $transaction->early_termination_balance_inquiry_id);
+        $this->assertSame(EarlyTerminationBalanceInquiry::STATUS_SUCCESS, $inquiry->status);
+        $this->assertSame('400.00', $inquiry->available_balance);
+        $this->assertSame('600.11', $inquiry->required_top_up_amount);
+        $this->assertSame($inquiry->api_integration_log_id, ApiIntegrationLog::query()->where('endpoint', '/account/balance')->sole()->id);
         $this->assertSame("ETTOP{$transaction->id}", $transaction->reference_number);
         $this->assertSame($transaction->reference_number, $transaction->receipt_number);
         $this->assertSame('PiutangAsuransi', $transaction->request_payload['trxType']);
@@ -232,11 +380,14 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
 
         $this->assertNull(app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class)->handle($receivable, $user));
         $first = GlToGlTransaction::query()->sole();
+        $firstInquiry = EarlyTerminationBalanceInquiry::query()->sole();
         $firstReference = $first->reference_number;
         $firstPayload = $first->request_payload;
+        $firstInquiryId = $first->early_termination_balance_inquiry_id;
 
         $result = app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class)->handle($receivable->refresh(), $user);
         $retried = GlToGlTransaction::query()->sole();
+        $latestInquiry = EarlyTerminationBalanceInquiry::query()->latest('id')->firstOrFail();
 
         $this->assertSame(
             EarlyTerminationTransaction::STATUS_SUCCESS,
@@ -247,6 +398,10 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertSame($firstReference, $retried->reference_number);
         $this->assertSame($firstPayload, $retried->request_payload);
         $this->assertSame('1000.00', $retried->request_payload['amount']);
+        $this->assertSame($firstInquiry->id, $firstInquiryId);
+        $this->assertSame($firstInquiryId, $retried->early_termination_balance_inquiry_id);
+        $this->assertSame(2, EarlyTerminationBalanceInquiry::query()->count());
+        $this->assertSame('600.00', $latestInquiry->required_top_up_amount);
         $this->assertSame(2, ApiIntegrationLog::query()->where('endpoint', '/trx/transfer/gl-to-gl')->count());
     }
 
@@ -262,8 +417,13 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             'http://core.test/loan/earlytermination/' => Http::response($this->earlyTerminationSuccess()),
         ]);
         app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class)->handle($receivable, $user);
+        $transactionBeforeRetry = GlToGlTransaction::query()->sole();
+        $payloadBeforeRetry = $transactionBeforeRetry->request_payload;
+        $fkBeforeRetry = $transactionBeforeRetry->early_termination_balance_inquiry_id;
+        $updatedAtBeforeRetry = $transactionBeforeRetry->updated_at?->toJSON();
 
         $result = app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class)->handle($receivable->refresh(), $user);
+        $transactionAfterRetry = GlToGlTransaction::query()->sole();
 
         $this->assertSame(
             EarlyTerminationTransaction::STATUS_SUCCESS,
@@ -271,7 +431,11 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             $receivable->refresh()->last_error_message ?? '',
         );
         $this->assertSame(1, ApiIntegrationLog::query()->where('endpoint', '/trx/transfer/gl-to-gl')->count());
-        $this->assertSame(GlToGlTransaction::STATUS_FAILED, GlToGlTransaction::query()->sole()->status);
+        $this->assertSame(2, EarlyTerminationBalanceInquiry::query()->count());
+        $this->assertSame(GlToGlTransaction::STATUS_FAILED, $transactionAfterRetry->status);
+        $this->assertSame($payloadBeforeRetry, $transactionAfterRetry->request_payload);
+        $this->assertSame($fkBeforeRetry, $transactionAfterRetry->early_termination_balance_inquiry_id);
+        $this->assertSame($updatedAtBeforeRetry, $transactionAfterRetry->updated_at?->toJSON());
     }
 
     public function test_transport_timeout_retries_the_same_top_up_reference(): void
@@ -312,6 +476,8 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertSame(EarlyTerminationTransaction::STATUS_SUCCESS, $result?->status);
         $this->assertSame($first->id, $retried->id);
         $this->assertSame($reference, $retried->reference_number);
+        $this->assertSame(2, EarlyTerminationBalanceInquiry::query()->count());
+        $this->assertSame($first->early_termination_balance_inquiry_id, $retried->early_termination_balance_inquiry_id);
         $this->assertSame(2, ApiIntegrationLog::query()->where('endpoint', '/trx/transfer/gl-to-gl')->count());
     }
 
@@ -338,8 +504,69 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertSame(EarlyTerminationTransaction::STATUS_FAILED, $first?->status);
         $this->assertSame(EarlyTerminationTransaction::STATUS_SUCCESS, $second?->status);
         $this->assertDatabaseCount('gl_to_gl_transactions', 1);
+        $this->assertDatabaseCount('early_termination_balance_inquiries', 1);
         $this->assertSame(1, ApiIntegrationLog::query()->where('endpoint', '/account/balance')->count());
         $this->assertSame(1, ApiIntegrationLog::query()->where('endpoint', '/trx/transfer/gl-to-gl')->count());
+    }
+
+    public function test_infolist_reads_latest_balance_inquiry_from_domain_model(): void
+    {
+        $receivable = $this->receivable();
+        ApiIntegrationLog::query()->create([
+            'service_name' => 'core_banking',
+            'endpoint' => '/account/balance',
+            'method' => 'GET',
+            'response_body' => ['data' => ['availableBalance' => '999999.00']],
+            'response_code' => '00',
+            'response_description' => 'OLD LOG',
+            'is_success' => true,
+            'related_type' => InsuranceReceivable::class,
+            'related_id' => $receivable->id,
+            'requested_at' => now(),
+        ]);
+        EarlyTerminationBalanceInquiry::query()->create([
+            'insurance_receivable_id' => $receivable->id,
+            'saving_account_number' => '1000010000000691',
+            'loan_outstanding_amount' => '1000.00',
+            'available_balance' => '48271.64',
+            'required_top_up_amount' => '0.00',
+            'response_code' => '00',
+            'response_description' => 'SUCCESS',
+            'status' => EarlyTerminationBalanceInquiry::STATUS_SUCCESS,
+            'requested_by' => $this->accountingApprover()->id,
+            'requested_at' => now(),
+            'completed_at' => now(),
+        ]);
+
+        Livewire::actingAs($this->accountingApprover())
+            ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
+            ->assertSee('Early termination top up')
+            ->assertSee('48.272')
+            ->assertSee('SUCCESS')
+            ->assertSee('success')
+            ->assertSee('1000010000000691')
+            ->assertDontSee('OLD LOG')
+            ->assertDontSee('999.999');
+    }
+
+    public function test_infolist_top_up_tab_is_visible_when_only_top_up_exists(): void
+    {
+        $receivable = $this->receivable();
+        GlToGlTransaction::query()->create([
+            'purpose' => GlToGlTransaction::PURPOSE_EARLY_TERMINATION_REPAYMENT_TOP_UP,
+            'insurance_receivable_id' => $receivable->id,
+            'reference_number' => 'ETTOP-ONLY',
+            'receipt_number' => 'ETTOP-ONLY-R',
+            'request_payload' => ['amount' => '1000.00'],
+            'status' => GlToGlTransaction::STATUS_FAILED,
+            'response_description' => 'Top up failed',
+        ]);
+
+        Livewire::actingAs($this->accountingApprover())
+            ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
+            ->assertSee('Early termination top up')
+            ->assertSee('ETTOP-ONLY')
+            ->assertSee('Top up failed');
     }
 
     public function test_authorized_accounting_user_can_queue_initial_execution_only_once(): void
@@ -417,6 +644,15 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $user->assignRole($role);
 
         return $user;
+    }
+
+    private function assertSqliteIndexExists(string $table, string $index): void
+    {
+        $indexes = collect(DB::select("PRAGMA index_list('{$table}')"))
+            ->pluck('name')
+            ->all();
+
+        $this->assertContains($index, $indexes);
     }
 
     /**

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -355,11 +356,37 @@ class InsuranceReceivable extends Model
     }
 
     /**
+     * @return HasMany<EarlyTerminationBalanceInquiry, $this>
+     */
+    public function earlyTerminationBalanceInquiries(): HasMany
+    {
+        return $this->hasMany(EarlyTerminationBalanceInquiry::class);
+    }
+
+    /**
+     * @return HasOne<EarlyTerminationBalanceInquiry, $this>
+     */
+    public function latestEarlyTerminationBalanceInquiry(): HasOne
+    {
+        return $this->hasOne(EarlyTerminationBalanceInquiry::class)->latestOfMany();
+    }
+
+    /**
      * @return HasMany<GlToGlTransaction, $this>
      */
     public function glToGlTransactions(): HasMany
     {
         return $this->hasMany(GlToGlTransaction::class);
+    }
+
+    /**
+     * @return HasOne<GlToGlTransaction, $this>
+     */
+    public function latestEarlyTerminationTopUpTransaction(): HasOne
+    {
+        return $this->hasOne(GlToGlTransaction::class)
+            ->where('purpose', GlToGlTransaction::PURPOSE_EARLY_TERMINATION_REPAYMENT_TOP_UP)
+            ->latestOfMany();
     }
 
     /**

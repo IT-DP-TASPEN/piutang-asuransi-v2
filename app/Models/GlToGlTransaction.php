@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'ckpn_journal_id',
     'ckpn_workpaper_id',
     'insurance_receivable_id',
+    'early_termination_balance_inquiry_id',
     'reference_number',
     'receipt_number',
     'request_payload',
@@ -55,6 +56,14 @@ class GlToGlTransaction extends Model
     public function insuranceReceivable(): BelongsTo
     {
         return $this->belongsTo(InsuranceReceivable::class);
+    }
+
+    /**
+     * @return BelongsTo<EarlyTerminationBalanceInquiry, $this>
+     */
+    public function earlyTerminationBalanceInquiry(): BelongsTo
+    {
+        return $this->belongsTo(EarlyTerminationBalanceInquiry::class);
     }
 
     /**

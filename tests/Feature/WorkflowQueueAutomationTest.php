@@ -513,6 +513,7 @@ class WorkflowQueueAutomationTest extends TestCase
             'branch_office_id' => $user->branch_office_id,
             'branch_code' => $user->branchOffice->branch_code,
             'loan_account_number' => '3010001000054745',
+            'death_document_condition' => InsuranceReceivable::DEATH_DOCUMENT_CONDITION_HOSPITAL,
             'saving_account_for_loan_repayment' => '1000010000000691',
             'created_by' => $user->id,
             ...$attributes,
