@@ -10,6 +10,8 @@ final readonly class InsuranceCoverLetterPreflightResult
     public function __construct(
         public string $claimType,
         public string $templateKey,
+        public string $templatePath,
+        public string $templateSectionId,
         public string $recipientName,
         public ?string $recipientAddress,
         public ClaimDocumentChecklist $checklist,

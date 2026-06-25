@@ -39,12 +39,21 @@ class InsuranceCoverLetterGenerationTest extends TestCase
         $this->assertSame('ajk', $first->claim_type);
         $this->assertSame(500 + $first->id, $first->sequence_number);
         $this->assertSame("SRT – {$first->sequence_number}/B.01.1/062026", $first->letter_number);
-        $this->assertSame('insurance-cover-letters.ajk', $first->template_key);
+        $this->assertSame('surat_pengantar_html/surat_pengantar_ajk.html#surat-klaim-ajk', $first->template_key);
         $this->assertSame('PT ASURANSI JIWA TASPEN', $first->recipient_name);
+        $this->assertRenderedFromTemplate($first->rendered_html);
+        $this->assertStringContainsString('Kepada :</p>', $first->rendered_html);
+        $this->assertStringContainsString('Up : Bag Klaim Asuransi', $first->rendered_html);
+        $this->assertStringContainsString('Dengan ini kami sampaikan bahwa nasabah kami yang bernama :', $first->rendered_html);
         $this->assertStringContainsString('Jane Customer', $first->rendered_html);
-        $this->assertStringContainsString('Formulir Pengajuan Klaim Asuransi', $first->rendered_html);
-        $this->assertStringContainsString('src="/logo.png"', $first->rendered_html);
-        $this->assertStringNotContainsString('base64,', $first->rendered_html);
+        $this->assertStringContainsString('Rp 250.000.000', $first->rendered_html);
+        $this->assertStringContainsString('Rp 230.929.055', $first->rendered_html);
+        $this->assertStringContainsString('21 Juni 2026', $first->rendered_html);
+        $this->assertStringContainsString('15 Januari 2026', $first->rendered_html);
+        $this->assertStringContainsString('Telah meninggal dunia pada tanggal 15 Januari 2026. Oleh karena itu kami bermaksud mengajukan klaim asuransi jiwa kredit yang bersangkutan, dan sebagai dasar pengajuan klaim berikut kami lampirkan :', $first->rendered_html);
+        $this->assertStringContainsString('Surat Pengajuan Klaim</li>', $first->rendered_html);
+        $this->assertStringContainsString('Fotokopi Sertifikat Asuransi</li>', $first->rendered_html);
+        $this->assertStringContainsString('Surat keterangan dari Rumah Sakit apabila meninggal di Rumah Sakit;', $first->rendered_html);
         $this->assertNotNull($first->generated_file_path);
         Storage::disk('local')->assertExists($first->generated_file_path);
         $this->assertStringStartsWith('%PDF-', Storage::disk('local')->get($first->generated_file_path));
@@ -75,10 +84,42 @@ class InsuranceCoverLetterGenerationTest extends TestCase
 
         $this->assertNotSame($ajk->id, $credit->id);
         $this->assertSame('credit', $credit->claim_type);
-        $this->assertSame('insurance-cover-letters.credit', $credit->template_key);
+        $this->assertSame('surat_pengantar_html/surat_pengantar_klaim.html#surat-klaim-asuransi-kredit', $credit->template_key);
+        $this->assertRenderedFromTemplate($credit->rendered_html);
+        $this->assertStringContainsString('Kami bermaksud mengajukan Klaim asuransi yang bersangkutan, sebagai dasar pengajuan klaim berikut kami lampirkan:', $credit->rendered_html);
+        $this->assertStringContainsString('Surat Pengajuan Klaim dari Pemegang Polis</li>', $credit->rendered_html);
         $this->assertStringContainsString('Formulir STGR', $credit->rendered_html);
-        $this->assertStringContainsString('SLIK OJK', $credit->rendered_html);
-        $this->assertStringNotContainsString('Formulir Pengajuan Klaim Asuransi', $credit->rendered_html);
+        $this->assertStringContainsString('Foto Copy perjanjian kredit yang bersangkutan</li>', $credit->rendered_html);
+        $this->assertStringNotContainsString('surat-klaim-ajk', $credit->rendered_html);
+        $this->assertStringNotContainsString('Telah meninggal dunia', $credit->rendered_html);
+        $this->assertStringNotContainsString('SLIK OJK', $credit->rendered_html);
+        $this->assertStringNotContainsString('Fotokopi Sertifikat Asuransi', $credit->rendered_html);
+    }
+
+    public function test_missing_values_render_as_dash_without_extra_sections(): void
+    {
+        $this->seedDependencies();
+        Storage::fake('local');
+        $receivable = $this->receivableFor('SDI', [
+            'customer_name' => null,
+            'date_of_death' => null,
+            'credit_limit' => null,
+            'loan_outstanding' => null,
+            'receivable_amount' => null,
+            'start_period' => null,
+            'end_period' => null,
+        ]);
+
+        $letter = app(GenerateInsuranceCoverLetterAction::class)->handle(
+            $receivable,
+            User::factory()->create(),
+        );
+
+        $this->assertRenderedFromTemplate($letter->rendered_html);
+        $this->assertStringContainsString('<strong>SDI</strong><br>', $letter->rendered_html);
+        $this->assertStringContainsString('<strong>-</strong></p>', $letter->rendered_html);
+        $this->assertSame(5, preg_match_all('/<td>-<\/td>/', $letter->rendered_html));
+        $this->assertStringContainsString('Telah meninggal dunia pada tanggal -.', $letter->rendered_html);
     }
 
     public function test_pdf_failure_keeps_html_as_primary_output(): void
@@ -106,7 +147,7 @@ class InsuranceCoverLetterGenerationTest extends TestCase
     public function test_missing_template_returns_clear_validation_error(): void
     {
         $this->seedDependencies();
-        config(['insurance_cover_letters.templates.ajk' => 'insurance-cover-letters.missing']);
+        config(['insurance_cover_letters.templates.ajk.path' => 'surat_pengantar_html/missing.html']);
 
         $this->expectException(ValidationException::class);
         app(GenerateInsuranceCoverLetterAction::class)->handle(
@@ -153,7 +194,7 @@ class InsuranceCoverLetterGenerationTest extends TestCase
         $this->seed($seeders);
     }
 
-    private function receivableFor(string $companyName): InsuranceReceivable
+    private function receivableFor(string $companyName, array $attributes = []): InsuranceReceivable
     {
         return InsuranceReceivable::factory()->create([
             'insurance_company_id' => InsuranceCompany::query()->where('name', $companyName)->firstOrFail()->id,
@@ -167,6 +208,28 @@ class InsuranceCoverLetterGenerationTest extends TestCase
             'receivable_amount' => '230929055.00',
             'start_period' => '2025-01-01',
             'end_period' => '2030-01-01',
+            ...$attributes,
         ]);
+    }
+
+    private function assertRenderedFromTemplate(string $html): void
+    {
+        $this->assertSame(2, preg_match_all('/<table\b/i', $html));
+        $this->assertStringContainsString('<table class="info-table"', $html);
+        $this->assertStringContainsString('<table class="claim-table"', $html);
+        $this->assertStringContainsString('src="/logo.png"', $html);
+        $this->assertStringNotContainsString('base64,', $html);
+        $this->assertStringNotContainsString('class="highlight"', $html);
+        $this->assertStringNotContainsString('&lt;&lt;', $html);
+        $this->assertStringNotContainsString('<<', $html);
+        $this->assertStringNotContainsString('detail-table', $html);
+        $this->assertStringNotContainsString('Identitas rekening', $html);
+        $this->assertStringNotContainsString('Nomor Rekening', $html);
+        $this->assertStringNotContainsString('Baki Debet</td>', $html);
+        $this->assertStringNotContainsString('uploaded', $html);
+        $this->assertStringNotContainsString('missing', $html);
+        $this->assertStringNotContainsString('menyusul', $html);
+        $this->assertStringNotContainsString('fulfilled', $html);
+        $this->assertStringNotContainsString('required', $html);
     }
 }
