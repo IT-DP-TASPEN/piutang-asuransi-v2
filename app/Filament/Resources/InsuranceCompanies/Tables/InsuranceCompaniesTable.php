@@ -20,10 +20,13 @@ class InsuranceCompaniesTable
                 TextColumn::make('name')
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('legal_name')
+                    ->searchable()
+                    ->sortable(),
                 TextColumn::make('claim_type')
                     ->label('Claim type')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => strtoupper($state))
+                    ->formatStateUsing(fn(string $state): string => strtoupper($state))
                     ->sortable(),
                 TextColumn::make('ckpn_weight')
                     ->label('CKPN weight')
