@@ -262,7 +262,7 @@ class CkpnWorkpaperItemsExportTest extends TestCase
             'cif_no' => 'CIF-1',
             'loan_account_number' => 'SNAP-LOAN',
             'customer_name' => 'Customer One',
-            'insurance_company_name' => 'SDI',
+            'insurance_company_name' => 'ASKRINDO',
             'claim_status_name' => 'On proses',
             'receivable_formation_date' => '2026-02-01',
             'receivable_amount' => '1000.50',

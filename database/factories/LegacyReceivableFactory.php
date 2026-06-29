@@ -26,8 +26,17 @@ class LegacyReceivableFactory extends Factory
             ['branch_name' => 'Cabang 001', 'is_active' => true],
         );
         $insuranceCompany = InsuranceCompany::query()->firstOrCreate(
-            ['name' => 'SDI'],
-            ['code' => null, 'ckpn_weight' => '0', 'sla_description' => null, 'is_active' => true],
+            ['name' => 'VICTORIA ALIFE'],
+            [
+                'code' => null,
+                'claim_type' => InsuranceCompany::CLAIM_TYPE_AJK,
+                'legal_name' => 'PT VICTORIA ALIFE INDONESIA',
+                'letter_recipient_name' => 'PT SINERGI DUTA INSURANCE BROKERS',
+                'letter_recipient_address' => 'Botany Hills, Fatmawati City Center Soho No.26, Jl. Fatmawati Raya, Jakarta Selatan 12430',
+                'ckpn_weight' => '0',
+                'sla_description' => null,
+                'is_active' => true,
+            ],
         );
         $claimStatus = ClaimStatus::query()->firstOrCreate(
             ['code' => ClaimStatus::DEFAULT_CODE],

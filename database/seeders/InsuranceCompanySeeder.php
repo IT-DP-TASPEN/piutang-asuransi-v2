@@ -19,7 +19,7 @@ class InsuranceCompanySeeder extends Seeder
             ['name' => 'BPJS TK', 'claim_type' => 'ajk', 'ckpn_weight' => '0', 'legal_name' => 'BPJS KETENAGAKERJAAN KANTOR CABANG JAKARTA BUARAN', 'letter_recipient_name' => 'BPJS KETENAGAKERJAAN KANTOR CABANG JAKARTA BUARAN', 'letter_recipient_address' => 'Jalan I Gusti Ngurah Rai No.20 RT 008/RW 012 Bukit Podomoro Jakarta, Bukit Avenue Blok C3, C5, dan C6 Kel. Klender, Kec. Duren Sawit, Jakarta Timur 13470'],
             ['name' => 'ASEI', 'claim_type' => 'credit', 'ckpn_weight' => '0', 'legal_name' => 'PT ASURANSI ASEI INDONESIA', 'letter_recipient_name' => 'PT ASURANSI ASEI INDONESIA', 'letter_recipient_address' => 'Kantor Cabang Bekasi, Ruko Grand Galaxy, Blok RRG 3 No. 77, Jaka Setia, Bekasi Selatan, Kota Bekasi'],
             ['name' => 'MNC ASURANSI', 'claim_type' => 'credit', 'ckpn_weight' => '0', 'legal_name' => 'PT MNC ASURANSI INDONESIA', 'letter_recipient_name' => 'PT MNC ASURANSI INDONESIA', 'letter_recipient_address' => 'MNC Bank Tower Lt. 11, Jalan Kebon Sirih No. 21–27, Jakarta Pusat 10340'],
-            ['name' => 'SDI', 'claim_type' => 'ajk', 'ckpn_weight' => '0', 'legal_name' => null, 'letter_recipient_name' => null, 'letter_recipient_address' => null],
+            ['name' => 'ASKRINDO', 'code' => 'ASKRINDO', 'claim_type' => 'ajk', 'ckpn_weight' => '0.5', 'legal_name' => null, 'letter_recipient_name' => null, 'letter_recipient_address' => null],
             ['name' => 'AA PIALANG', 'claim_type' => 'ajk', 'ckpn_weight' => '0.5', 'legal_name' => null, 'letter_recipient_name' => null, 'letter_recipient_address' => null],
             ['name' => 'MPM', 'claim_type' => 'ajk', 'ckpn_weight' => '0.5', 'legal_name' => null, 'letter_recipient_name' => null, 'letter_recipient_address' => null],
         ];
@@ -29,7 +29,7 @@ class InsuranceCompanySeeder extends Seeder
                 ['name' => $company['name']],
                 [
                     ...$company,
-                    'code' => null,
+                    'code' => $company['code'] ?? null,
                     'sla_description' => null,
                     'is_active' => true,
                 ],

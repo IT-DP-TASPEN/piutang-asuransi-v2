@@ -70,7 +70,7 @@ class MasterAuthorizationTest extends TestCase
     {
         return [
             BranchOffice::class => BranchOffice::query()->where('branch_code', '000')->firstOrFail(),
-            InsuranceCompany::class => InsuranceCompany::query()->where('name', 'SDI')->firstOrFail(),
+            InsuranceCompany::class => InsuranceCompany::query()->where('name', 'ASKRINDO')->firstOrFail(),
             ClaimStatus::class => ClaimStatus::query()->where('code', ClaimStatus::DEFAULT_CODE)->firstOrFail(),
             CkpnAgeBucket::class => CkpnAgeBucket::query()->where('name', '1 - 6 bulan')->firstOrFail(),
             CkpnCalculationRule::class => CkpnCalculationRule::query()

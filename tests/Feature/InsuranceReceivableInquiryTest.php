@@ -187,7 +187,7 @@ class InsuranceReceivableInquiryTest extends TestCase
         $data = app(PrepareInsuranceReceivableDraftAction::class)->handle([
             'loan_account_number' => '3010001000054745',
             'date_of_death' => '2026-01-15',
-            'insurance_company_id' => InsuranceCompany::query()->where('name', 'SDI')->firstOrFail()->id,
+            'insurance_company_id' => InsuranceCompany::query()->where('name', 'ASKRINDO')->firstOrFail()->id,
         ], $user);
 
         return InsuranceReceivable::query()->create($data);

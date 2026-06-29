@@ -100,7 +100,7 @@ class InsuranceCoverLetterGenerationTest extends TestCase
     {
         $this->seedDependencies();
         Storage::fake('local');
-        $receivable = $this->receivableFor('SDI', [
+        $receivable = $this->receivableFor('ASKRINDO', [
             'customer_name' => null,
             'date_of_death' => null,
             'credit_limit' => null,
@@ -116,7 +116,7 @@ class InsuranceCoverLetterGenerationTest extends TestCase
         );
 
         $this->assertRenderedFromTemplate($letter->rendered_html);
-        $this->assertStringContainsString('<strong>SDI</strong><br>', $letter->rendered_html);
+        $this->assertStringContainsString('<strong>ASKRINDO</strong><br>', $letter->rendered_html);
         $this->assertStringContainsString('<strong>-</strong></p>', $letter->rendered_html);
         $this->assertSame(5, preg_match_all('/<td>-<\/td>/', $letter->rendered_html));
         $this->assertStringContainsString('Telah meninggal dunia pada tanggal -.', $letter->rendered_html);

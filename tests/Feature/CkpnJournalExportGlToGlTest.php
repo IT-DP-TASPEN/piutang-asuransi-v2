@@ -338,7 +338,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
             'cif_no' => 'CIF-1',
             'loan_account_number' => '3010001000054745',
             'customer_name' => 'Customer One',
-            'insurance_company_name' => 'SDI',
+            'insurance_company_name' => 'VICTORIA ALIFE',
             'claim_status_name' => 'On proses',
             'receivable_formation_date' => '2026-02-01',
             'receivable_amount' => '1000000.00',

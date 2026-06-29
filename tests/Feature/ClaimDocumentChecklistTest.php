@@ -29,15 +29,16 @@ class ClaimDocumentChecklistTest extends TestCase
     {
         $this->seedDependencies();
 
-        $this->assertSame('ajk', InsuranceCompany::query()->where('name', 'SDI')->value('claim_type'));
+        $this->assertSame('ajk', InsuranceCompany::query()->where('name', 'ASKRINDO')->value('claim_type'));
         $this->assertSame('ajk', InsuranceCompany::query()->where('name', 'AA PIALANG')->value('claim_type'));
         $this->assertSame('ajk', InsuranceCompany::query()->where('name', 'MPM')->value('claim_type'));
         $this->assertSame('credit', InsuranceCompany::query()->where('name', 'MNC ASURANSI')->value('claim_type'));
+        $this->assertDatabaseHas('insurance_companies', ['name' => 'ASKRINDO', 'code' => 'ASKRINDO']);
         $this->assertDatabaseHas('insurance_companies', ['name' => 'VICTORIA ALIFE', 'ckpn_weight' => 0]);
         $this->assertDatabaseHas('insurance_companies', ['name' => 'MNC ASURANSI', 'ckpn_weight' => 0]);
 
-        $sdi = InsuranceCompany::query()->where('name', 'SDI')->firstOrFail();
-        $this->assertSame('SDI', $sdi->resolvedLetterRecipientName());
+        $askrindo = InsuranceCompany::query()->where('name', 'ASKRINDO')->firstOrFail();
+        $this->assertSame('ASKRINDO', $askrindo->resolvedLetterRecipientName());
     }
 
     public function test_date_of_death_is_synthetic_and_never_a_document_type(): void

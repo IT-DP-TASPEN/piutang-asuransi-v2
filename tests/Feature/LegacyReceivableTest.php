@@ -26,7 +26,7 @@ class LegacyReceivableTest extends TestCase
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_maker', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
-        $insuranceCompany = InsuranceCompany::query()->where('name', 'SDI')->firstOrFail();
+        $insuranceCompany = InsuranceCompany::query()->where('name', 'ASKRINDO')->firstOrFail();
 
         $data = app(PrepareLegacyReceivableDataAction::class)->handle([
             'cif' => 'CIF-LEG-1',
