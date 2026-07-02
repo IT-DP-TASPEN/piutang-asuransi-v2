@@ -22,6 +22,7 @@ class InsuranceCompanySeeder extends Seeder
             ['name' => 'ASKRINDO', 'code' => 'ASKRINDO', 'claim_type' => 'ajk', 'ckpn_weight' => '0.5', 'legal_name' => null, 'letter_recipient_name' => null, 'letter_recipient_address' => null],
             ['name' => 'AA PIALANG', 'claim_type' => 'ajk', 'ckpn_weight' => '0.5', 'legal_name' => null, 'letter_recipient_name' => null, 'letter_recipient_address' => null],
             ['name' => 'MPM', 'claim_type' => 'ajk', 'ckpn_weight' => '0.5', 'legal_name' => null, 'letter_recipient_name' => null, 'letter_recipient_address' => null],
+            ['name' => 'JASA RAHARJA PUTERA', 'claim_type' => 'ajk', 'ckpn_weight' => '0.5', 'legal_name' => null, 'letter_recipient_name' => null, 'letter_recipient_address' => null],
         ];
 
         foreach ($companies as $company) {
