@@ -6,6 +6,7 @@ use App\Models\CkpnWorkpaper;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
+use Filament\Tables\Columns\Summarizers\Sum;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -28,23 +29,28 @@ class CkpnWorkpapersTable
                     ->sortable(),
                 TextColumn::make('total_receivable_amount')
                     ->label('Total receivable')
-                    ->numeric(2)
+                    ->money('IDR', 0, 'id_ID')
                     ->sortable(),
                 TextColumn::make('total_calculated_ckpn_amount')
                     ->label('Calculated CKPN')
-                    ->numeric(2)
+                    ->money('IDR', 0, 'id_ID')
                     ->sortable(),
                 TextColumn::make('total_adjustment_delta')
                     ->label('Adjustment delta')
-                    ->numeric(2)
+                    ->money('IDR', 0, 'id_ID')
                     ->sortable(),
                 TextColumn::make('total_effective_ckpn_amount')
                     ->label('Effective CKPN')
-                    ->numeric(2)
+                    ->money('IDR', 0, 'id_ID')
                     ->sortable(),
                 TextColumn::make('total_ckpn_amount')
                     ->label('Final CKPN')
-                    ->numeric(2)
+                    ->money('IDR', 0, 'id_ID')
+                    ->summarize(
+                        Sum::make()
+                            ->label('Total')
+                            ->money('IDR', 0, 'id_ID'),
+                    )
                     ->sortable(),
                 TextColumn::make('creator.name')
                     ->label('Created by')
@@ -65,13 +71,13 @@ class CkpnWorkpapersTable
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()
-                    ->visible(fn (CkpnWorkpaper $record): bool => (auth()->user()?->can('update', $record) ?? false)
+                    ->visible(fn(CkpnWorkpaper $record): bool => (auth()->user()?->can('update', $record) ?? false)
                         && in_array($record->status, [
                             CkpnWorkpaper::STATUS_DRAFT,
                             CkpnWorkpaper::STATUS_RETURNED,
                         ], true)),
                 DeleteAction::make()
-                    ->visible(fn (CkpnWorkpaper $record): bool => (auth()->user()?->can('delete', $record) ?? false)
+                    ->visible(fn(CkpnWorkpaper $record): bool => (auth()->user()?->can('delete', $record) ?? false)
                         && $record->status === CkpnWorkpaper::STATUS_DRAFT),
             ]);
     }
