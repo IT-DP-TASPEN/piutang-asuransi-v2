@@ -20,8 +20,8 @@ class LegacyReceivablesTable
                 TextColumn::make('customer_name')->searchable()->sortable(),
                 TextColumn::make('insuranceCompany.name')->label('Insurance')->searchable(),
                 TextColumn::make('claimStatus.name')->label('Claim status')->badge(),
-                TextColumn::make('original_receivable_amount')->numeric(2)->sortable(),
-                TextColumn::make('remaining_receivable_amount')->numeric(2)->sortable(),
+                TextColumn::make('original_receivable_amount')->money('IDR', 0, 'id_ID')->sortable(),
+                TextColumn::make('remaining_receivable_amount')->money('IDR', 0, 'id_ID')->sortable(),
             ])
             ->filters([
                 SelectFilter::make('branch_office_id')
