@@ -73,7 +73,8 @@ class CkpnWorkpaper extends Model
 
     public static function normalizePeriod(mixed $period): Carbon
     {
-        return Carbon::parse($period)->startOfMonth()->startOfDay();
+        // period stores the selected CKPN cutoff date, not a monthly period.
+        return Carbon::parse($period)->startOfDay();
     }
 
     public static function branchScopeKeyFor(?int $branchOfficeId): string
@@ -85,7 +86,7 @@ class CkpnWorkpaper extends Model
 
     public function periodEnd(): Carbon
     {
-        return self::normalizePeriod($this->period)->endOfMonth()->endOfDay();
+        return self::normalizePeriod($this->period)->endOfDay();
     }
 
     public function branchScopeKey(): string

@@ -16,7 +16,7 @@ class CkpnJournalInfolist
                     ->inlineLabel()
                     ->columnSpanFull()
                     ->schema([
-                        TextEntry::make('ckpnWorkpaper.period')->label('Workpaper period')->date(),
+                        TextEntry::make('ckpnWorkpaper.period')->label('Tanggal Cutoff Workpaper')->date(),
                         TextEntry::make('branchOffice.branch_name')->label('Branch')->placeholder('All branches'),
                         TextEntry::make('journal_date')->date(),
                         TextEntry::make('total_amount')->numeric(2),

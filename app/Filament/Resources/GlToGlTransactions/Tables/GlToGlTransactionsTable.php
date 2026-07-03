@@ -18,7 +18,7 @@ class GlToGlTransactionsTable
                 TextColumn::make('reference_number')->searchable()->sortable(),
                 TextColumn::make('receipt_number')->searchable()->sortable(),
                 TextColumn::make('ckpnJournal.id')->label('Journal')->sortable(),
-                TextColumn::make('ckpnWorkpaper.period')->label('Workpaper period')->date()->sortable(),
+                TextColumn::make('ckpnWorkpaper.period')->label('Tanggal Cutoff Workpaper')->date()->sortable(),
                 TextColumn::make('insuranceReceivable.loan_account_number')->label('Receivable loan account')->searchable(),
                 TextColumn::make('status')->badge()->sortable(),
                 TextColumn::make('response_code')->label('Response code')->sortable(),

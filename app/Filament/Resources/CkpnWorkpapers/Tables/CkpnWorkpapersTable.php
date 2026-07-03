@@ -18,6 +18,7 @@ class CkpnWorkpapersTable
         return $table
             ->columns([
                 TextColumn::make('period')
+                    ->label('Tanggal Cutoff')
                     ->date()
                     ->sortable(),
                 TextColumn::make('branchOffice.branch_name')
@@ -30,18 +31,38 @@ class CkpnWorkpapersTable
                 TextColumn::make('total_receivable_amount')
                     ->label('Total receivable')
                     ->money('IDR', 0, 'id_ID')
+                    ->summarize(
+                        Sum::make()
+                            ->label('Total')
+                            ->money('IDR', 0, 'id_ID'),
+                    )
                     ->sortable(),
                 TextColumn::make('total_calculated_ckpn_amount')
                     ->label('Calculated CKPN')
                     ->money('IDR', 0, 'id_ID')
+                    ->summarize(
+                        Sum::make()
+                            ->label('Total')
+                            ->money('IDR', 0, 'id_ID'),
+                    )
                     ->sortable(),
                 TextColumn::make('total_adjustment_delta')
                     ->label('Adjustment delta')
                     ->money('IDR', 0, 'id_ID')
+                    ->summarize(
+                        Sum::make()
+                            ->label('Total')
+                            ->money('IDR', 0, 'id_ID'),
+                    )
                     ->sortable(),
                 TextColumn::make('total_effective_ckpn_amount')
                     ->label('Effective CKPN')
                     ->money('IDR', 0, 'id_ID')
+                    ->summarize(
+                        Sum::make()
+                            ->label('Total')
+                            ->money('IDR', 0, 'id_ID'),
+                    )
                     ->sortable(),
                 TextColumn::make('total_ckpn_amount')
                     ->label('Final CKPN')

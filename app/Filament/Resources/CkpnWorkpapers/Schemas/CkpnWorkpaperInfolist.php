@@ -27,6 +27,7 @@ class CkpnWorkpaperInfolist
                             ->columns(1)
                             ->schema([
                                 TextEntry::make('period')
+                                    ->label('Tanggal Cutoff')
                                     ->date()
                                     ->icon(Heroicon::OutlinedCalendar),
                                 TextEntry::make('branchOffice.branch_name')

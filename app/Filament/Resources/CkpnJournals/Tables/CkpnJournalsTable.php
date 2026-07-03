@@ -19,7 +19,7 @@ class CkpnJournalsTable
                     ->date()
                     ->sortable(),
                 TextColumn::make('ckpnWorkpaper.period')
-                    ->label('Workpaper period')
+                    ->label('Tanggal Cutoff Workpaper')
                     ->date()
                     ->sortable(),
                 TextColumn::make('branchOffice.branch_name')

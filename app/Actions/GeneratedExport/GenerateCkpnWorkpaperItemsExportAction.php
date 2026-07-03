@@ -62,7 +62,7 @@ class GenerateCkpnWorkpaperItemsExportAction
                     'disk' => GeneratedExport::DISK,
                     'format' => 'xlsx',
                     'items_count' => $itemsCount,
-                    'period' => $workpaper->period?->toDateString(),
+                    'cutoff_date' => $workpaper->period?->toDateString(),
                 ],
             ]));
         } catch (Throwable $exception) {
@@ -80,7 +80,7 @@ class GenerateCkpnWorkpaperItemsExportAction
                     'disk' => GeneratedExport::DISK,
                     'format' => 'xlsx',
                     'items_count' => $itemsCount,
-                    'period' => $workpaper->period?->toDateString(),
+                    'cutoff_date' => $workpaper->period?->toDateString(),
                     'error' => $exception->getMessage(),
                 ],
             ]));
@@ -239,11 +239,11 @@ class GenerateCkpnWorkpaperItemsExportAction
 
     private function filename(CkpnWorkpaper $workpaper): string
     {
-        $period = $workpaper->period?->format('Ym') ?? 'no-period';
+        $cutoffDate = $workpaper->period?->toDateString() ?? 'no-cutoff-date';
         $name = sprintf(
-            'ckpn-workpaper-items-%s-%s-%s.xlsx',
+            'ckpn-workpaper-items-%s-cutoff-%s-%s.xlsx',
             $workpaper->id,
-            $period,
+            $cutoffDate,
             now()->format('YmdHis'),
         );
 

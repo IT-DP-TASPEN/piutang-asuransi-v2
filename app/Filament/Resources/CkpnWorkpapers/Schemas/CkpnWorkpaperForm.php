@@ -18,6 +18,7 @@ class CkpnWorkpaperForm
                     ->columnSpanFull()
                     ->schema([
                         DatePicker::make('period')
+                            ->label('Tanggal Cutoff')
                             ->required(),
                         Select::make('branch_office_id')
                             ->label('Branch')

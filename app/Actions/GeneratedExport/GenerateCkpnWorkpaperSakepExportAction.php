@@ -30,7 +30,8 @@ class GenerateCkpnWorkpaperSakepExportAction
         }
 
         $directory = 'generated-exports/ckpn-workpapers';
-        $filename = sprintf('ckpn-workpaper-%s-%s.xlsx', $workpaper->id, now()->format('YmdHis'));
+        $cutoffDate = $workpaper->period?->toDateString() ?? 'no-cutoff-date';
+        $filename = sprintf('ckpn-workpaper-%s-cutoff-%s-%s.xlsx', $workpaper->id, $cutoffDate, now()->format('YmdHis'));
         $relativePath = "{$directory}/{$filename}";
         $disk = Storage::disk(GeneratedExport::DISK);
         $disk->makeDirectory($directory);
@@ -48,6 +49,7 @@ class GenerateCkpnWorkpaperSakepExportAction
                 'metadata' => [
                     'format' => 'xlsx',
                     'items_count' => $workpaper->items()->count(),
+                    'cutoff_date' => $workpaper->period?->toDateString(),
                 ],
             ]));
         } catch (Throwable $exception) {
@@ -58,6 +60,9 @@ class GenerateCkpnWorkpaperSakepExportAction
                 'generated_by' => $user->id,
                 'generated_at' => now(),
                 'metadata' => [
+                    'format' => 'xlsx',
+                    'items_count' => $workpaper->items()->count(),
+                    'cutoff_date' => $workpaper->period?->toDateString(),
                     'error' => $exception->getMessage(),
                 ],
             ]));
