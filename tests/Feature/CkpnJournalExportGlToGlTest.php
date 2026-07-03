@@ -128,6 +128,9 @@ class CkpnJournalExportGlToGlTest extends TestCase
 
         $this->assertSame(GeneratedExport::STATUS_GENERATED, $export->status);
         $this->assertSame(GeneratedExport::TYPE_CKPN_WORKPAPER_SAKEP_XLSX, $export->export_type);
+        $this->assertStringContainsString('cutoff-2026-05-15', basename($export->file_path));
+        $this->assertSame('2026-05-15', $export->metadata['cutoff_date']);
+        $this->assertArrayNotHasKey('period', $export->metadata);
         Storage::disk(GeneratedExport::DISK)->assertExists($export->file_path);
         $this->assertDatabaseHas('generated_exports', [
             'id' => $export->id,
@@ -293,7 +296,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
         $branch = BranchOffice::query()->where('branch_code', $branchCode)->firstOrFail();
 
         return CkpnWorkpaper::query()->create([
-            'period' => '2026-05-31',
+            'period' => '2026-05-15',
             'branch_office_id' => $branch->id,
             'status' => CkpnWorkpaper::STATUS_APPROVED,
             'total_receivable_amount' => '10000000.00',

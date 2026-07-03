@@ -46,16 +46,32 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
 
         $component = Livewire::actingAs($maker)
             ->test(CreateCkpnWorkpaper::class)
+            ->assertSee('Tanggal Cutoff')
             ->set('data.period', '2026-04-30')
             ->set('data.branch_office_id', $branch->id)
             ->call('create');
 
         $workpaper = CkpnWorkpaper::query()->sole();
 
-        $this->assertSame('2026-04-01', $workpaper->period->toDateString());
+        $this->assertSame('2026-04-30', $workpaper->period->toDateString());
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
         Queue::assertPushed(GenerateCkpnWorkpaperJob::class, fn (GenerateCkpnWorkpaperJob $job): bool => $job->ckpnWorkpaperId === $workpaper->id);
         $component->assertRedirect(CkpnWorkpaperResource::getUrl('view', ['record' => $workpaper]));
+    }
+
+    public function test_workpaper_pages_label_period_as_tanggal_cutoff(): void
+    {
+        $this->seedDependencies();
+        $superAdmin = $this->userWithRole('super_admin', '000');
+        $workpaper = $this->workpaper(CkpnWorkpaper::STATUS_DRAFT);
+
+        Livewire::actingAs($superAdmin)
+            ->test(ListCkpnWorkpapers::class)
+            ->assertSee('Tanggal Cutoff');
+
+        Livewire::actingAs($superAdmin)
+            ->test(ViewCkpnWorkpaper::class, ['record' => $workpaper->id])
+            ->assertSee('Tanggal Cutoff');
     }
 
     public function test_create_page_notifies_when_pending_receivables_block_workpaper_creation(): void

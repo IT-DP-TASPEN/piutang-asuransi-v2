@@ -43,6 +43,18 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_workpaper_period_is_exact_cutoff_date(): void
+    {
+        $this->assertSame('2026-06-15 00:00:00', CkpnWorkpaper::normalizePeriod('2026-06-15')->toDateTimeString());
+
+        $workpaper = CkpnWorkpaper::query()->create(['period' => '2026-06-15 13:45:00']);
+
+        $this->assertSame('2026-06-15', $workpaper->period->toDateString());
+        $this->assertSame('2026-06-15 23:59:59', $workpaper->periodEnd()->toDateTimeString());
+        $this->assertNotSame('2026-06-01', $workpaper->period->toDateString());
+        $this->assertNotSame('2026-06-30 23:59:59', $workpaper->periodEnd()->toDateTimeString());
+    }
+
     public function test_workpaper_generation_creates_snapshot_items_and_totals(): void
     {
         $this->seedDependencies();
@@ -125,6 +137,36 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         $this->assertSame(1, $branchWorkpaper->refresh()->items()->count());
         $this->assertSame(2, $centralWorkpaper->refresh()->items()->count());
+    }
+
+    public function test_workpaper_generation_uses_exact_cutoff_for_eligibility_and_aging(): void
+    {
+        $this->seedDependencies();
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $older = $this->receivable($branch, [
+            'receivable_formation_date' => '2026-05-20',
+            'receivable_amount' => '10000.00',
+        ]);
+        $onCutoff = $this->receivable($branch, [
+            'receivable_formation_date' => '2026-06-15',
+            'receivable_amount' => '20000.00',
+        ]);
+        $afterCutoff = $this->receivable($branch, [
+            'receivable_formation_date' => '2026-06-20',
+            'receivable_amount' => '30000.00',
+        ]);
+        $workpaper = CkpnWorkpaper::query()->create([
+            'period' => '2026-06-15',
+            'branch_office_id' => $branch->id,
+        ]);
+
+        $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
+        $items = $workpaper->items()->orderBy('receivable_id')->get();
+
+        $this->assertSame([$older->id, $onCutoff->id], $items->pluck('receivable_id')->all());
+        $this->assertFalse($items->contains('receivable_id', $afterCutoff->id));
+        $this->assertSame(26, $items->firstWhere('receivable_id', $older->id)->age_days);
+        $this->assertSame(0, $items->firstWhere('receivable_id', $onCutoff->id)->age_days);
     }
 
     public function test_workpaper_generation_uses_current_legacy_remaining_amount_not_payment_period_cutoff(): void
@@ -406,7 +448,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         app(ApproveCkpnAdjustmentAction::class)->handle($adjustment, $approver);
     }
 
-    public function test_create_workpaper_normalizes_period_prevents_duplicate_branch_and_dispatches_generation(): void
+    public function test_create_workpaper_preserves_cutoff_date_allows_same_month_and_prevents_duplicate_branch_cutoff(): void
     {
         $this->seedDependencies();
         Queue::fake();
@@ -418,15 +460,22 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
             'branch_office_id' => $branch->id,
         ], $maker);
 
-        $this->assertSame('2026-04-01', $workpaper->period->toDateString());
+        $this->assertSame('2026-04-15', $workpaper->period->toDateString());
         $this->assertSame("branch:{$branch->id}", $workpaper->branch_scope_key);
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
         Queue::assertPushed(GenerateCkpnWorkpaperJob::class, fn (GenerateCkpnWorkpaperJob $job): bool => $job->ckpnWorkpaperId === $workpaper->id);
 
+        $secondWorkpaper = app(CreateCkpnWorkpaperAction::class)->handle([
+            'period' => '2026-04-30',
+            'branch_office_id' => $branch->id,
+        ], $maker);
+
+        $this->assertSame('2026-04-30', $secondWorkpaper->period->toDateString());
+
         $this->expectException(ValidationException::class);
 
         app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-30',
+            'period' => '2026-04-15',
             'branch_office_id' => $branch->id,
         ], $maker);
     }
@@ -478,13 +527,16 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $maker = $this->userWithRole('accounting_maker', '000');
 
         app(CreateCkpnWorkpaperAction::class)->handle(['period' => '2026-04-15'], $maker);
+        $workpaper = app(CreateCkpnWorkpaperAction::class)->handle(['period' => '2026-04-30'], $maker);
+
+        $this->assertSame('2026-04-30', $workpaper->period->toDateString());
 
         $this->expectException(ValidationException::class);
 
-        app(CreateCkpnWorkpaperAction::class)->handle(['period' => '2026-04-30'], $maker);
+        app(CreateCkpnWorkpaperAction::class)->handle(['period' => '2026-04-15'], $maker);
     }
 
-    public function test_pending_receivable_cutoff_uses_month_end_and_fallback_date(): void
+    public function test_pending_receivable_cutoff_uses_selected_day_end_and_fallback_date(): void
     {
         $this->seedDependencies();
         Queue::fake();
@@ -494,7 +546,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         InsuranceReceivable::factory()->create([
             'branch_office_id' => $branch->id,
             'branch_code' => $branch->branch_code,
-            'date_of_death' => '2026-04-30',
+            'date_of_death' => '2026-04-15',
             'receivable_formation_date' => null,
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
@@ -503,12 +555,12 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->expectException(ValidationException::class);
 
         app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-01',
+            'period' => '2026-04-15',
             'branch_office_id' => $branch->id,
         ], $maker);
     }
 
-    public function test_pending_receivable_after_month_end_does_not_block_workpaper(): void
+    public function test_pending_receivable_after_cutoff_does_not_block_workpaper(): void
     {
         $this->seedDependencies();
         Queue::fake();
@@ -518,14 +570,14 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         InsuranceReceivable::factory()->create([
             'branch_office_id' => $branch->id,
             'branch_code' => $branch->branch_code,
-            'date_of_death' => '2026-05-01',
+            'date_of_death' => '2026-04-16',
             'receivable_formation_date' => null,
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
         ]);
 
         $workpaper = app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-01',
+            'period' => '2026-04-15',
             'branch_office_id' => $branch->id,
         ], $maker);
 
@@ -552,7 +604,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         try {
             app(CreateCkpnWorkpaperAction::class)->handle([
-                'period' => '2026-04-01',
+                'period' => '2026-04-15',
                 'branch_office_id' => $branch->id,
             ], $accountingMaker);
 
@@ -567,7 +619,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertTrue($receivable->stageLogs()->where('event', 'technical_inquiry_failure_cancelled')->exists());
 
         $workpaper = app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-01',
+            'period' => '2026-04-15',
             'branch_office_id' => $branch->id,
         ], $accountingMaker);
 
@@ -602,7 +654,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         try {
             app(CreateCkpnWorkpaperAction::class)->handle([
-                'period' => '2026-04-01',
+                'period' => '2026-04-15',
                 'branch_office_id' => $branchOne->id,
             ], $accountingMaker);
 
@@ -614,7 +666,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         }
 
         $otherBranchWorkpaper = app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-01',
+            'period' => '2026-04-15',
             'branch_office_id' => $branchTwo->id,
         ], $accountingMaker);
 
@@ -623,7 +675,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $request->forceFill(['status' => ClaimStatusChangeRequest::STATUS_CANCELLED])->save();
 
         $workpaper = app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-01',
+            'period' => '2026-04-15',
             'branch_office_id' => $branchOne->id,
         ], $accountingMaker);
 
@@ -636,7 +688,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $this->receivable($branch, ['receivable_formation_date' => '2026-04-30', 'receivable_amount' => '10000.00']);
         $workpaper = CkpnWorkpaper::query()->create([
-            'period' => '2026-04-01',
+            'period' => '2026-04-30',
             'branch_office_id' => $branch->id,
             'status' => CkpnWorkpaper::STATUS_GENERATION_QUEUED,
         ]);
@@ -696,7 +748,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
             'receivable_amount' => '10000.00',
         ]);
         $workpaper = CkpnWorkpaper::query()->create([
-            'period' => '2026-04-01',
+            'period' => '2026-04-30',
             'branch_office_id' => $branch->id,
         ]);
 

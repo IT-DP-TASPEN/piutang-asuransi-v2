@@ -42,7 +42,7 @@ class AverageThreeFactorsWithRejectLossOverrideStrategy implements CkpnCalculati
 
         if ($ageDays < 0) {
             throw ValidationException::withMessages([
-                'period' => 'CKPN period cannot be before receivable formation date.',
+                'period' => 'CKPN cutoff date cannot be before receivable formation date.',
             ]);
         }
 

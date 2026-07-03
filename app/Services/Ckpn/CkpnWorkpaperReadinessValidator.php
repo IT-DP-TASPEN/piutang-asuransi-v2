@@ -76,14 +76,14 @@ class CkpnWorkpaperReadinessValidator
 
         if ($exists) {
             throw ValidationException::withMessages([
-                'period' => 'CKPN Workpaper already exists for this period and branch scope.',
+                'period' => 'CKPN Workpaper already exists for this cutoff date and branch scope.',
             ]);
         }
     }
 
     public function assertNoPendingInsuranceReceivables(Carbon|string $period, ?int $branchOfficeId): void
     {
-        $periodEnd = CkpnWorkpaper::normalizePeriod($period)->endOfMonth()->endOfDay();
+        $periodEnd = CkpnWorkpaper::normalizePeriod($period)->endOfDay();
         $count = $this->pendingInsuranceReceivablesQuery($periodEnd, $branchOfficeId)->count();
 
         if ($count > 0) {
@@ -95,7 +95,7 @@ class CkpnWorkpaperReadinessValidator
 
     public function assertNoPendingClaimStatusUpdates(Carbon|string $period, ?int $branchOfficeId): void
     {
-        $periodEnd = CkpnWorkpaper::normalizePeriod($period)->endOfMonth()->endOfDay();
+        $periodEnd = CkpnWorkpaper::normalizePeriod($period)->endOfDay();
         $requests = $this->pendingClaimStatusUpdatesQuery($periodEnd, $branchOfficeId)
             ->limit(10)
             ->get(['id', 'status']);
@@ -116,7 +116,7 @@ class CkpnWorkpaperReadinessValidator
 
     public function pendingInsuranceReceivablesCount(Carbon|string $period, ?int $branchOfficeId): int
     {
-        $periodEnd = CkpnWorkpaper::normalizePeriod($period)->endOfMonth()->endOfDay();
+        $periodEnd = CkpnWorkpaper::normalizePeriod($period)->endOfDay();
 
         return $this->pendingInsuranceReceivablesQuery($periodEnd, $branchOfficeId)->count();
     }

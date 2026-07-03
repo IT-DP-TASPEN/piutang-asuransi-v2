@@ -87,8 +87,11 @@ class CkpnWorkpaperItemsExportTest extends TestCase
         $this->assertSame(GeneratedExport::STATUS_GENERATED, $export->status);
         $this->assertSame(GeneratedExport::TYPE_CKPN_WORKPAPER_ITEMS_XLSX, $export->export_type);
         $this->assertStringStartsWith('generated-exports/ckpn-workpapers/items/ckpn-workpaper-items-', $export->file_path);
+        $this->assertStringContainsString('cutoff-2026-06-15', basename($export->file_path));
         $this->assertSame(GeneratedExport::DISK, $export->metadata['disk']);
         $this->assertSame(2, $export->metadata['items_count']);
+        $this->assertSame('2026-06-15', $export->metadata['cutoff_date']);
+        $this->assertArrayNotHasKey('period', $export->metadata);
         Storage::disk(GeneratedExport::DISK)->assertExists($export->file_path);
 
         $rows = $this->rowsFromXlsx(Storage::disk(GeneratedExport::DISK)->path($export->file_path));
@@ -237,7 +240,7 @@ class CkpnWorkpaperItemsExportTest extends TestCase
         $branch = BranchOffice::query()->where('branch_code', $branchCode)->firstOrFail();
 
         return CkpnWorkpaper::query()->create([
-            'period' => '2026-06-01',
+            'period' => '2026-06-15',
             'branch_office_id' => $branch->id,
             'status' => $status,
             'total_receivable_amount' => '1000.50',

@@ -13,7 +13,7 @@ use Throwable;
 
 class ImportLegacyReceivables extends Command
 {
-    protected $signature = 'legacy-receivables:import {path=template migrasi legacy receivable.csv : CSV path}';
+    protected $signature = 'legacy-receivables:import {path=mewgrazie.csv : CSV path}';
 
     protected $description = 'Import legacy receivables from CSV';
 
