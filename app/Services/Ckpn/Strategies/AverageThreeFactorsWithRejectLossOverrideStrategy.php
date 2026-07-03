@@ -53,16 +53,22 @@ class AverageThreeFactorsWithRejectLossOverrideStrategy implements CkpnCalculati
 
         $isRejectLossOverride = $ageDays > 365 && $candidate->claimStatusCode === 'reject_loss';
 
-        if ($isRejectLossOverride) {
-            $finalRate = BigDecimal::of('100')->toScale(4, RoundingMode::HalfUp);
-            $explanation = 'Reject Loss with age greater than 365 days: CKPN rate overridden to 100%.';
-        } else {
-            $finalRate = BigDecimal::of($insuranceCompanyWeight)
-                ->plus($ageWeight)
-                ->plus($claimStatusWeight)
-                ->dividedBy('3', 4, RoundingMode::HalfUp);
-            $explanation = 'Average of insurance company, age bucket, and claim status weights divided by 3.';
-        }
+        // if ($isRejectLossOverride) {
+        //     $finalRate = BigDecimal::of('100')->toScale(4, RoundingMode::HalfUp);
+        //     $explanation = 'Reject Loss with age greater than 365 days: CKPN rate overridden to 100%.';
+        // } else {
+        //     $finalRate = BigDecimal::of($insuranceCompanyWeight)
+        //         ->plus($ageWeight)
+        //         ->plus($claimStatusWeight)
+        //         ->dividedBy('3', 4, RoundingMode::HalfUp);
+        //     $explanation = 'Average of insurance company, age bucket, and claim status weights divided by 3.';
+        // }
+
+        $finalRate = BigDecimal::of($insuranceCompanyWeight)
+            ->plus($ageWeight)
+            ->plus($claimStatusWeight)
+            ->dividedBy('3', 4, RoundingMode::HalfUp);
+        $explanation = 'What am I doing with my life?';
 
         $ckpnAmount = BigDecimal::of($candidate->receivableAmount)
             ->multipliedBy($finalRate)
