@@ -31,11 +31,24 @@ class CkpnWorkpaperResource extends Resource
 
     protected static ?int $navigationSort = 10;
 
-    protected static ?string $modelLabel = 'CKPN workpaper';
+    // protected static ?string $modelLabel = 'CKPN workpaper';
 
     protected static ?string $pluralModelLabel = 'CKPN workpapers';
 
-    protected static ?string $recordTitleAttribute = 'period';
+    public static function getModelLabel(): string
+    {
+        /** @var CkpnWorkpaper|null $record */
+        $record = static::getModel()::query()->first();
+        if (! $record) {
+            return 'CKPN workpaper';
+        }
+
+        return sprintf(
+            'CKPN - %s - %s',
+            $record->branchOffice?->branch_name ?? 'All branches',
+            $record->period->format('d F Y'),
+        );
+    }
 
     public static function getEloquentQuery(): Builder
     {
