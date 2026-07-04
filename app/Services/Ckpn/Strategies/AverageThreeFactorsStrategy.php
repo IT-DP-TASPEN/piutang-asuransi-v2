@@ -12,7 +12,7 @@ use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
 use Illuminate\Validation\ValidationException;
 
-class AverageThreeFactorsWithRejectLossOverrideStrategy implements CkpnCalculationStrategy
+class AverageThreeFactorsStrategy implements CkpnCalculationStrategy
 {
     public function calculate(CkpnCalculationInput $input, CkpnCalculationRule $rule): CkpnCalculationResult
     {
@@ -51,18 +51,11 @@ class AverageThreeFactorsWithRejectLossOverrideStrategy implements CkpnCalculati
         $ageWeight = $this->scale4($ageBucket->ckpn_weight);
         $claimStatusWeight = $this->scale4($candidate->claimStatusWeight);
 
-        $isRejectLossOverride = $ageDays > 365 && $candidate->claimStatusCode === 'reject_loss';
-
-        if ($isRejectLossOverride) {
-            $finalRate = BigDecimal::of('100')->toScale(4, RoundingMode::HalfUp);
-            $explanation = 'Reject Loss with age greater than 365 days: CKPN rate overridden to 100%.';
-        } else {
-            $finalRate = BigDecimal::of($insuranceCompanyWeight)
-                ->plus($ageWeight)
-                ->plus($claimStatusWeight)
-                ->dividedBy('3', 4, RoundingMode::HalfUp);
-            $explanation = 'Average of insurance company, age bucket, and claim status weights divided by 3.';
-        }
+        $finalRate = BigDecimal::of($insuranceCompanyWeight)
+            ->plus($ageWeight)
+            ->plus($claimStatusWeight)
+            ->dividedBy('3', 4, RoundingMode::HalfUp);
+        $explanation = 'Average of insurance company, age bucket, and claim status weights divided by 3.';
 
         $ckpnAmount = BigDecimal::of($candidate->receivableAmount)
             ->multipliedBy($finalRate)

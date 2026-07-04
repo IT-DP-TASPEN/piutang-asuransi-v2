@@ -12,14 +12,28 @@ class CkpnCalculationRuleSeeder extends Seeder
      */
     public function run(): void
     {
-        CkpnCalculationRule::query()->updateOrCreate(
-            ['code' => 'average_three_factors_with_reject_loss_override'],
+        $rules = [
             [
-                'name' => 'Average Three Factors With Reject Loss Override',
-                'strategy_class' => 'App\\Services\\Ckpn\\Strategies\\AverageThreeFactorsWithRejectLossOverrideStrategy',
+                'code' => 'average_three_factors',
+                'name' => 'Average Three Factors',
+                'strategy_class' => 'App\\Services\\Ckpn\\Strategies\\AverageThreeFactorsStrategy',
                 'description' => null,
                 'is_active' => true,
             ],
-        );
+            [
+                'code' => 'average_three_factors_with_reject_loss_override',
+                'name' => 'Average Three Factors With Reject Loss Override',
+                'strategy_class' => 'App\\Services\\Ckpn\\Strategies\\AverageThreeFactorsWithRejectLossOverrideStrategy',
+                'description' => null,
+                'is_active' => false,
+            ]
+        ];
+
+        foreach ($rules as $rule) {
+            CkpnCalculationRule::query()->updateOrCreate(
+                ['code' => $rule['code']],
+                $rule,
+            );
+        }
     }
 }
