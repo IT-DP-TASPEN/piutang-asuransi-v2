@@ -38,13 +38,7 @@ class CreateCkpnWorkpaperAction
 
             $workpaper = CkpnWorkpaper::query()->create([
                 ...$data,
-                'period' => $period,
-                'branch_office_id' => $branchOfficeId,
-                'branch_scope_key' => CkpnWorkpaper::branchScopeKeyFor($branchOfficeId),
-                'status' => CkpnWorkpaper::STATUS_GENERATION_QUEUED,
-                'created_by' => $user->id,
-                'last_error_message' => null,
-                'generated_at' => null,
+                ...CkpnWorkpaper::queuedCreationAttributes($period, $branchOfficeId, $user->id),
             ]);
 
             GenerateCkpnWorkpaperJob::dispatch($workpaper->id)->afterCommit();

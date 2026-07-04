@@ -84,6 +84,22 @@ class CkpnWorkpaper extends Model
             : "branch:{$branchOfficeId}";
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public static function queuedCreationAttributes(mixed $period, ?int $branchOfficeId, int $createdBy): array
+    {
+        return [
+            'period' => self::normalizePeriod($period)->toDateString(),
+            'branch_office_id' => $branchOfficeId,
+            'branch_scope_key' => self::branchScopeKeyFor($branchOfficeId),
+            'status' => self::STATUS_GENERATION_QUEUED,
+            'created_by' => $createdBy,
+            'last_error_message' => null,
+            'generated_at' => null,
+        ];
+    }
+
     public function periodEnd(): Carbon
     {
         return self::normalizePeriod($this->period)->endOfDay();

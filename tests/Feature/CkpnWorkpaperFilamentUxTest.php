@@ -19,6 +19,7 @@ use App\Models\InsuranceReceivable;
 use App\Models\User;
 use Database\Seeders\BranchOfficeSeeder;
 use Database\Seeders\RolePermissionSeeder;
+use Filament\Forms\Components\DatePicker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
@@ -72,6 +73,71 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
         Livewire::actingAs($superAdmin)
             ->test(ViewCkpnWorkpaper::class, ['record' => $workpaper->id])
             ->assertSee('Tanggal Cutoff');
+    }
+
+    public function test_list_page_bulk_create_action_is_visible_to_authorized_user_with_cutoff_only_form(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+
+        Livewire::actingAs($maker)
+            ->test(ListCkpnWorkpapers::class)
+            ->assertActionVisible('createAllBranchWorkpapers')
+            ->assertActionHasLabel('createAllBranchWorkpapers', 'Create All Branch Workpapers')
+            ->mountAction('createAllBranchWorkpapers')
+            ->assertFormFieldExists('period', null, fn (DatePicker $field): bool => $field->getLabel() === 'Tanggal Cutoff')
+            ->assertFormFieldDoesNotExist('branch_office_id');
+    }
+
+    public function test_list_page_bulk_create_action_is_hidden_from_unauthorized_user(): void
+    {
+        $this->seedDependencies();
+        $businessMaker = $this->userWithRole('business_maker', '000');
+
+        Livewire::actingAs($businessMaker)
+            ->test(ListCkpnWorkpapers::class)
+            ->assertActionHidden('createAllBranchWorkpapers');
+    }
+
+    public function test_list_page_bulk_create_action_queues_all_active_branch_workpapers(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $expectedCount = BranchOffice::query()
+            ->where('is_active', true)
+            ->where('branch_code', '!=', '000')
+            ->count();
+
+        Livewire::actingAs($maker)
+            ->test(ListCkpnWorkpapers::class)
+            ->callAction('createAllBranchWorkpapers', ['period' => '2026-11-15'])
+            ->assertNotified("{$expectedCount} CKPN Workpapers have been queued for generation.");
+
+        $this->assertSame($expectedCount, CkpnWorkpaper::query()->whereDate('period', '2026-11-15')->count());
+        $this->assertFalse(CkpnWorkpaper::query()->whereDate('period', '2026-11-15')->whereNull('branch_office_id')->exists());
+        Queue::assertPushed(GenerateCkpnWorkpaperJob::class, $expectedCount);
+    }
+
+    public function test_list_page_bulk_create_action_notifies_validation_failure(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        CkpnWorkpaper::query()->create([
+            'period' => '2026-11-15',
+            'branch_office_id' => $branch->id,
+            'status' => CkpnWorkpaper::STATUS_CANCELLED,
+        ]);
+
+        Livewire::actingAs($maker)
+            ->test(ListCkpnWorkpapers::class)
+            ->callAction('createAllBranchWorkpapers', ['period' => '2026-11-15'])
+            ->assertNotified("Cannot create CKPN Workpapers because one or more branches already have workpapers for cutoff date 2026-11-15: {$branch->branch_name}.");
+
+        $this->assertSame(1, CkpnWorkpaper::query()->count());
+        Queue::assertNotPushed(GenerateCkpnWorkpaperJob::class);
     }
 
     public function test_create_page_notifies_when_pending_receivables_block_workpaper_creation(): void

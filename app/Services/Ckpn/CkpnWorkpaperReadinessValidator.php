@@ -2,11 +2,13 @@
 
 namespace App\Services\Ckpn;
 
+use App\Models\BranchOffice;
 use App\Models\CkpnWorkpaper;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceReceivable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 class CkpnWorkpaperReadinessValidator
@@ -79,6 +81,43 @@ class CkpnWorkpaperReadinessValidator
                 'period' => 'CKPN Workpaper already exists for this cutoff date and branch scope.',
             ]);
         }
+    }
+
+    /**
+     * @param  Collection<int, BranchOffice>  $branches
+     */
+    public function assertNoDuplicateWorkpapersForBranches(Carbon|string $period, Collection $branches): void
+    {
+        $normalizedPeriod = CkpnWorkpaper::normalizePeriod($period)->toDateString();
+        $scopeKeys = $branches
+            ->map(fn (BranchOffice $branch): string => CkpnWorkpaper::branchScopeKeyFor((int) $branch->id))
+            ->all();
+
+        $existingScopeKeys = CkpnWorkpaper::query()
+            ->whereDate('period', $normalizedPeriod)
+            ->whereIn('branch_scope_key', $scopeKeys)
+            ->lockForUpdate()
+            ->pluck('branch_scope_key')
+            ->all();
+
+        if ($existingScopeKeys === []) {
+            return;
+        }
+
+        $branchNames = $branches
+            ->mapWithKeys(fn (BranchOffice $branch): array => [
+                CkpnWorkpaper::branchScopeKeyFor((int) $branch->id) => $branch->branch_name,
+            ]);
+        $examples = collect($existingScopeKeys)
+            ->map(fn (string $scopeKey): string => $branchNames->get($scopeKey, $scopeKey))
+            ->unique()
+            ->take(10)
+            ->join(', ');
+        $suffix = count($existingScopeKeys) > 10 ? ', ...' : '';
+
+        throw ValidationException::withMessages([
+            'period' => "Cannot create CKPN Workpapers because one or more branches already have workpapers for cutoff date {$normalizedPeriod}: {$examples}{$suffix}.",
+        ]);
     }
 
     public function assertNoPendingInsuranceReceivables(Carbon|string $period, ?int $branchOfficeId): void

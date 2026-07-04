@@ -43,7 +43,7 @@ class ImportLegacyReceivables extends Command
         }
 
         try {
-            $count = DB::transaction(fn(): int => $this->import($path));
+            $count = DB::transaction(fn (): int => $this->import($path));
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());
 
@@ -105,7 +105,7 @@ class ImportLegacyReceivables extends Command
         $missing = array_diff(self::REQUIRED_HEADERS, $headers);
 
         if ($missing !== []) {
-            throw new RuntimeException('Missing CSV headers: ' . implode(', ', $missing));
+            throw new RuntimeException('Missing CSV headers: '.implode(', ', $missing));
         }
 
         if (count($headers) !== count(array_unique($headers))) {
@@ -120,7 +120,7 @@ class ImportLegacyReceivables extends Command
      */
     private function isBlankRow(array $row): bool
     {
-        return collect($row)->every(fn(?string $value): bool => $this->cleanValue($value) === '');
+        return collect($row)->every(fn (?string $value): bool => $this->cleanValue($value) === '');
     }
 
     /**

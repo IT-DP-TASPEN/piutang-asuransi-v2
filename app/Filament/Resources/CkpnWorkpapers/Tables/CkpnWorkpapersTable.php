@@ -92,13 +92,13 @@ class CkpnWorkpapersTable
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()
-                    ->visible(fn(CkpnWorkpaper $record): bool => (auth()->user()?->can('update', $record) ?? false)
+                    ->visible(fn (CkpnWorkpaper $record): bool => (auth()->user()?->can('update', $record) ?? false)
                         && in_array($record->status, [
                             CkpnWorkpaper::STATUS_DRAFT,
                             CkpnWorkpaper::STATUS_RETURNED,
                         ], true)),
                 DeleteAction::make()
-                    ->visible(fn(CkpnWorkpaper $record): bool => (auth()->user()?->can('delete', $record) ?? false)
+                    ->visible(fn (CkpnWorkpaper $record): bool => (auth()->user()?->can('delete', $record) ?? false)
                         && $record->status === CkpnWorkpaper::STATUS_DRAFT),
             ]);
     }

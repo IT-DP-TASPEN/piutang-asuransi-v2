@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Ckpn\CreateAllBranchCkpnWorkpapersAction;
 use App\Actions\Ckpn\CreateCkpnWorkpaperAction;
 use App\Actions\Ckpn\GenerateMonthlyCkpnWorkpaperAction;
 use App\Actions\Ckpn\RecalculateCkpnWorkpaperAction;
@@ -28,6 +29,7 @@ use App\Models\InsuranceCompany;
 use App\Models\InsuranceReceivable;
 use App\Models\LegacyReceivable;
 use App\Models\User;
+use App\Services\Ckpn\CkpnWorkpaperReadinessValidator;
 use Database\Seeders\BranchOfficeSeeder;
 use Database\Seeders\CkpnAgeBucketSeeder;
 use Database\Seeders\CkpnCalculationRuleSeeder;
@@ -35,6 +37,9 @@ use Database\Seeders\ClaimStatusSeeder;
 use Database\Seeders\InsuranceCompanySeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -478,6 +483,207 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
             'period' => '2026-04-15',
             'branch_office_id' => $branch->id,
         ], $maker);
+    }
+
+    public function test_create_all_branch_workpapers_queues_active_operational_branches(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        BranchOffice::query()->where('branch_code', '003')->update(['is_active' => false]);
+        CkpnWorkpaper::query()->create([
+            'period' => '2026-06-30',
+            'branch_office_id' => $branch->id,
+            'status' => CkpnWorkpaper::STATUS_CANCELLED,
+        ]);
+        InsuranceReceivable::factory()->create([
+            'branch_office_id' => $branch->id,
+            'branch_code' => $branch->branch_code,
+            'date_of_death' => '2026-06-16',
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
+        ]);
+
+        $workpapers = app(CreateAllBranchCkpnWorkpapersAction::class)->handle([
+            'period' => '2026-06-15',
+        ], $maker);
+
+        $expectedBranches = BranchOffice::query()
+            ->where('is_active', true)
+            ->where('branch_code', '!=', '000')
+            ->orderBy('branch_code')
+            ->orderBy('id')
+            ->get();
+        $created = CkpnWorkpaper::query()
+            ->with('branchOffice')
+            ->whereDate('period', '2026-06-15')
+            ->orderBy('id')
+            ->get();
+
+        $this->assertCount($expectedBranches->count(), $workpapers);
+        $this->assertSame($expectedBranches->pluck('branch_code')->all(), $created->pluck('branchOffice.branch_code')->all());
+        $this->assertNotContains('000', $created->pluck('branchOffice.branch_code')->all());
+        $created->each(function (CkpnWorkpaper $workpaper) use ($maker): void {
+            $this->assertSame('2026-06-15', $workpaper->period->toDateString());
+            $this->assertSame("branch:{$workpaper->branch_office_id}", $workpaper->branch_scope_key);
+            $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
+            $this->assertSame($maker->id, $workpaper->created_by);
+        });
+        Queue::assertPushed(GenerateCkpnWorkpaperJob::class, $expectedBranches->count());
+    }
+
+    public function test_create_all_branch_workpapers_blocks_duplicate_cutoff_for_any_status(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $branchOne = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $branchTwo = BranchOffice::query()->where('branch_code', '002')->firstOrFail();
+        CkpnWorkpaper::query()->create([
+            'period' => '2026-07-31',
+            'branch_office_id' => $branchOne->id,
+            'status' => CkpnWorkpaper::STATUS_CANCELLED,
+        ]);
+        CkpnWorkpaper::query()->create([
+            'period' => '2026-07-15',
+            'branch_office_id' => $branchTwo->id,
+            'status' => CkpnWorkpaper::STATUS_REJECTED,
+        ]);
+
+        try {
+            app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-07-15'], $maker);
+
+            $this->fail('Duplicate branch cutoff should block bulk creation.');
+        } catch (ValidationException $exception) {
+            $message = collect($exception->errors())->flatten()->first();
+            $this->assertStringContainsString('already have workpapers for cutoff date 2026-07-15', $message);
+            $this->assertStringContainsString($branchTwo->branch_name, $message);
+        }
+
+        $this->assertSame(2, CkpnWorkpaper::query()->count());
+        Queue::assertNotPushed(GenerateCkpnWorkpaperJob::class);
+    }
+
+    public function test_create_all_branch_workpapers_blocks_pending_receivable_on_cutoff(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        InsuranceReceivable::factory()->create([
+            'branch_office_id' => $branch->id,
+            'branch_code' => $branch->branch_code,
+            'date_of_death' => '2026-06-15',
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
+        ]);
+
+        try {
+            app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-06-15'], $maker);
+
+            $this->fail('Pending receivable should block bulk workpaper creation.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('Insurance Receivables are still pending', collect($exception->errors())->flatten()->first());
+        }
+
+        $this->assertSame(0, CkpnWorkpaper::query()->count());
+        Queue::assertNotPushed(GenerateCkpnWorkpaperJob::class);
+    }
+
+    public function test_create_all_branch_workpapers_requires_active_operational_branches(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        BranchOffice::query()->where('branch_code', '!=', '000')->update(['is_active' => false]);
+
+        try {
+            app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-08-15'], $maker);
+
+            $this->fail('No target branches should block bulk workpaper creation.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'No active branches are available for CKPN Workpaper creation.',
+                collect($exception->errors())->flatten()->first(),
+            );
+        }
+
+        $this->assertSame(0, CkpnWorkpaper::query()->count());
+        Queue::assertNotPushed(GenerateCkpnWorkpaperJob::class);
+    }
+
+    public function test_create_all_branch_workpapers_uses_overlap_lock(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $lock = Cache::lock('ckpn-workpapers:bulk-create-all-branches:2026-08-15', 120);
+        $this->assertTrue($lock->get());
+
+        try {
+            try {
+                app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-08-15'], $maker);
+
+                $this->fail('Overlap lock should block bulk workpaper creation.');
+            } catch (ValidationException $exception) {
+                $this->assertStringContainsString('already being created', collect($exception->errors())->flatten()->first());
+            }
+        } finally {
+            $lock->release();
+        }
+
+        $this->assertSame(0, CkpnWorkpaper::query()->count());
+        Queue::assertNotPushed(GenerateCkpnWorkpaperJob::class);
+    }
+
+    public function test_create_all_branch_workpapers_rolls_back_unique_race(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $branchOne = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $branchTwo = BranchOffice::query()->where('branch_code', '002')->firstOrFail();
+        CkpnWorkpaper::query()->create([
+            'period' => '2026-09-15',
+            'branch_office_id' => $branchTwo->id,
+            'status' => CkpnWorkpaper::STATUS_CANCELLED,
+        ]);
+        $this->app->instance(CkpnWorkpaperReadinessValidator::class, new class extends CkpnWorkpaperReadinessValidator
+        {
+            public function assertNoDuplicateWorkpapersForBranches(Carbon|string $period, Collection $branches): void {}
+        });
+
+        try {
+            app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-09-15'], $maker);
+
+            $this->fail('Unique race should be converted to a validation error.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('already have workpapers for cutoff date 2026-09-15', collect($exception->errors())->flatten()->first());
+        }
+
+        $this->assertSame(1, CkpnWorkpaper::query()->count());
+        $this->assertDatabaseMissing('ckpn_workpapers', [
+            'period' => '2026-09-15',
+            'branch_office_id' => $branchOne->id,
+        ]);
+        Queue::assertNotPushed(GenerateCkpnWorkpaperJob::class);
+    }
+
+    public function test_create_all_branch_workpapers_uses_create_authorization(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $businessMaker = $this->userWithRole('business_maker', '000');
+
+        try {
+            app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-10-15'], $businessMaker);
+
+            $this->fail('Business maker should not create CKPN workpapers in bulk.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('Only accounting maker can create CKPN workpapers.', collect($exception->errors())->flatten()->first());
+        }
+
+        $this->assertSame(0, CkpnWorkpaper::query()->count());
+        Queue::assertNotPushed(GenerateCkpnWorkpaperJob::class);
     }
 
     public function test_ckpn_workpaper_creation_is_accounting_owned_and_business_read_only(): void
