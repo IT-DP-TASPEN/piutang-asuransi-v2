@@ -36,9 +36,9 @@ class AdjustmentsRelationManager extends RelationManager
                 TextColumn::make('ckpnWorkpaperItem.loan_account_number')->label('Loan account')->searchable(),
                 TextColumn::make('ckpnWorkpaperItem.customer_name')->label('Customer')->searchable(),
                 TextColumn::make('adjustment_type')->searchable(),
-                TextColumn::make('calculated_ckpn_amount')->label('Calculated')->numeric(2),
-                TextColumn::make('requested_adjusted_ckpn_amount')->label('Requested')->numeric(2),
-                TextColumn::make('approved_adjusted_ckpn_amount')->label('Approved')->numeric(2)->placeholder('-'),
+                TextColumn::make('calculated_ckpn_amount')->label('Calculated')->money('IDR', 0, 'id_ID'),
+                TextColumn::make('requested_adjusted_ckpn_amount')->label('Requested')->money('IDR', 0, 'id_ID'),
+                TextColumn::make('approved_adjusted_ckpn_amount')->label('Approved')->money('IDR', 0, 'id_ID')->placeholder('-'),
                 TextColumn::make('status')->badge()->sortable(),
                 TextColumn::make('requester.name')->label('Requested by')->sortable(),
                 TextColumn::make('approver.name')->label('Approved by')->sortable(),
@@ -59,7 +59,7 @@ class AdjustmentsRelationManager extends RelationManager
     {
         return Action::make('approve')
             ->requiresConfirmation()
-            ->visible(fn (CkpnAdjustment $record): bool => (auth()->user()?->can('approve', $record) ?? false)
+            ->visible(fn(CkpnAdjustment $record): bool => (auth()->user()?->can('approve', $record) ?? false)
                 && $record->status === CkpnAdjustment::STATUS_SUBMITTED)
             ->form([
                 Textarea::make('notes')->maxLength(65535),
@@ -80,7 +80,7 @@ class AdjustmentsRelationManager extends RelationManager
         return Action::make('reject')
             ->color('danger')
             ->requiresConfirmation()
-            ->visible(fn (CkpnAdjustment $record): bool => (auth()->user()?->can('reject', $record) ?? false)
+            ->visible(fn(CkpnAdjustment $record): bool => (auth()->user()?->can('reject', $record) ?? false)
                 && $record->status === CkpnAdjustment::STATUS_SUBMITTED)
             ->form([
                 Textarea::make('notes')->required()->maxLength(65535),
@@ -102,7 +102,7 @@ class AdjustmentsRelationManager extends RelationManager
             ->label('Return')
             ->color('warning')
             ->requiresConfirmation()
-            ->visible(fn (CkpnAdjustment $record): bool => (auth()->user()?->can('returnRequest', $record) ?? false)
+            ->visible(fn(CkpnAdjustment $record): bool => (auth()->user()?->can('returnRequest', $record) ?? false)
                 && $record->status === CkpnAdjustment::STATUS_SUBMITTED)
             ->form([
                 Textarea::make('notes')->required()->maxLength(65535),
@@ -123,7 +123,7 @@ class AdjustmentsRelationManager extends RelationManager
         return Action::make('cancel')
             ->color('danger')
             ->requiresConfirmation()
-            ->visible(fn (CkpnAdjustment $record): bool => (auth()->user()?->can('cancel', $record) ?? false)
+            ->visible(fn(CkpnAdjustment $record): bool => (auth()->user()?->can('cancel', $record) ?? false)
                 && in_array($record->status, [
                     CkpnAdjustment::STATUS_DRAFT,
                     CkpnAdjustment::STATUS_RETURNED,
