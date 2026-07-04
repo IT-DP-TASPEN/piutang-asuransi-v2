@@ -6,6 +6,7 @@ use App\Data\CkpnCalculationInput;
 use App\Data\CkpnCalculationResult;
 use App\Models\CkpnAgeBucket;
 use App\Models\CkpnCalculationRule;
+use App\Services\Ckpn\CkpnCalculationService;
 use App\Services\Ckpn\Contracts\CkpnCalculationStrategy;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -46,10 +47,10 @@ class AverageThreeFactorsStrategy implements CkpnCalculationStrategy
             ]);
         }
 
-        $ageBucket = $this->ageBucketFor($ageDays);
-        $insuranceCompanyWeight = $this->scale4($candidate->insuranceCompanyWeight);
-        $ageWeight = $this->scale4($ageBucket->ckpn_weight);
-        $claimStatusWeight = $this->scale4($candidate->claimStatusWeight);
+        $ageBucket = CkpnCalculationService::ageBucketFor($ageDays);
+        $insuranceCompanyWeight = CkpnCalculationService::scale4($candidate->insuranceCompanyWeight);
+        $ageWeight = CkpnCalculationService::scale4($ageBucket->ckpn_weight);
+        $claimStatusWeight = CkpnCalculationService::scale4($candidate->claimStatusWeight);
 
         $finalRate = BigDecimal::of($insuranceCompanyWeight)
             ->plus($ageWeight)
@@ -73,34 +74,5 @@ class AverageThreeFactorsStrategy implements CkpnCalculationStrategy
             ageBucketId: $ageBucket->id,
             ageBucketName: $ageBucket->name,
         );
-    }
-
-    private function ageBucketFor(int $ageDays): CkpnAgeBucket
-    {
-        $ageBucket = CkpnAgeBucket::query()
-            ->where('is_active', true)
-            ->where(function ($query) use ($ageDays): void {
-                $query->whereNull('min_days')
-                    ->orWhere('min_days', '<=', $ageDays);
-            })
-            ->where(function ($query) use ($ageDays): void {
-                $query->whereNull('max_days')
-                    ->orWhere('max_days', '>=', $ageDays);
-            })
-            ->orderBy('min_days')
-            ->first();
-
-        if (! $ageBucket instanceof CkpnAgeBucket) {
-            throw ValidationException::withMessages([
-                'age_days' => "No active CKPN age bucket matches {$ageDays} days.",
-            ]);
-        }
-
-        return $ageBucket;
-    }
-
-    private function scale4(string $value): string
-    {
-        return (string) BigDecimal::of($value)->toScale(4, RoundingMode::HalfUp);
     }
 }
