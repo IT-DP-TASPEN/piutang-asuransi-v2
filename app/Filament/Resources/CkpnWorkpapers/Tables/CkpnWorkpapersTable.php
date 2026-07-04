@@ -3,13 +3,16 @@
 namespace App\Filament\Resources\CkpnWorkpapers\Tables;
 
 use App\Models\CkpnWorkpaper;
+use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\Summarizers\Sum;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Grouping\Group;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class CkpnWorkpapersTable
 {
@@ -81,6 +84,28 @@ class CkpnWorkpapersTable
                     ->sortable(),
             ])
             ->filters([
+                SelectFilter::make('period')
+                    ->label('Tanggal Cutoff')
+                    ->options(
+                        fn() => CkpnWorkpaper::query()
+                            ->selectRaw('DATE(period) as period_date')
+                            ->whereNotNull('period')
+                            ->distinct()
+                            ->orderByDesc('period_date')
+                            ->pluck('period_date', 'period_date')
+                            ->mapWithKeys(fn($date) => [
+                                $date => Carbon::parse($date)->translatedFormat('d M Y'),
+                            ])
+                            ->toArray()
+                    )
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query->when(
+                            $data['value'] ?? null,
+                            fn(Builder $query, string $date) => $query->whereDate('period', $date),
+                        );
+                    })
+                    ->searchable()
+                    ->preload(),
                 SelectFilter::make('branch_office_id')
                     ->label('Branch')
                     ->relationship('branchOffice', 'branch_name')
@@ -92,14 +117,25 @@ class CkpnWorkpapersTable
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()
-                    ->visible(fn (CkpnWorkpaper $record): bool => (auth()->user()?->can('update', $record) ?? false)
+                    ->visible(fn(CkpnWorkpaper $record): bool => (auth()->user()?->can('update', $record) ?? false)
                         && in_array($record->status, [
                             CkpnWorkpaper::STATUS_DRAFT,
                             CkpnWorkpaper::STATUS_RETURNED,
                         ], true)),
                 DeleteAction::make()
-                    ->visible(fn (CkpnWorkpaper $record): bool => (auth()->user()?->can('delete', $record) ?? false)
+                    ->visible(fn(CkpnWorkpaper $record): bool => (auth()->user()?->can('delete', $record) ?? false)
                         && $record->status === CkpnWorkpaper::STATUS_DRAFT),
-            ]);
+            ])
+            ->groups([
+                Group::make('period')
+                    ->label('Tanggal Cutoff')
+                    ->date()
+                    ->collapsible(),
+                Group::make('branchOffice.branch_name')
+                    ->label('Branch')
+                    ->collapsible(),
+            ])
+            ->defaultGroup('period')
+            ->groupsOnly();
     }
 }
