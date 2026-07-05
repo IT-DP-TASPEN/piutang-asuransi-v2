@@ -85,10 +85,8 @@ class ReceivablePaymentPolicy
             return false;
         }
 
-        $legacyBranchOfficeId = $receivablePayment->legacyReceivable?->branch_office_id;
         $insuranceBranchOfficeId = $receivablePayment->insuranceReceivable?->branch_office_id;
 
-        return $user->branch_office_id === $legacyBranchOfficeId
-            || $user->branch_office_id === $insuranceBranchOfficeId;
+        return $user->branch_office_id === $insuranceBranchOfficeId;
     }
 }

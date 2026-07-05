@@ -3,7 +3,6 @@
 namespace Database\Factories;
 
 use App\Models\InsuranceReceivable;
-use App\Models\LegacyReceivable;
 use App\Models\ReceivablePayment;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -23,8 +22,7 @@ class ReceivablePaymentFactory extends Factory
     public function definition(): array
     {
         return [
-            'legacy_receivable_id' => LegacyReceivable::factory(),
-            'insurance_receivable_id' => null,
+            'insurance_receivable_id' => InsuranceReceivable::factory(),
             'amount' => '100000.00',
             'paid_at' => now()->toDateString(),
             'created_by' => User::factory(),
@@ -34,7 +32,6 @@ class ReceivablePaymentFactory extends Factory
     public function forInsuranceReceivable(): static
     {
         return $this->state(fn (): array => [
-            'legacy_receivable_id' => null,
             'insurance_receivable_id' => InsuranceReceivable::factory(),
         ]);
     }

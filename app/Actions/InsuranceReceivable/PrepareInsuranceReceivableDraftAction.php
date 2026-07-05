@@ -21,6 +21,7 @@ class PrepareInsuranceReceivableDraftAction
 
         return [
             ...$data,
+            'origin_type' => InsuranceReceivable::ORIGIN_TYPE_WORKFLOW,
             'branch_office_id' => $data['branch_office_id'] ?? $branchOffice->id,
             'branch_code' => $data['branch_code'] ?? $branchOffice->branch_code,
             'claim_status_id' => $data['claim_status_id'] ?? $claimStatusId,

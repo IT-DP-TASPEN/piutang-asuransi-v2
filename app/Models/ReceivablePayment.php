@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Validation\ValidationException;
 
 #[Fillable([
-    'legacy_receivable_id',
     'insurance_receivable_id',
     'amount',
     'paid_at',
@@ -20,14 +19,6 @@ class ReceivablePayment extends Model
 {
     /** @use HasFactory<ReceivablePaymentFactory> */
     use HasFactory;
-
-    /**
-     * @return BelongsTo<LegacyReceivable, $this>
-     */
-    public function legacyReceivable(): BelongsTo
-    {
-        return $this->belongsTo(LegacyReceivable::class);
-    }
 
     /**
      * @return BelongsTo<InsuranceReceivable, $this>
@@ -61,12 +52,9 @@ class ReceivablePayment extends Model
     protected static function booted(): void
     {
         static::saving(function (ReceivablePayment $payment): void {
-            $hasLegacyTarget = $payment->legacy_receivable_id !== null;
-            $hasInsuranceTarget = $payment->insurance_receivable_id !== null;
-
-            if ($hasLegacyTarget === $hasInsuranceTarget) {
+            if ($payment->insurance_receivable_id === null) {
                 throw ValidationException::withMessages([
-                    'receivable' => 'Payment must belong to exactly one receivable.',
+                    'receivable' => 'Payment must belong to an insurance receivable.',
                 ]);
             }
         });

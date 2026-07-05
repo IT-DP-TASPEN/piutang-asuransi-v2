@@ -117,6 +117,10 @@ class InsuranceReceivableForm
                             ->label('Workflow status')
                             ->disabled()
                             ->dehydrated(false),
+                        TextInput::make('origin_type')
+                            ->label('Origin')
+                            ->disabled()
+                            ->dehydrated(false),
                         TextInput::make('system_status')
                             ->label('System status')
                             ->disabled()

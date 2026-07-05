@@ -16,6 +16,12 @@ class InsuranceCoverLetterPreflight
 
     public function handle(InsuranceReceivable $insuranceReceivable): InsuranceCoverLetterPreflightResult
     {
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            throw ValidationException::withMessages([
+                'origin_type' => 'Legacy receivables cannot generate insurance cover letters.',
+            ]);
+        }
+
         $insuranceReceivable->loadMissing(['insuranceCompany', 'branchOffice']);
         $company = $insuranceReceivable->insuranceCompany;
 

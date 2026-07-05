@@ -95,6 +95,7 @@ class InsuranceReceivableDocumentPolicy
 
     private function canMutateForParentState(User $user, InsuranceReceivableDocument $insuranceReceivableDocument): bool
     {
-        return $insuranceReceivableDocument->insuranceReceivable instanceof InsuranceReceivable;
+        return $insuranceReceivableDocument->insuranceReceivable instanceof InsuranceReceivable
+            && $insuranceReceivableDocument->insuranceReceivable->isWorkflowOrigin();
     }
 }

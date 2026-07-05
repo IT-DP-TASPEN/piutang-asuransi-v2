@@ -18,6 +18,12 @@ class PerformLoanInquiryAction
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user): InsuranceReceivable
     {
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            throw ValidationException::withMessages([
+                'origin_type' => 'Legacy receivables cannot run loan inquiry.',
+            ]);
+        }
+
         $result = $this->coreBankingClient->inquireLoan(
             accountNumber: $insuranceReceivable->loan_account_number,
             related: $insuranceReceivable,

@@ -16,12 +16,20 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 
 class DocumentsRelationManager extends RelationManager
 {
     protected static string $relationship = 'documents';
 
     protected static ?string $title = 'Claim document checklist';
+
+    public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
+    {
+        return $ownerRecord instanceof InsuranceReceivable
+            && $ownerRecord->isWorkflowOrigin()
+            && parent::canViewForRecord($ownerRecord, $pageClass);
+    }
 
     public function table(Table $table): Table
     {
@@ -146,6 +154,7 @@ class DocumentsRelationManager extends RelationManager
 
         return $user instanceof User
             && $owner instanceof InsuranceReceivable
+            && $owner->isWorkflowOrigin()
             && ($user->can('Create:InsuranceReceivableDocument') || $user->can('Update:InsuranceReceivableDocument'))
             && ($user->can('view', $owner) ?? false);
     }

@@ -4,6 +4,7 @@ namespace App\Filament\Resources\InsuranceReceivables\RelationManagers;
 
 use App\Actions\InsuranceCoverLetter\GenerateInsuranceCoverLetterAction;
 use App\Models\InsuranceCoverLetter;
+use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\InsuranceCoverLetter\InsuranceCoverLetterPreflight;
 use Filament\Actions\Action;
@@ -13,12 +14,20 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 
 class InsuranceCoverLettersRelationManager extends RelationManager
 {
     protected static string $relationship = 'insuranceCoverLetters';
 
     protected static ?string $title = 'Cover letters';
+
+    public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
+    {
+        return $ownerRecord instanceof InsuranceReceivable
+            && $ownerRecord->isWorkflowOrigin()
+            && parent::canViewForRecord($ownerRecord, $pageClass);
+    }
 
     public function table(Table $table): Table
     {
@@ -36,7 +45,9 @@ class InsuranceCoverLettersRelationManager extends RelationManager
                 Action::make('generate')
                     ->label('Generate / reuse letter')
                     ->icon(Heroicon::OutlinedDocumentText)
-                    ->visible(fn (): bool => auth()->user()?->can('Generate:InsuranceCoverLetter') ?? false)
+                    ->visible(fn (): bool => $this->getOwnerRecord() instanceof InsuranceReceivable
+                        && $this->getOwnerRecord()->isWorkflowOrigin()
+                        && (auth()->user()?->can('Generate:InsuranceCoverLetter') ?? false))
                     ->requiresConfirmation()
                     ->modalDescription(fn (): string => $this->generationDescription())
                     ->form([

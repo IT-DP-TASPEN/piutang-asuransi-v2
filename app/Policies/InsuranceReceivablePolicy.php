@@ -31,6 +31,10 @@ class InsuranceReceivablePolicy
             return false;
         }
 
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            return false;
+        }
+
         if ($user->hasRole('branch_maker')) {
             return in_array($insuranceReceivable->workflow_status, [
                 InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
@@ -43,7 +47,9 @@ class InsuranceReceivablePolicy
 
     public function delete(User $user, InsuranceReceivable $insuranceReceivable): bool
     {
-        return $this->can($user, 'Delete') && $this->canAccessRecord($user, $insuranceReceivable);
+        return $insuranceReceivable->isWorkflowOrigin()
+            && $this->can($user, 'Delete')
+            && $this->canAccessRecord($user, $insuranceReceivable);
     }
 
     public function deleteAny(User $user): bool
@@ -53,7 +59,9 @@ class InsuranceReceivablePolicy
 
     public function restore(User $user, InsuranceReceivable $insuranceReceivable): bool
     {
-        return $this->can($user, 'Restore') && $this->canAccessRecord($user, $insuranceReceivable);
+        return $insuranceReceivable->isWorkflowOrigin()
+            && $this->can($user, 'Restore')
+            && $this->canAccessRecord($user, $insuranceReceivable);
     }
 
     public function restoreAny(User $user): bool
@@ -63,7 +71,9 @@ class InsuranceReceivablePolicy
 
     public function forceDelete(User $user, InsuranceReceivable $insuranceReceivable): bool
     {
-        return $this->can($user, 'ForceDelete') && $this->canAccessRecord($user, $insuranceReceivable);
+        return $insuranceReceivable->isWorkflowOrigin()
+            && $this->can($user, 'ForceDelete')
+            && $this->canAccessRecord($user, $insuranceReceivable);
     }
 
     public function forceDeleteAny(User $user): bool
@@ -73,7 +83,9 @@ class InsuranceReceivablePolicy
 
     public function replicate(User $user, InsuranceReceivable $insuranceReceivable): bool
     {
-        return $this->can($user, 'Replicate') && $this->canAccessRecord($user, $insuranceReceivable);
+        return $insuranceReceivable->isWorkflowOrigin()
+            && $this->can($user, 'Replicate')
+            && $this->canAccessRecord($user, $insuranceReceivable);
     }
 
     public function reorder(User $user): bool
@@ -85,6 +97,7 @@ class InsuranceReceivablePolicy
     {
         return $this->can($user, 'RunInquiry')
             && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
             && $insuranceReceivable->canRetryInquiry();
     }
 
@@ -92,6 +105,7 @@ class InsuranceReceivablePolicy
     {
         return $this->can($user, 'SubmitForApproval')
             && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
             && ! $insuranceReceivable->isTerminal();
     }
 
@@ -99,6 +113,7 @@ class InsuranceReceivablePolicy
     {
         return $this->can($user, 'ApproveApproval')
             && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
             && ! $insuranceReceivable->isTerminal();
     }
 
@@ -106,6 +121,7 @@ class InsuranceReceivablePolicy
     {
         return $this->can($user, 'RejectApproval')
             && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
             && ! $insuranceReceivable->isTerminal();
     }
 
@@ -113,6 +129,7 @@ class InsuranceReceivablePolicy
     {
         return $this->can($user, 'ReturnApproval')
             && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
             && ! $insuranceReceivable->isTerminal();
     }
 
@@ -120,6 +137,7 @@ class InsuranceReceivablePolicy
     {
         return $this->can($user, 'ConfirmCollectabilityChange')
             && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
             && ! $insuranceReceivable->isTerminal();
     }
 
@@ -127,6 +145,7 @@ class InsuranceReceivablePolicy
     {
         return $this->can($user, 'SubmitAccountingValidation')
             && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
             && ! $insuranceReceivable->isTerminal();
     }
 
@@ -134,6 +153,7 @@ class InsuranceReceivablePolicy
     {
         return $this->can($user, 'ExecuteEarlyTermination')
             && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
             && ! $insuranceReceivable->isTerminal();
     }
 
@@ -141,6 +161,7 @@ class InsuranceReceivablePolicy
     {
         return $this->can($user, 'SubmitManualEarlyTerminationConfirmation')
             && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
             && ! $insuranceReceivable->isTerminal()
             && $insuranceReceivable->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED
             && in_array($insuranceReceivable->workflow_status, [
@@ -153,6 +174,7 @@ class InsuranceReceivablePolicy
     {
         return $this->can($user, 'Cancel')
             && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
             && $insuranceReceivable->canCancelFailedInquiry();
     }
 
@@ -160,6 +182,7 @@ class InsuranceReceivablePolicy
     {
         return $this->can($user, 'ResolveEarlyTermination')
             && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
             && $insuranceReceivable->canResolveEarlyTermination();
     }
 

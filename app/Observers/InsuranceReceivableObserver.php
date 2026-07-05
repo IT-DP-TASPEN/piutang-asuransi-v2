@@ -10,6 +10,10 @@ class InsuranceReceivableObserver
 {
     public function saving(InsuranceReceivable $insuranceReceivable): void
     {
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            return;
+        }
+
         if ($insuranceReceivable->workflow_status !== InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED) {
             return;
         }

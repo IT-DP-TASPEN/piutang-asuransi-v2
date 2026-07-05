@@ -19,6 +19,12 @@ class SubmitInsuranceReceivableForApprovalAction
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, ?string $notes = null): InsuranceReceivable
     {
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            throw ValidationException::withMessages([
+                'origin_type' => 'Legacy receivables cannot enter formation workflow.',
+            ]);
+        }
+
         if (! $user->can('submitForApproval', $insuranceReceivable)) {
             throw ValidationException::withMessages([
                 'permission' => 'Manual BM approval submission is not available.',

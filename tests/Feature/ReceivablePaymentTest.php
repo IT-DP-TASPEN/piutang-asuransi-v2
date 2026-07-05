@@ -5,12 +5,9 @@ namespace Tests\Feature;
 use App\Actions\ReceivablePayment\RecordReceivablePaymentAction;
 use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
 use App\Filament\Resources\InsuranceReceivables\Pages\ViewInsuranceReceivable;
-use App\Filament\Resources\LegacyReceivables\LegacyReceivableResource;
-use App\Filament\Resources\LegacyReceivables\Pages\ViewLegacyReceivable;
 use App\Filament\Resources\RelationManagers\ReceivablePaymentsRelationManager;
 use App\Models\BranchOffice;
 use App\Models\InsuranceReceivable;
-use App\Models\LegacyReceivable;
 use App\Models\ReceivablePayment;
 use App\Models\User;
 use Database\Seeders\BranchOfficeSeeder;
@@ -30,8 +27,8 @@ class ReceivablePaymentTest extends TestCase
     {
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_maker', '000');
-        $legacy = LegacyReceivable::factory()->create([
-            'original_receivable_amount' => '10000.00',
+        $legacy = InsuranceReceivable::factory()->legacy()->create([
+            'receivable_amount' => '10000.00',
             'remaining_receivable_amount' => '10000.00',
         ]);
 
@@ -40,8 +37,7 @@ class ReceivablePaymentTest extends TestCase
             'paid_at' => '2026-06-01',
         ], $user);
 
-        $this->assertSame($legacy->id, $payment->legacy_receivable_id);
-        $this->assertNull($payment->insurance_receivable_id);
+        $this->assertSame($legacy->id, $payment->insurance_receivable_id);
         $this->assertSame($user->id, $payment->created_by);
         $this->assertSame('7500.00', $legacy->refresh()->remaining_receivable_amount);
     }
@@ -50,8 +46,8 @@ class ReceivablePaymentTest extends TestCase
     {
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_maker', '000');
-        $legacy = LegacyReceivable::factory()->create([
-            'original_receivable_amount' => '10000.00',
+        $legacy = InsuranceReceivable::factory()->legacy()->create([
+            'receivable_amount' => '10000.00',
             'remaining_receivable_amount' => '10000.00',
         ]);
 
@@ -61,7 +57,7 @@ class ReceivablePaymentTest extends TestCase
                 'paid_at' => '2026-06-01',
             ], $user);
 
-            $this->fail('Legacy overpayment should be rejected.');
+            $this->fail('Legacy-origin overpayment should be rejected.');
         } catch (ValidationException) {
         }
 
@@ -73,7 +69,7 @@ class ReceivablePaymentTest extends TestCase
                 'paid_at' => '2026-06-01',
             ], $user);
 
-            $this->fail('Payment for deleted legacy receivable should be rejected.');
+            $this->fail('Payment for deleted legacy-origin receivable should be rejected.');
         } catch (ValidationException) {
         }
     }
@@ -95,7 +91,6 @@ class ReceivablePaymentTest extends TestCase
                 'paid_at' => '2026-06-01',
             ], $user);
 
-            $this->assertNull($payment->legacy_receivable_id);
             $this->assertSame($receivable->id, $payment->insurance_receivable_id);
             $this->assertSame('7500.00', $receivable->refresh()->remaining_receivable_amount);
         }
@@ -136,12 +131,10 @@ class ReceivablePaymentTest extends TestCase
         ], $user);
     }
 
-    public function test_payment_requires_exactly_one_target(): void
+    public function test_payment_requires_insurance_receivable_target(): void
     {
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_maker', '000');
-        $legacy = LegacyReceivable::factory()->create();
-        $insurance = $this->insuranceReceivable(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED);
         $base = [
             'amount' => '100.00',
             'paid_at' => '2026-06-01',
@@ -154,24 +147,13 @@ class ReceivablePaymentTest extends TestCase
             $this->fail('Payment without target should be rejected.');
         } catch (ValidationException) {
         }
-
-        try {
-            ReceivablePayment::query()->create([
-                ...$base,
-                'legacy_receivable_id' => $legacy->id,
-                'insurance_receivable_id' => $insurance->id,
-            ]);
-
-            $this->fail('Payment with two targets should be rejected.');
-        } catch (ValidationException) {
-        }
     }
 
     public function test_recorded_payment_cannot_be_updated_or_deleted(): void
     {
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_maker', '000');
-        $legacy = LegacyReceivable::factory()->create();
+        $legacy = InsuranceReceivable::factory()->legacy()->create();
         $payment = app(RecordReceivablePaymentAction::class)->handle($legacy, [
             'amount' => '100.00',
             'paid_at' => '2026-06-01',
@@ -192,20 +174,19 @@ class ReceivablePaymentTest extends TestCase
         }
     }
 
-    public function test_payment_relation_manager_is_create_only_for_legacy_and_insurance(): void
+    public function test_payment_relation_manager_is_create_only_for_legacy_and_workflow_origins(): void
     {
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_maker', '000');
-        $legacy = LegacyReceivable::factory()->create();
+        $legacy = InsuranceReceivable::factory()->legacy()->create();
         $insurance = $this->insuranceReceivable(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED);
 
-        $this->assertContains(ReceivablePaymentsRelationManager::class, LegacyReceivableResource::getRelations());
         $this->assertContains(ReceivablePaymentsRelationManager::class, InsuranceReceivableResource::getRelations());
 
         Livewire::actingAs($user)
             ->test(ReceivablePaymentsRelationManager::class, [
                 'ownerRecord' => $legacy,
-                'pageClass' => ViewLegacyReceivable::class,
+                'pageClass' => ViewInsuranceReceivable::class,
             ])
             ->assertTableHeaderActionsExistInOrder(['create'])
             ->assertTableActionsExistInOrder([]);

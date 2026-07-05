@@ -22,6 +22,12 @@ class ResolveEarlyTerminationManuallyAction
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, ?string $notes = null): InsuranceReceivable
     {
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            throw ValidationException::withMessages([
+                'origin_type' => 'Legacy receivables cannot enter Early Termination.',
+            ]);
+        }
+
         $lock = Cache::lock("insurance-receivable:{$insuranceReceivable->getKey()}:resolve-early-termination", 120);
 
         if (! $lock->get()) {

@@ -9,11 +9,18 @@ use App\Models\InsuranceCompany;
 use App\Models\InsuranceReceivable;
 use App\Models\InsuranceReceivableDocument;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Validation\ValidationException;
 
 class ResolveClaimDocumentChecklist
 {
     public function handle(InsuranceReceivable $insuranceReceivable): ClaimDocumentChecklist
     {
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            throw ValidationException::withMessages([
+                'origin_type' => 'Legacy receivables do not use claim document checklist.',
+            ]);
+        }
+
         $insuranceReceivable->loadMissing([
             'insuranceCompany',
             'documents.claimDocumentType',

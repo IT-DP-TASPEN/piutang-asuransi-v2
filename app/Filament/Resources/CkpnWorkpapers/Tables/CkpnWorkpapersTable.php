@@ -135,7 +135,7 @@ class CkpnWorkpapersTable
                     ->label('Branch')
                     ->collapsible(),
             ])
-            ->defaultGroup('period')
+            // ->defaultGroup('period')
             ->groupsOnly();
     }
 }

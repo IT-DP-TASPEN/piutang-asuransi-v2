@@ -31,14 +31,6 @@ class BranchOffice extends Model
     }
 
     /**
-     * @return HasMany<LegacyReceivable, $this>
-     */
-    public function legacyReceivables(): HasMany
-    {
-        return $this->hasMany(LegacyReceivable::class);
-    }
-
-    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

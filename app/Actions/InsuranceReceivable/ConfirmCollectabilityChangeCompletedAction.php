@@ -16,6 +16,12 @@ class ConfirmCollectabilityChangeCompletedAction
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user): InsuranceReceivable
     {
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            throw ValidationException::withMessages([
+                'origin_type' => 'Legacy receivables cannot enter formation workflow.',
+            ]);
+        }
+
         if ($insuranceReceivable->isTerminal()) {
             throw ValidationException::withMessages([
                 'workflow_status' => 'Terminal receivables cannot be forwarded.',
@@ -37,6 +43,12 @@ class ConfirmCollectabilityChangeCompletedAction
             if ($locked->isTerminal()) {
                 throw ValidationException::withMessages([
                     'workflow_status' => 'Terminal receivables cannot be forwarded.',
+                ]);
+            }
+
+            if ($locked->isLegacyOrigin()) {
+                throw ValidationException::withMessages([
+                    'origin_type' => 'Legacy receivables cannot enter formation workflow.',
                 ]);
             }
 

@@ -27,6 +27,12 @@ class GenerateInsuranceCoverLetterAction
         User $user,
         mixed $letterDate = null,
     ): InsuranceCoverLetter {
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            throw ValidationException::withMessages([
+                'origin_type' => 'Legacy receivables cannot generate insurance cover letters.',
+            ]);
+        }
+
         try {
             $letter = DB::transaction(function () use ($insuranceReceivable, $user, $letterDate): InsuranceCoverLetter {
                 $receivable = InsuranceReceivable::query()

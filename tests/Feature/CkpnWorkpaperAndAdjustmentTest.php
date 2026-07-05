@@ -27,7 +27,6 @@ use App\Models\ClaimStatus;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceCompany;
 use App\Models\InsuranceReceivable;
-use App\Models\LegacyReceivable;
 use App\Models\User;
 use App\Services\Ckpn\CkpnWorkpaperReadinessValidator;
 use Database\Seeders\BranchOfficeSeeder;
@@ -86,8 +85,8 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame('0.00', $workpaper->total_adjustment_delta);
         $this->assertSame('100.00', $workpaper->total_effective_ckpn_amount);
         $this->assertSame('100.00', $workpaper->total_ckpn_amount);
-        $this->assertSame(InsuranceReceivable::class, $item->receivable_type);
-        $this->assertSame($receivable->id, $item->receivable_id);
+        $this->assertSame(InsuranceReceivable::ORIGIN_TYPE_WORKFLOW, $item->origin_type);
+        $this->assertSame($receivable->id, $item->insurance_receivable_id);
         $this->assertSame('Snapshot Customer', $item->customer_name);
         $this->assertSame('TEST SNAPSHOT', $item->insurance_company_name);
         $this->assertSame('1.0000', $item->calculated_ckpn_rate);
@@ -166,12 +165,12 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         ]);
 
         $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
-        $items = $workpaper->items()->orderBy('receivable_id')->get();
+        $items = $workpaper->items()->orderBy('insurance_receivable_id')->get();
 
-        $this->assertSame([$older->id, $onCutoff->id], $items->pluck('receivable_id')->all());
-        $this->assertFalse($items->contains('receivable_id', $afterCutoff->id));
-        $this->assertSame(26, $items->firstWhere('receivable_id', $older->id)->age_days);
-        $this->assertSame(0, $items->firstWhere('receivable_id', $onCutoff->id)->age_days);
+        $this->assertSame([$older->id, $onCutoff->id], $items->pluck('insurance_receivable_id')->all());
+        $this->assertFalse($items->contains('insurance_receivable_id', $afterCutoff->id));
+        $this->assertSame(26, $items->firstWhere('insurance_receivable_id', $older->id)->age_days);
+        $this->assertSame(0, $items->firstWhere('insurance_receivable_id', $onCutoff->id)->age_days);
     }
 
     public function test_workpaper_generation_uses_current_legacy_remaining_amount_not_payment_period_cutoff(): void
@@ -180,7 +179,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $legacy = $this->legacyReceivable($branch, [
             'customer_name' => 'Legacy Customer',
-            'original_receivable_amount' => '10000.00',
+            'receivable_amount' => '10000.00',
             'remaining_receivable_amount' => '10000.00',
             'receivable_formation_date' => '2026-01-01',
         ]);
@@ -199,8 +198,8 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
         $item = $workpaper->items()->sole();
 
-        $this->assertSame(LegacyReceivable::class, $item->receivable_type);
-        $this->assertSame($legacy->id, $item->receivable_id);
+        $this->assertSame(InsuranceReceivable::ORIGIN_TYPE_LEGACY, $item->origin_type);
+        $this->assertSame($legacy->id, $item->insurance_receivable_id);
         $this->assertSame('Legacy', $item->source_label);
         $this->assertSame('5000.00', $item->receivable_amount);
         $this->assertSame('5000.00', $workpaper->total_receivable_amount);
@@ -211,7 +210,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->seedDependencies();
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $legacy = $this->legacyReceivable($branch, [
-            'original_receivable_amount' => '10000.00',
+            'receivable_amount' => '10000.00',
             'remaining_receivable_amount' => '10000.00',
             'receivable_formation_date' => '2026-01-01',
         ]);
@@ -250,7 +249,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
         $item = $workpaper->items()->sole();
 
-        $this->assertSame(InsuranceReceivable::class, $item->receivable_type);
+        $this->assertSame(InsuranceReceivable::ORIGIN_TYPE_WORKFLOW, $item->origin_type);
         $this->assertSame('7000.00', $item->receivable_amount);
         $this->assertSame('7000.00', $workpaper->total_receivable_amount);
     }
@@ -1054,10 +1053,11 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
     /**
      * @param  array<string, mixed>  $attributes
      */
-    private function legacyReceivable(BranchOffice $branch, array $attributes = []): LegacyReceivable
+    private function legacyReceivable(BranchOffice $branch, array $attributes = []): InsuranceReceivable
     {
-        return LegacyReceivable::factory()->create([
+        return InsuranceReceivable::factory()->legacy()->create([
             'branch_office_id' => $branch->id,
+            'branch_code' => $branch->branch_code,
             'date_of_death' => '2026-01-01',
             ...$attributes,
         ]);

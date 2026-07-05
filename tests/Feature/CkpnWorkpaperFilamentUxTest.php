@@ -371,10 +371,12 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
 
     private function workpaperItem(CkpnWorkpaper $workpaper): CkpnWorkpaperItem
     {
+        $receivable = InsuranceReceivable::factory()->create();
+
         return CkpnWorkpaperItem::query()->create([
             'ckpn_workpaper_id' => $workpaper->id,
-            'receivable_type' => User::class,
-            'receivable_id' => 1,
+            'insurance_receivable_id' => $receivable->id,
+            'origin_type' => InsuranceReceivable::ORIGIN_TYPE_WORKFLOW,
             'receivable_amount' => '1000.00',
             'age_days' => 30,
             'insurance_company_weight' => '0.0000',

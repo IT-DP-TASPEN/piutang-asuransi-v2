@@ -14,8 +14,8 @@ return new class extends Migration
         Schema::create('ckpn_workpaper_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('ckpn_workpaper_id')->constrained()->cascadeOnDelete();
-            $table->string('receivable_type');
-            $table->unsignedBigInteger('receivable_id');
+            $table->foreignId('insurance_receivable_id')->constrained()->restrictOnDelete();
+            $table->string('origin_type')->default('workflow');
             $table->string('branch_code')->nullable();
             $table->string('branch_name')->nullable();
             $table->string('cif_no')->nullable();
@@ -44,8 +44,8 @@ return new class extends Migration
             $table->json('snapshot')->nullable();
             $table->timestamps();
 
-            $table->index(['receivable_type', 'receivable_id']);
-            $table->index(['ckpn_workpaper_id', 'receivable_type']);
+            $table->index('insurance_receivable_id');
+            $table->index(['ckpn_workpaper_id', 'origin_type']);
             $table->index('branch_code');
         });
     }

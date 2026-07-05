@@ -55,6 +55,10 @@ class InsuranceReceivableInfolist
                                 TextEntry::make('claimStatus.name')
                                     ->label('Claim status')
                                     ->badge(),
+                                TextEntry::make('origin_type')
+                                    ->label('Origin')
+                                    ->formatStateUsing(fn (?string $state): string => InsuranceReceivable::originTypeOptions()[$state] ?? (string) $state)
+                                    ->badge(),
                                 TextEntry::make('workflow_status')
                                     ->label('Workflow status')
                                     ->formatStateUsing(fn (?string $state): string => InsuranceReceivable::workflowStatusOptions()[$state] ?? (string) $state)

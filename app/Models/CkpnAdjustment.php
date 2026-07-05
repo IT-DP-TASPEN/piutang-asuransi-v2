@@ -6,11 +6,8 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 #[Fillable([
-    'receivable_type',
-    'receivable_id',
     'ckpn_workpaper_id',
     'ckpn_workpaper_item_id',
     'adjustment_type',
@@ -55,14 +52,6 @@ class CkpnAdjustment extends Model
             self::STATUS_RETURNED => 'Returned',
             self::STATUS_CANCELLED => 'Cancelled',
         ];
-    }
-
-    /**
-     * @return MorphTo<Model, $this>
-     */
-    public function receivable(): MorphTo
-    {
-        return $this->morphTo();
     }
 
     /**

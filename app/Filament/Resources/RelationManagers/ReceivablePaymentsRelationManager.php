@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\RelationManagers;
 
 use App\Actions\ReceivablePayment\RecordReceivablePaymentAction;
+use App\Models\InsuranceReceivable;
 use App\Models\ReceivablePayment;
 use App\Models\User;
 use Filament\Actions\CreateAction;
@@ -50,7 +51,7 @@ class ReceivablePaymentsRelationManager extends RelationManager
             ])
             ->headerActions([
                 CreateAction::make()
-                    ->visible(fn (): bool => auth()->user()?->can('Create:ReceivablePayment') ?? false)
+                    ->visible(fn (): bool => $this->canCreatePayment())
                     ->using(function (array $data): ReceivablePayment {
                         $user = auth()->user();
 
@@ -66,5 +67,29 @@ class ReceivablePaymentsRelationManager extends RelationManager
                     }),
             ])
             ->recordActions([]);
+    }
+
+    private function canCreatePayment(): bool
+    {
+        $owner = $this->getOwnerRecord();
+
+        if (! $owner instanceof InsuranceReceivable || ! (auth()->user()?->can('Create:ReceivablePayment') ?? false)) {
+            return false;
+        }
+
+        if ($owner->trashed()) {
+            return false;
+        }
+
+        if ($owner->isLegacyOrigin()) {
+            return $owner->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED
+                && $owner->system_status === InsuranceReceivable::SYSTEM_STATUS_LEGACY_IMPORTED;
+        }
+
+        return in_array($owner->workflow_status, [
+            InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
+            InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED,
+            InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED,
+        ], true);
     }
 }

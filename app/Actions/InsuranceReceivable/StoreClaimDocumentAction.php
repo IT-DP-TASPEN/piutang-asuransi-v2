@@ -22,6 +22,12 @@ class StoreClaimDocumentAction
         ?string $originalFileName,
         User $user,
     ): InsuranceReceivableDocument {
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            throw ValidationException::withMessages([
+                'origin_type' => 'Legacy receivables do not use claim documents.',
+            ]);
+        }
+
         $item = $this->checklistResolver
             ->handle($insuranceReceivable)
             ->itemByDocumentTypeId($claimDocumentTypeId);

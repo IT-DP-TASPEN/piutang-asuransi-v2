@@ -13,8 +13,6 @@ return new class extends Migration
     {
         Schema::create('ckpn_adjustments', function (Blueprint $table) {
             $table->id();
-            $table->string('receivable_type')->nullable();
-            $table->unsignedBigInteger('receivable_id')->nullable();
             $table->foreignId('ckpn_workpaper_id')->constrained()->restrictOnDelete();
             $table->foreignId('ckpn_workpaper_item_id')->constrained()->restrictOnDelete();
             $table->string('adjustment_type')->default('override_final_ckpn_amount');
@@ -32,7 +30,6 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['ckpn_workpaper_id', 'status']);
-            $table->index(['receivable_type', 'receivable_id']);
         });
     }
 

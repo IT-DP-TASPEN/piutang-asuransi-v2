@@ -25,6 +25,12 @@ class AutoSubmitInsuranceReceivableForBranchApprovalAction
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            if ($insuranceReceivable->isLegacyOrigin()) {
+                throw ValidationException::withMessages([
+                    'origin_type' => 'Legacy receivables cannot enter formation workflow.',
+                ]);
+            }
+
             if ($insuranceReceivable->isTerminal()) {
                 throw ValidationException::withMessages([
                     'workflow_status' => 'Terminal receivables cannot be submitted for branch approval.',

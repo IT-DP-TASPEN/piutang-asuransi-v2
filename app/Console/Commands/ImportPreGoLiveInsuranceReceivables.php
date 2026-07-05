@@ -5,17 +5,17 @@ namespace App\Console\Commands;
 use App\Models\BranchOffice;
 use App\Models\ClaimStatus;
 use App\Models\InsuranceCompany;
-use App\Models\LegacyReceivable;
+use App\Models\InsuranceReceivable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
 
-class ImportLegacyReceivables extends Command
+class ImportPreGoLiveInsuranceReceivables extends Command
 {
-    protected $signature = 'legacy-receivables:import {path=mewgrazie.csv : CSV path}';
+    protected $signature = 'insurance-receivables:import-legacy {path=mewgrazie.csv : CSV path}';
 
-    protected $description = 'Import legacy receivables from CSV';
+    protected $description = 'Import pre-go-live insurance receivables from CSV';
 
     private const REQUIRED_HEADERS = [
         'cif',
@@ -50,7 +50,7 @@ class ImportLegacyReceivables extends Command
             return self::FAILURE;
         }
 
-        $this->info("Imported {$count} legacy receivable(s).");
+        $this->info("Imported {$count} pre-go-live insurance receivable(s).");
 
         return self::SUCCESS;
     }
@@ -128,37 +128,47 @@ class ImportLegacyReceivables extends Command
      */
     private function createReceivable(int $line, array $row): void
     {
-        LegacyReceivable::create([
-            'cif' => $row['cif'],
+        $branchOffice = $this->branchOffice($line, $row['branch_office']);
+        $receivableAmount = $this->nominal($line, 'original_receivable_amount', $row['original_receivable_amount']);
+        $remainingAmount = $this->optionalNominal($line, 'remaining_receivable_amount', $row['remaining_receivable_amount'])
+            ?? $receivableAmount;
+
+        InsuranceReceivable::create([
+            'origin_type' => InsuranceReceivable::ORIGIN_TYPE_LEGACY,
+            'cif_no' => $row['cif'],
             'customer_name' => $row['customer_name'],
             'loan_account_number' => $row['loan_account_number'],
-            'loan_alt_account_number' => $this->blankToNull($row['loan_alt_account_number']),
-            'branch_office_id' => $this->branchOfficeId($line, $row['branch_office']),
+            'alt_number' => $this->blankToNull($row['loan_alt_account_number']),
+            'branch_office_id' => $branchOffice->id,
+            'branch_code' => $branchOffice->branch_code,
             'loan_outstanding' => $this->nominal($line, 'loan_outstanding', $row['loan_outstanding']),
             'insurance_company_id' => $this->nameId($line, InsuranceCompany::class, 'insurance company', $row['insurance_company']),
-            'date_of_death' => $row['date_of_death'],
-            'receivable_formation_date' => $this->blankToNull($row['receivable_formation_date']),
-            'original_receivable_amount' => $this->nominal($line, 'original_receivable_amount', $row['original_receivable_amount']),
-            'remaining_receivable_amount' => $this->nominal($line, 'remaining_receivable_amount', $row['remaining_receivable_amount']),
+            'date_of_death' => $this->blankToNull($row['date_of_death']),
+            'receivable_formation_date' => $this->blankToNull($row['receivable_formation_date'])
+                ?? $this->blankToNull($row['date_of_death']),
+            'receivable_amount' => $receivableAmount,
+            'remaining_receivable_amount' => $remainingAmount,
             'claim_status_id' => $this->nameId($line, ClaimStatus::class, 'claim status', $row['claim_status']),
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_LEGACY_IMPORTED,
         ]);
     }
 
-    private function branchOfficeId(int $line, string $branchCode): int
+    private function branchOffice(int $line, string $branchCode): BranchOffice
     {
         if ($branchCode === '') {
             throw new RuntimeException("Line {$line}: branch office is required.");
         }
 
-        $id = BranchOffice::query()
+        $branchOffice = BranchOffice::query()
             ->where('branch_code', $branchCode)
-            ->value('id');
+            ->first();
 
-        if ($id === null) {
+        if (! $branchOffice instanceof BranchOffice) {
             throw new RuntimeException("Line {$line}: branch office not found: {$branchCode}");
         }
 
-        return (int) $id;
+        return $branchOffice;
     }
 
     /**
@@ -190,6 +200,11 @@ class ImportLegacyReceivables extends Command
         }
 
         return $value;
+    }
+
+    private function optionalNominal(int $line, string $field, string $value): ?string
+    {
+        return trim($value) === '' ? null : $this->nominal($line, $field, $value);
     }
 
     private function cleanValue(?string $value): string

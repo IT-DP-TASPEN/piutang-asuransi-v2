@@ -18,6 +18,12 @@ class ExecuteEarlyTerminationAction
 
     public function handle(InsuranceReceivable $insuranceReceivable, ?User $user = null): EarlyTerminationTransaction
     {
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            throw ValidationException::withMessages([
+                'origin_type' => 'Legacy receivables cannot enter Early Termination.',
+            ]);
+        }
+
         if ($insuranceReceivable->isTerminal()) {
             throw ValidationException::withMessages([
                 'workflow_status' => 'Terminal receivables cannot execute early termination.',

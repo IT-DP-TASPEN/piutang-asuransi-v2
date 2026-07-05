@@ -29,6 +29,11 @@ class InsuranceReceivablesTable
                     ->label('Customer')
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('origin_type')
+                    ->label('Origin')
+                    ->badge()
+                    ->formatStateUsing(fn(?string $state): string => InsuranceReceivable::originTypeOptions()[$state] ?? (string) $state)
+                    ->sortable(),
                 TextColumn::make('insuranceCompany.name')
                     ->label('Insurance')
                     ->searchable()
@@ -74,6 +79,9 @@ class InsuranceReceivablesTable
                     ->relationship('claimStatus', 'name')
                     ->searchable()
                     ->preload(),
+                SelectFilter::make('origin_type')
+                    ->label('Origin')
+                    ->options(InsuranceReceivable::originTypeOptions()),
                 SelectFilter::make('workflow_status')
                     ->label('Workflow status')
                     ->options(InsuranceReceivable::workflowStatusOptions()),
@@ -84,12 +92,13 @@ class InsuranceReceivablesTable
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()
-                    ->visible(fn (InsuranceReceivable $record): bool => auth()->user()?->can('update', $record) ?? false),
+                    ->visible(fn(InsuranceReceivable $record): bool => auth()->user()?->can('update', $record) ?? false),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 }

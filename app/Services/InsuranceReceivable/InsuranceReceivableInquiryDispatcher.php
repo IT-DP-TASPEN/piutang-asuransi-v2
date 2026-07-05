@@ -17,6 +17,12 @@ class InsuranceReceivableInquiryDispatcher
             ]);
         }
 
+        if ($receivable->isLegacyOrigin()) {
+            throw ValidationException::withMessages([
+                'origin_type' => 'Legacy receivables cannot run loan inquiry.',
+            ]);
+        }
+
         DB::transaction(function () use ($receivable, $event): void {
             $fromStatus = $receivable->system_status;
 

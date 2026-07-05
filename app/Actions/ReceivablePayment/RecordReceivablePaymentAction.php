@@ -3,7 +3,6 @@
 namespace App\Actions\ReceivablePayment;
 
 use App\Models\InsuranceReceivable;
-use App\Models\LegacyReceivable;
 use App\Models\ReceivablePayment;
 use App\Models\User;
 use Brick\Math\BigDecimal;
@@ -17,7 +16,7 @@ class RecordReceivablePaymentAction
     /**
      * @param  array<string, mixed>  $data
      */
-    public function handle(LegacyReceivable|InsuranceReceivable $receivable, array $data, User $user): ReceivablePayment
+    public function handle(InsuranceReceivable $receivable, array $data, User $user): ReceivablePayment
     {
         return DB::transaction(function () use ($receivable, $data, $user): ReceivablePayment {
             $locked = $this->lockedReceivable($receivable);
@@ -33,8 +32,7 @@ class RecordReceivablePaymentAction
             }
 
             $payment = ReceivablePayment::query()->create([
-                'legacy_receivable_id' => $locked instanceof LegacyReceivable ? $locked->id : null,
-                'insurance_receivable_id' => $locked instanceof InsuranceReceivable ? $locked->id : null,
+                'insurance_receivable_id' => $locked->id,
                 'amount' => $amount,
                 'paid_at' => $data['paid_at'] ?? now()->toDateString(),
                 'created_by' => $user->id,
@@ -48,23 +46,15 @@ class RecordReceivablePaymentAction
         });
     }
 
-    private function lockedReceivable(LegacyReceivable|InsuranceReceivable $receivable): LegacyReceivable|InsuranceReceivable
+    private function lockedReceivable(InsuranceReceivable $receivable): InsuranceReceivable
     {
-        $locked = $receivable->newQueryWithoutScopes()
+        return $receivable->newQueryWithoutScopes()
             ->whereKey($receivable->getKey())
             ->lockForUpdate()
             ->firstOrFail();
-
-        if (! $locked instanceof LegacyReceivable && ! $locked instanceof InsuranceReceivable) {
-            throw ValidationException::withMessages([
-                'receivable' => 'Unsupported receivable type.',
-            ]);
-        }
-
-        return $locked;
     }
 
-    private function validateReceivable(LegacyReceivable|InsuranceReceivable $receivable): void
+    private function validateReceivable(InsuranceReceivable $receivable): void
     {
         if ($receivable->trashed()) {
             throw ValidationException::withMessages([
@@ -72,8 +62,17 @@ class RecordReceivablePaymentAction
             ]);
         }
 
-        if (! $receivable instanceof InsuranceReceivable) {
-            return;
+        if ($receivable->isLegacyOrigin()) {
+            if (
+                $receivable->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED
+                && $receivable->system_status === InsuranceReceivable::SYSTEM_STATUS_LEGACY_IMPORTED
+            ) {
+                return;
+            }
+
+            throw ValidationException::withMessages([
+                'workflow_status' => 'Legacy receivable payments can only be recorded after import.',
+            ]);
         }
 
         if (! in_array($receivable->workflow_status, [

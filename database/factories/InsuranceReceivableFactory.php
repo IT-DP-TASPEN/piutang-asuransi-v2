@@ -18,6 +18,14 @@ class InsuranceReceivableFactory extends Factory
     {
         return $this
             ->afterMaking(function (InsuranceReceivable $receivable): void {
+                if ($receivable->isLegacyOrigin()) {
+                    if ($receivable->receivable_amount !== null && $receivable->remaining_receivable_amount === null) {
+                        $receivable->remaining_receivable_amount = $receivable->receivable_amount;
+                    }
+
+                    return;
+                }
+
                 if ($receivable->receivable_amount === null) {
                     return;
                 }
@@ -66,8 +74,21 @@ class InsuranceReceivableFactory extends Factory
             'date_of_death' => fake()->date(),
             'insurance_company_id' => $insuranceCompany->id,
             'claim_status_id' => $claimStatus->id,
+            'origin_type' => InsuranceReceivable::ORIGIN_TYPE_WORKFLOW,
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
             'created_by' => User::factory(),
         ];
+    }
+
+    public function legacy(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'origin_type' => InsuranceReceivable::ORIGIN_TYPE_LEGACY,
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_LEGACY_IMPORTED,
+            'receivable_formation_date' => $attributes['receivable_formation_date'] ?? now()->subMonths(2)->toDateString(),
+            'receivable_amount' => $attributes['receivable_amount'] ?? '1000000.00',
+            'remaining_receivable_amount' => $attributes['remaining_receivable_amount'] ?? null,
+        ]);
     }
 }

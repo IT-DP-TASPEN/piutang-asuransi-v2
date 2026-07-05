@@ -51,19 +51,21 @@ class CkpnWorkpaperItemsExportTest extends TestCase
             'remaining_receivable_amount' => '999999.99',
         ]);
         $this->item($workpaper, [
-            'receivable_id' => $receivable->id,
+            'insurance_receivable_id' => $receivable->id,
+            'origin_type' => InsuranceReceivable::ORIGIN_TYPE_WORKFLOW,
             'loan_account_number' => 'SNAP-LOAN',
             'receivable_amount' => '1000.50',
             'calculated_ckpn_amount' => '100.10',
             'effective_ckpn_amount' => '150.30',
             'snapshot' => [
-                'source' => 'Current',
+                'source' => 'Insurance Receivable',
                 'date_of_death' => '2026-01-15',
                 'loan_alt_account_number' => 'SNAP-ALT',
                 'adjustment_delta' => '222.22',
             ],
         ]);
         $this->item($workpaper, [
+            'origin_type' => InsuranceReceivable::ORIGIN_TYPE_LEGACY,
             'loan_account_number' => 'SNAP-LOAN-2',
             'calculated_ckpn_amount' => '100.10',
             'effective_ckpn_amount' => '100.30',
@@ -256,10 +258,17 @@ class CkpnWorkpaperItemsExportTest extends TestCase
      */
     private function item(CkpnWorkpaper $workpaper, array $overrides = []): CkpnWorkpaperItem
     {
+        $originType = $overrides['origin_type'] ?? InsuranceReceivable::ORIGIN_TYPE_WORKFLOW;
+        $receivableId = $overrides['insurance_receivable_id'] ?? (
+            $originType === InsuranceReceivable::ORIGIN_TYPE_LEGACY
+                ? InsuranceReceivable::factory()->legacy()->create()->id
+                : InsuranceReceivable::factory()->create()->id
+        );
+
         return CkpnWorkpaperItem::query()->create([
             'ckpn_workpaper_id' => $workpaper->id,
-            'receivable_type' => InsuranceReceivable::class,
-            'receivable_id' => 1,
+            'insurance_receivable_id' => $receivableId,
+            'origin_type' => $originType,
             'branch_code' => '001',
             'branch_name' => 'Cabang 001',
             'cif_no' => 'CIF-1',
@@ -285,7 +294,7 @@ class CkpnWorkpaperItemsExportTest extends TestCase
             'calculation_rule_code' => 'test',
             'calculation_explanation' => 'Snapshot',
             'snapshot' => [
-                'source' => 'Current',
+                'source' => 'Insurance Receivable',
                 'date_of_death' => '2026-01-15',
                 'loan_alt_account_number' => 'SNAP-ALT',
             ],

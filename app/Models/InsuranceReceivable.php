@@ -8,11 +8,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
+    'origin_type',
     'branch_office_id',
     'branch_code',
     'cif_no',
@@ -50,6 +52,10 @@ class InsuranceReceivable extends Model
 {
     /** @use HasFactory<InsuranceReceivableFactory> */
     use HasFactory, SoftDeletes;
+
+    public const ORIGIN_TYPE_LEGACY = 'legacy';
+
+    public const ORIGIN_TYPE_WORKFLOW = 'workflow';
 
     public const WORKFLOW_STATUS_DRAFT = 'draft';
 
@@ -111,6 +117,8 @@ class InsuranceReceivable extends Model
 
     public const SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED = 'early_termination_resolved';
 
+    public const SYSTEM_STATUS_LEGACY_IMPORTED = 'legacy_imported';
+
     public const DOCUMENT_DISK = 'local';
 
     public const DEATH_DOCUMENT_CONDITION_HOSPITAL = 'hospital';
@@ -165,6 +173,17 @@ class InsuranceReceivable extends Model
     /**
      * @return array<string, string>
      */
+    public static function originTypeOptions(): array
+    {
+        return [
+            self::ORIGIN_TYPE_LEGACY => 'Legacy',
+            self::ORIGIN_TYPE_WORKFLOW => 'Workflow',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
     public static function systemStatusOptions(): array
     {
         return [
@@ -182,7 +201,23 @@ class InsuranceReceivable extends Model
             self::SYSTEM_STATUS_EARLY_TERMINATION_EXECUTED => 'Early termination executed',
             self::SYSTEM_STATUS_EARLY_TERMINATION_FAILED => 'Early termination failed',
             self::SYSTEM_STATUS_EARLY_TERMINATION_RESOLVED => 'Early termination resolved',
+            self::SYSTEM_STATUS_LEGACY_IMPORTED => 'Legacy imported',
         ];
+    }
+
+    public function isLegacyOrigin(): bool
+    {
+        return $this->origin_type === self::ORIGIN_TYPE_LEGACY;
+    }
+
+    public function isWorkflowOrigin(): bool
+    {
+        return $this->origin_type === null || $this->origin_type === self::ORIGIN_TYPE_WORKFLOW;
+    }
+
+    public function originLabel(): string
+    {
+        return self::originTypeOptions()[$this->origin_type] ?? (string) $this->origin_type;
     }
 
     public function isTerminal(): bool
@@ -195,16 +230,18 @@ class InsuranceReceivable extends Model
 
     public function isEditable(): bool
     {
-        return in_array($this->workflow_status, [
-            self::WORKFLOW_STATUS_DRAFT,
-            self::WORKFLOW_STATUS_RETURNED,
-            self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
-        ], true) && ! $this->isTerminal();
+        return $this->isWorkflowOrigin()
+            && in_array($this->workflow_status, [
+                self::WORKFLOW_STATUS_DRAFT,
+                self::WORKFLOW_STATUS_RETURNED,
+                self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
+            ], true) && ! $this->isTerminal();
     }
 
     public function canRetryInquiry(): bool
     {
-        return ! $this->isTerminal()
+        return $this->isWorkflowOrigin()
+            && ! $this->isTerminal()
             && in_array($this->workflow_status, [
                 self::WORKFLOW_STATUS_DRAFT,
                 self::WORKFLOW_STATUS_RETURNED,
@@ -215,7 +252,8 @@ class InsuranceReceivable extends Model
 
     public function canCancelFailedInquiry(): bool
     {
-        return ! $this->isTerminal()
+        return $this->isWorkflowOrigin()
+            && ! $this->isTerminal()
             && in_array($this->workflow_status, [
                 self::WORKFLOW_STATUS_DRAFT,
                 self::WORKFLOW_STATUS_RETURNED,
@@ -226,6 +264,10 @@ class InsuranceReceivable extends Model
 
     public function canResolveEarlyTermination(): bool
     {
+        if ($this->isLegacyOrigin()) {
+            return false;
+        }
+
         if ($this->isTerminal()) {
             return false;
         }
@@ -240,19 +282,22 @@ class InsuranceReceivable extends Model
 
     public function requiresManualEarlyTerminationExecution(): bool
     {
-        return $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED;
+        return $this->isWorkflowOrigin()
+            && $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED;
     }
 
     public function canSubmitManualEarlyTerminationConfirmation(): bool
     {
-        return ! $this->isTerminal()
+        return $this->isWorkflowOrigin()
+            && ! $this->isTerminal()
             && $this->workflow_status === self::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING
             && $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED;
     }
 
     public function manualEarlyTerminationSubmitted(): bool
     {
-        return ! $this->isTerminal()
+        return $this->isWorkflowOrigin()
+            && ! $this->isTerminal()
             && $this->workflow_status === self::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_SUBMITTED
             && $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED;
     }
@@ -262,6 +307,10 @@ class InsuranceReceivable extends Model
      */
     public function manualEarlyTerminationRequirement(): ?array
     {
+        if ($this->isLegacyOrigin()) {
+            return null;
+        }
+
         $account = trim((string) $this->saving_account_for_loan_repayment);
 
         if ($account === '') {
@@ -422,19 +471,26 @@ class InsuranceReceivable extends Model
     }
 
     /**
-     * @return MorphMany<CkpnWorkpaperItem, $this>
+     * @return HasMany<CkpnWorkpaperItem, $this>
      */
-    public function ckpnWorkpaperItems(): MorphMany
+    public function ckpnWorkpaperItems(): HasMany
     {
-        return $this->morphMany(CkpnWorkpaperItem::class, 'receivable');
+        return $this->hasMany(CkpnWorkpaperItem::class, 'insurance_receivable_id');
     }
 
     /**
-     * @return MorphMany<CkpnAdjustment, $this>
+     * @return HasManyThrough<CkpnAdjustment, CkpnWorkpaperItem, $this>
      */
-    public function ckpnAdjustments(): MorphMany
+    public function ckpnAdjustments(): HasManyThrough
     {
-        return $this->morphMany(CkpnAdjustment::class, 'receivable');
+        return $this->hasManyThrough(
+            CkpnAdjustment::class,
+            CkpnWorkpaperItem::class,
+            'insurance_receivable_id',
+            'ckpn_workpaper_item_id',
+            'id',
+            'id',
+        );
     }
 
     /**
@@ -453,6 +509,7 @@ class InsuranceReceivable extends Model
     protected function casts(): array
     {
         return [
+            'origin_type' => 'string',
             'date_of_death' => 'date',
             'credit_limit' => 'decimal:2',
             'loan_outstanding' => 'decimal:2',

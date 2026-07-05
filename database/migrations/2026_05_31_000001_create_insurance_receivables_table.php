@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -13,6 +14,7 @@ return new class extends Migration
     {
         Schema::create('insurance_receivables', function (Blueprint $table) {
             $table->id();
+            $table->string('origin_type')->default('workflow');
             $table->foreignId('branch_office_id')->constrained()->restrictOnDelete();
             $table->string('branch_code', 3);
             $table->string('cif_no')->nullable();
@@ -45,9 +47,16 @@ return new class extends Migration
             $table->softDeletes();
 
             $table->index(['branch_office_id', 'workflow_status']);
+            $table->index('origin_type');
             $table->index('branch_code');
             $table->index('loan_account_number');
         });
+
+        if (in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true)) {
+            DB::statement(
+                "ALTER TABLE insurance_receivables ADD CONSTRAINT insurance_receivables_origin_type_check CHECK (origin_type IN ('legacy', 'workflow'))"
+            );
+        }
     }
 
     /**

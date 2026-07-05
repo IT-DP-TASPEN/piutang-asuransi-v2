@@ -10,7 +10,6 @@ use App\Models\CkpnWorkpaper;
 use App\Models\CkpnWorkpaperItem;
 use App\Models\GeneratedExport;
 use App\Models\InsuranceReceivable;
-use App\Models\LegacyReceivable;
 use App\Models\User;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Textarea;
@@ -60,15 +59,15 @@ class ItemsRelationManager extends RelationManager
                 TextColumn::make('adjustment_applied_at')->label('Adjusted at')->dateTime()->placeholder('-')->toggleable(),
             ])
             ->filters([
-                SelectFilter::make('receivable_type')
+                SelectFilter::make('origin_type')
                     ->label('Source')
                     ->options([
-                        InsuranceReceivable::class => 'Current',
-                        LegacyReceivable::class => 'Legacy',
+                        InsuranceReceivable::ORIGIN_TYPE_LEGACY => 'Legacy',
+                        InsuranceReceivable::ORIGIN_TYPE_WORKFLOW => 'Insurance Receivable',
                     ]),
                 SelectFilter::make('branch_code')
                     ->label('Branch')
-                    ->options(fn(): array => CkpnWorkpaperItem::query()
+                    ->options(fn (): array => CkpnWorkpaperItem::query()
                         ->whereNotNull('branch_code')
                         ->distinct()
                         ->orderBy('branch_code')
@@ -76,7 +75,7 @@ class ItemsRelationManager extends RelationManager
                         ->all()),
                 SelectFilter::make('claim_status_name')
                     ->label('Claim status')
-                    ->options(fn(): array => CkpnWorkpaperItem::query()
+                    ->options(fn (): array => CkpnWorkpaperItem::query()
                         ->whereNotNull('claim_status_name')
                         ->distinct()
                         ->orderBy('claim_status_name')
@@ -84,7 +83,7 @@ class ItemsRelationManager extends RelationManager
                         ->all()),
                 SelectFilter::make('insurance_company_name')
                     ->label('Insurance company')
-                    ->options(fn(): array => CkpnWorkpaperItem::query()
+                    ->options(fn (): array => CkpnWorkpaperItem::query()
                         ->whereNotNull('insurance_company_name')
                         ->distinct()
                         ->orderBy('insurance_company_name')
@@ -97,20 +96,20 @@ class ItemsRelationManager extends RelationManager
             ->recordActions([
                 Action::make('createAdjustment')
                     ->label('Request CKPN Adjustment')
-                    ->visible(fn(): bool => auth()->user()?->can('Create:CkpnAdjustment') ?? false)
+                    ->visible(fn (): bool => auth()->user()?->can('Create:CkpnAdjustment') ?? false)
                     ->form([
                         TextInput::make('adjustment_type')
                             ->default(CkpnAdjustment::TYPE_OVERRIDE_FINAL_CKPN_AMOUNT)
                             ->required()
                             ->maxLength(255),
                         TextInput::make('calculated_ckpn_amount')
-                            ->default(fn(CkpnWorkpaperItem $record): string => $record->calculated_ckpn_amount)
+                            ->default(fn (CkpnWorkpaperItem $record): string => $record->calculated_ckpn_amount)
                             ->numeric()
                             ->disabled()
                             ->dehydrated(false)
                             ->step('0.01'),
                         TextInput::make('effective_ckpn_amount')
-                            ->default(fn(CkpnWorkpaperItem $record): string => $record->effective_ckpn_amount)
+                            ->default(fn (CkpnWorkpaperItem $record): string => $record->effective_ckpn_amount)
                             ->numeric()
                             ->disabled()
                             ->dehydrated(false)
@@ -149,9 +148,9 @@ class ItemsRelationManager extends RelationManager
         return Action::make('exportCkpnItems')
             ->label('Export CKPN Items')
             ->icon(Heroicon::OutlinedArrowDownTray)
-            ->visible(fn(): bool => $this->canExportCkpnItems())
-            ->disabled(fn(): bool => ! $this->hasItemsToExport())
-            ->tooltip(fn(): ?string => $this->hasItemsToExport()
+            ->visible(fn (): bool => $this->canExportCkpnItems())
+            ->disabled(fn (): bool => ! $this->hasItemsToExport())
+            ->tooltip(fn (): ?string => $this->hasItemsToExport()
                 ? null
                 : 'CKPN workpaper has no generated items to export.')
             ->action(function (): void {

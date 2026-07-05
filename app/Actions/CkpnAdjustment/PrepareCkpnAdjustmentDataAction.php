@@ -68,8 +68,6 @@ class PrepareCkpnAdjustmentDataAction
 
         return [
             'adjustment_type' => $data['adjustment_type'] ?? CkpnAdjustment::TYPE_OVERRIDE_FINAL_CKPN_AMOUNT,
-            'receivable_type' => $data['receivable_type'] ?? $item->receivable_type,
-            'receivable_id' => $data['receivable_id'] ?? $item->receivable_id,
             'ckpn_workpaper_id' => $data['ckpn_workpaper_id'] ?? $item->ckpn_workpaper_id,
             'ckpn_workpaper_item_id' => $item->id,
             'calculated_ckpn_rate' => $item->calculated_ckpn_rate,

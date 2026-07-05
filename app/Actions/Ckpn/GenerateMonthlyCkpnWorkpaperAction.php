@@ -17,7 +17,6 @@ class GenerateMonthlyCkpnWorkpaperAction
     public function __construct(
         private readonly CkpnCalculationService $calculationService,
         private readonly CollectCurrentReceivableCandidatesAction $collectCurrentReceivableCandidatesAction,
-        private readonly CollectLegacyReceivableCandidatesAction $collectLegacyReceivableCandidatesAction,
     ) {}
 
     public function handle(CkpnWorkpaper $workpaper): CkpnWorkpaper
@@ -52,8 +51,7 @@ class GenerateMonthlyCkpnWorkpaperAction
             $periodEnd = $workpaper->periodEnd();
 
             $candidates = $this->collectCurrentReceivableCandidatesAction->handle($workpaper)
-                ->concat($this->collectLegacyReceivableCandidatesAction->handle($workpaper))
-                ->sortBy(fn (CkpnReceivableCandidate $candidate): string => "{$candidate->receivableType}:{$candidate->receivableId}")
+                ->sortBy(fn (CkpnReceivableCandidate $candidate): string => "{$candidate->originType}:{$candidate->receivableId}")
                 ->values();
 
             foreach ($candidates as $candidate) {
@@ -63,8 +61,8 @@ class GenerateMonthlyCkpnWorkpaperAction
                 ));
 
                 $workpaper->items()->create([
-                    'receivable_type' => $candidate->receivableType,
-                    'receivable_id' => $candidate->receivableId,
+                    'insurance_receivable_id' => $candidate->receivableId,
+                    'origin_type' => $candidate->originType,
                     'branch_code' => $candidate->branchCode,
                     'branch_name' => $candidate->branchName,
                     'cif_no' => $candidate->cif,
@@ -121,8 +119,8 @@ class GenerateMonthlyCkpnWorkpaperAction
     {
         return [
             'source' => $candidate->sourceLabel(),
-            'receivable_type' => $candidate->receivableType,
-            'receivable_id' => $candidate->receivableId,
+            'origin_type' => $candidate->originType,
+            'insurance_receivable_id' => $candidate->receivableId,
             'branch_office_id' => $candidate->branchOfficeId,
             'branch_code' => $candidate->branchCode,
             'branch_name' => $candidate->branchName,

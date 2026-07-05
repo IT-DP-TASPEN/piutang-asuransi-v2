@@ -3,13 +3,12 @@
 namespace App\Data;
 
 use App\Models\InsuranceReceivable;
-use App\Models\LegacyReceivable;
 
 class CkpnReceivableCandidate
 {
     public function __construct(
-        public readonly string $receivableType,
         public readonly int $receivableId,
+        public readonly string $originType,
         public readonly int $branchOfficeId,
         public readonly string $branchCode,
         public readonly string $branchName,
@@ -35,10 +34,10 @@ class CkpnReceivableCandidate
 
     public function sourceLabel(): string
     {
-        return match ($this->receivableType) {
-            InsuranceReceivable::class => 'Current',
-            LegacyReceivable::class => 'Legacy',
-            default => class_basename($this->receivableType),
+        return match ($this->originType) {
+            InsuranceReceivable::ORIGIN_TYPE_LEGACY => 'Legacy',
+            InsuranceReceivable::ORIGIN_TYPE_WORKFLOW => 'Insurance Receivable',
+            default => $this->originType,
         };
     }
 }

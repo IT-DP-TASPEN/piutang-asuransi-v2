@@ -19,6 +19,12 @@ class SubmitManualEarlyTerminationConfirmationAction
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, ?string $notes = null): InsuranceReceivable
     {
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            throw ValidationException::withMessages([
+                'origin_type' => 'Legacy receivables cannot enter Early Termination.',
+            ]);
+        }
+
         return DB::transaction(function () use ($insuranceReceivable, $user, $notes): InsuranceReceivable {
             $locked = InsuranceReceivable::query()
                 ->whereKey($insuranceReceivable->getKey())

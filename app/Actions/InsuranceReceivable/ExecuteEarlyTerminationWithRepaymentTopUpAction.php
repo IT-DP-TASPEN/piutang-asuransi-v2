@@ -27,6 +27,12 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
         InsuranceReceivable $insuranceReceivable,
         ?User $user = null,
     ): ?EarlyTerminationTransaction {
+        if ($insuranceReceivable->isLegacyOrigin()) {
+            throw ValidationException::withMessages([
+                'origin_type' => 'Legacy receivables cannot enter Early Termination.',
+            ]);
+        }
+
         if ($this->successfulTopUpExists($insuranceReceivable)) {
             return $this->earlyTerminationAction->handle($insuranceReceivable, $user);
         }

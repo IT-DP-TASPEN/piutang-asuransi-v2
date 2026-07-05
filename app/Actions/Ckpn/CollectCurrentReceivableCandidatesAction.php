@@ -30,8 +30,8 @@ class CollectCurrentReceivableCandidatesAction
             ->orderBy('id')
             ->get()
             ->map(fn (InsuranceReceivable $receivable): CkpnReceivableCandidate => new CkpnReceivableCandidate(
-                receivableType: InsuranceReceivable::class,
                 receivableId: $receivable->id,
+                originType: $receivable->origin_type ?? InsuranceReceivable::ORIGIN_TYPE_WORKFLOW,
                 branchOfficeId: $receivable->branch_office_id,
                 branchCode: $receivable->branch_code ?: $receivable->branchOffice->branch_code,
                 branchName: $receivable->branchOffice->branch_name,

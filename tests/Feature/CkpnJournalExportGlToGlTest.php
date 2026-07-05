@@ -334,8 +334,8 @@ class CkpnJournalExportGlToGlTest extends TestCase
 
         CkpnWorkpaperItem::query()->create([
             'ckpn_workpaper_id' => $workpaper->id,
-            'receivable_type' => InsuranceReceivable::class,
-            'receivable_id' => $receivable->id,
+            'insurance_receivable_id' => $receivable->id,
+            'origin_type' => InsuranceReceivable::ORIGIN_TYPE_WORKFLOW,
             'branch_code' => '001',
             'branch_name' => 'Cabang 001',
             'cif_no' => 'CIF-1',
@@ -360,7 +360,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
             'calculation_rule_code' => 'average_three_factors_with_reject_loss_override',
             'calculation_explanation' => 'Snapshot',
             'snapshot' => [
-                'source' => 'Current',
+                'source' => 'Insurance Receivable',
                 'date_of_death' => '2026-01-15',
                 'credit_limit' => '5000000.00',
                 'loan_outstanding' => '1000000.00',

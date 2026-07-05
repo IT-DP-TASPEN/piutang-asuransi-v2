@@ -27,6 +27,12 @@ class QueueEarlyTerminationAction
                 InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED,
             ];
 
+            if ($locked->isLegacyOrigin()) {
+                throw ValidationException::withMessages([
+                    'origin_type' => 'Legacy receivables cannot enter Early Termination.',
+                ]);
+            }
+
             if ($locked->isTerminal() || ! in_array($locked->system_status, $allowedStatuses, true)) {
                 throw ValidationException::withMessages([
                     'system_status' => 'Early termination is not available for the current system status.',
