@@ -4,7 +4,6 @@ namespace App\Services\Ckpn\Strategies;
 
 use App\Data\CkpnCalculationInput;
 use App\Data\CkpnCalculationResult;
-use App\Models\CkpnAgeBucket;
 use App\Models\CkpnCalculationRule;
 use App\Services\Ckpn\CkpnCalculationService;
 use App\Services\Ckpn\Contracts\CkpnCalculationStrategy;
