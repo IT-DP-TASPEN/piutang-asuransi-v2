@@ -32,8 +32,6 @@ class CkpnJournalResource extends Resource
 
     protected static ?string $pluralModelLabel = 'CKPN journals';
 
-    protected static ?string $recordTitleAttribute = 'id';
-
     public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery();
@@ -48,9 +46,9 @@ class CkpnJournalResource extends Resource
         }
 
         if (RoleScope::isBranchScoped($user)) {
-            return $query->where(fn (Builder $query) => $query
+            return $query->where(fn(Builder $query) => $query
                 ->where('branch_office_id', $user->branch_office_id)
-                ->orWhereHas('ckpnWorkpaper', fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id)));
+                ->orWhereHas('ckpnWorkpaper', fn(Builder $query) => $query->where('branch_office_id', $user->branch_office_id)));
         }
 
         return $query->whereRaw('1 = 0');

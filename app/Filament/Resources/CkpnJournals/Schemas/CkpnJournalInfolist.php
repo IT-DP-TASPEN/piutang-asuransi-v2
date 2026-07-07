@@ -19,7 +19,7 @@ class CkpnJournalInfolist
                         TextEntry::make('ckpnWorkpaper.period')->label('Tanggal Cutoff Workpaper')->date(),
                         TextEntry::make('branchOffice.branch_name')->label('Branch')->placeholder('All branches'),
                         TextEntry::make('journal_date')->date(),
-                        TextEntry::make('total_amount')->numeric(2),
+                        TextEntry::make('total_amount')->money('IDR', 0, 'id_ID'),
                         TextEntry::make('status')->badge(),
                         TextEntry::make('debit_account'),
                         TextEntry::make('credit_account'),
