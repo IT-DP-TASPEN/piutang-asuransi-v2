@@ -47,7 +47,7 @@ class EarlyTerminationActionTest extends TestCase
             'receivable_amount' => '230929055.00',
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
         ]);
-        $expectedRawBody = '{"trxReference":"PA-ET20260531102030","accountNumber":"3010010000000068","altNumber":"ALT-1","principalPaid":230929055,"interestPaid":0,"penaltyPaid":0,"principalWaive":230929055,"interestWaive":0,"description":"Pelunasan Debitur MD","branchCode":"001"}';
+        $expectedRawBody = '{"trxReference":"PA-ET20260531102030","accountNumber":"3010010000000068","altNumber":"ALT-1","principalPaid":230929055,"interestPaid":0,"penaltyPaid":0,"principalWaive":0,"interestWaive":0,"description":"Pelunasan Debitur MD","branchCode":"001"}';
         $expectedLogRequestBody = json_decode($expectedRawBody, true, flags: JSON_THROW_ON_ERROR);
 
         Http::fake([
@@ -91,7 +91,7 @@ class EarlyTerminationActionTest extends TestCase
             'principalPaid' => 230929055,
             'interestPaid' => 0,
             'penaltyPaid' => 0,
-            'principalWaive' => 230929055,
+            'principalWaive' => 0,
             'interestWaive' => 0,
             'description' => 'Pelunasan Debitur MD',
             'branchCode' => '001',

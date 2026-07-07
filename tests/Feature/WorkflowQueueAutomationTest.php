@@ -300,7 +300,7 @@ class WorkflowQueueAutomationTest extends TestCase
         ]);
 
         Http::fake([
-            'http://core.test/account/balance*' => Http::response([
+            'http://core.test/saving/inq/balance*' => Http::response([
                 'responseCode' => '00',
                 'description' => 'Success',
                 'data' => ['availableBalance' => '230929055.00'],

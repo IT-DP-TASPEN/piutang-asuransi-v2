@@ -62,7 +62,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $user = $this->accountingApprover();
         $apiLog = ApiIntegrationLog::query()->create([
             'service_name' => 'core_banking',
-            'endpoint' => '/account/balance',
+            'endpoint' => '/saving/inq/balance',
             'method' => 'GET',
             'is_success' => true,
             'requested_by' => $user->id,
@@ -141,7 +141,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $receivable = $this->receivable();
         $user = $this->accountingApprover();
         Http::fake([
-            'http://core.test/account/balance*' => Http::sequence()
+            'http://core.test/saving/inq/balance*' => Http::sequence()
                 ->push($this->balanceResponse('48271.64'))
                 ->push(['responseCode' => '99', 'description' => 'Unavailable', 'data' => []], 503),
         ]);
@@ -160,7 +160,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertTrue($success['ok']);
         $this->assertFalse($failure['ok']);
         $this->assertSame('48271.64', $success['data']['availableBalance']);
-        $this->assertSame(2, ApiIntegrationLog::query()->where('endpoint', '/account/balance')->count());
+        $this->assertSame(2, ApiIntegrationLog::query()->where('endpoint', '/saving/inq/balance')->count());
         $this->assertDatabaseHas('api_integration_logs', [
             'related_type' => InsuranceReceivable::class,
             'related_id' => $receivable->id,
@@ -169,7 +169,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             'is_success' => false,
         ]);
         Http::assertSent(fn (Request $request): bool => $request->method() === 'GET'
-            && $request->url() === 'http://core.test/account/balance?account=1000010000000691'
+            && $request->url() === 'http://core.test/saving/inq/balance?accountNumber=1000010000000691'
             && ! $request->hasHeader('Signature'));
     }
 
@@ -216,7 +216,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
     {
         $receivable = $this->receivable();
         Http::fake([
-            'http://core.test/account/balance*' => Http::response([
+            'http://core.test/saving/inq/balance*' => Http::response([
                 'responseCode' => '91',
                 'description' => 'Balance service unavailable',
                 'data' => [],
@@ -248,7 +248,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
     {
         $receivable = $this->receivable();
         Http::fake([
-            'http://core.test/account/balance*' => fn () => throw new ConnectionException('Connection timed out.'),
+            'http://core.test/saving/inq/balance*' => fn () => throw new ConnectionException('Connection timed out.'),
         ]);
 
         $result = app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class)
@@ -271,7 +271,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
     {
         $receivable = $this->receivable();
         Http::fake([
-            'http://core.test/account/balance*' => Http::response([
+            'http://core.test/saving/inq/balance*' => Http::response([
                 'responseCode' => '00',
                 'description' => 'SUCCESS',
                 'data' => ['availableBalance' => 'not-a-number'],
@@ -294,7 +294,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
     {
         $receivable = $this->receivable(['loan_outstanding' => '1000.10']);
         Http::fake([
-            'http://core.test/account/balance*' => Http::response($this->balanceResponse('1000.100')),
+            'http://core.test/saving/inq/balance*' => Http::response($this->balanceResponse('1000.100')),
             'http://core.test/loan/earlytermination/' => Http::response($this->earlyTerminationSuccess()),
         ]);
 
@@ -323,7 +323,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
     {
         $receivable = $this->receivable(['loan_outstanding' => '1000.105']);
         Http::fake([
-            'http://core.test/account/balance*' => Http::response($this->balanceResponse('400.00')),
+            'http://core.test/saving/inq/balance*' => Http::response($this->balanceResponse('400.00')),
             'http://core.test/trx/transfer/gl-to-gl' => Http::response([
                 'responseCode' => '00',
                 'description' => 'Top up success',
@@ -348,7 +348,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertSame(EarlyTerminationBalanceInquiry::STATUS_SUCCESS, $inquiry->status);
         $this->assertSame('400.00', $inquiry->available_balance);
         $this->assertSame('600.11', $inquiry->required_top_up_amount);
-        $this->assertSame($inquiry->api_integration_log_id, ApiIntegrationLog::query()->where('endpoint', '/account/balance')->sole()->id);
+        $this->assertSame($inquiry->api_integration_log_id, ApiIntegrationLog::query()->where('endpoint', '/saving/inq/balance')->sole()->id);
         $this->assertSame("ETTOP{$transaction->id}", $transaction->reference_number);
         $this->assertSame($transaction->reference_number, $transaction->receipt_number);
         $this->assertSame('PiutangAsuransi', $transaction->request_payload['trxType']);
@@ -365,7 +365,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $receivable = $this->receivable(['loan_outstanding' => '1000.00']);
         $user = $this->accountingApprover();
         Http::fake([
-            'http://core.test/account/balance*' => Http::sequence()
+            'http://core.test/saving/inq/balance*' => Http::sequence()
                 ->push($this->balanceResponse('0'))
                 ->push($this->balanceResponse('400.00')),
             'http://core.test/trx/transfer/gl-to-gl' => Http::sequence()
@@ -410,7 +410,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $receivable = $this->receivable(['loan_outstanding' => '1000.00']);
         $user = $this->accountingApprover();
         Http::fake([
-            'http://core.test/account/balance*' => Http::sequence()
+            'http://core.test/saving/inq/balance*' => Http::sequence()
                 ->push($this->balanceResponse('0'))
                 ->push($this->balanceResponse('1000.00')),
             'http://core.test/trx/transfer/gl-to-gl' => Http::response(['unexpected' => 'unknown']),
@@ -444,7 +444,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $user = $this->accountingApprover();
         $glAttempts = 0;
         Http::fake(function (Request $request) use (&$glAttempts) {
-            if (str_contains($request->url(), '/account/balance')) {
+            if (str_contains($request->url(), '/saving/inq/balance')) {
                 return Http::response($this->balanceResponse('0'));
             }
 
@@ -485,7 +485,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
     {
         $receivable = $this->receivable(['loan_outstanding' => '1000.00']);
         Http::fake([
-            'http://core.test/account/balance*' => Http::response($this->balanceResponse('0')),
+            'http://core.test/saving/inq/balance*' => Http::response($this->balanceResponse('0')),
             'http://core.test/trx/transfer/gl-to-gl' => Http::response([
                 'responseCode' => '00',
                 'description' => 'Top up success',
@@ -505,7 +505,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertSame(EarlyTerminationTransaction::STATUS_SUCCESS, $second?->status);
         $this->assertDatabaseCount('gl_to_gl_transactions', 1);
         $this->assertDatabaseCount('early_termination_balance_inquiries', 1);
-        $this->assertSame(1, ApiIntegrationLog::query()->where('endpoint', '/account/balance')->count());
+        $this->assertSame(1, ApiIntegrationLog::query()->where('endpoint', '/saving/inq/balance')->count());
         $this->assertSame(1, ApiIntegrationLog::query()->where('endpoint', '/trx/transfer/gl-to-gl')->count());
     }
 
@@ -514,7 +514,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $receivable = $this->receivable();
         ApiIntegrationLog::query()->create([
             'service_name' => 'core_banking',
-            'endpoint' => '/account/balance',
+            'endpoint' => '/saving/inq/balance',
             'method' => 'GET',
             'response_body' => ['data' => ['availableBalance' => '999999.00']],
             'response_code' => '00',

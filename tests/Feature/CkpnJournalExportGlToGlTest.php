@@ -50,7 +50,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_approver', '000');
         $journal = $this->approvedJournal(totalAmount: '3077644.00');
-        $expectedRawBody = '{"referenceNumber":"05311020","trxType":"SAKEP CKPN","termType":"","termId":"FINCLOUD","receiptNumber":"05311020","debitAccount":"D-1","creditAccount":"C-1","amount":"3077644.00","fee":"0","creditFee":"0","branchCode":"001","debitNarrative":"Debit narrative","creditNarrative":"Credit narrative","customerId":"","dateTime":"20260531102030","description":"CKPN journal","debitFee":"0","destAccount":"","currency":"IDR","srcAccType":"10","totalBill":"","type":"G2"}';
+        $expectedRawBody = '{"referenceNumber":"0531102030","trxType":"SAKEP CKPN","termType":"","termId":"FINCLOUD","receiptNumber":"0531102030","debitAccount":"D-1","creditAccount":"C-1","amount":"3077644.00","fee":"0","creditFee":"0","branchCode":"001","debitNarrative":"Debit narrative","creditNarrative":"Credit narrative","customerId":"","dateTime":"20260531102030","description":"CKPN journal","debitFee":"0","destAccount":"","currency":"IDR","srcAccType":"10","totalBill":"","type":"G2"}';
         $expectedLogRequestBody = json_decode($expectedRawBody, true, flags: JSON_THROW_ON_ERROR);
 
         Http::fake([
@@ -69,8 +69,8 @@ class CkpnJournalExportGlToGlTest extends TestCase
         $first = app(ExecuteGlToGlTransferAction::class)->handle($journal, $user);
 
         $this->assertSame(GlToGlTransaction::STATUS_FAILED, $first->status);
-        $this->assertSame('05311020', $first->reference_number);
-        $this->assertSame('05311020', $first->receipt_number);
+        $this->assertSame('0531102030', $first->reference_number);
+        $this->assertSame('0531102030', $first->receipt_number);
         $this->assertSame('3077644.00', $first->request_payload['amount']);
         $this->assertStringNotContainsString(',', $first->request_payload['amount']);
         $this->assertSame('3077644.00', $journal->refresh()->total_amount);
@@ -79,8 +79,8 @@ class CkpnJournalExportGlToGlTest extends TestCase
 
         $this->assertSame($first->id, $second->id);
         $this->assertSame(GlToGlTransaction::STATUS_SUCCESS, $second->status);
-        $this->assertSame('05311020', $second->reference_number);
-        $this->assertSame('05311020', $second->receipt_number);
+        $this->assertSame('0531102030', $second->reference_number);
+        $this->assertSame('0531102030', $second->receipt_number);
         $this->assertSame('00', $second->response_code);
         $this->assertSame('Accepted', $second->response_description);
         $this->assertSame('V-1', $second->response_payload['data']['unknownResponse']['voucher']);
