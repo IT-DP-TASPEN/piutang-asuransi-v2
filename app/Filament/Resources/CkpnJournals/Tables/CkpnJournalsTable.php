@@ -27,7 +27,7 @@ class CkpnJournalsTable
                     ->placeholder('All branches')
                     ->sortable(),
                 TextColumn::make('total_amount')
-                    ->numeric(2)
+                    ->money('IDR', 0, 'id_ID')
                     ->sortable(),
                 TextColumn::make('status')
                     ->badge()
@@ -51,7 +51,7 @@ class CkpnJournalsTable
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()
-                    ->visible(fn (CkpnJournal $record): bool => auth()->user()?->can('update', $record) ?? false),
+                    ->visible(fn(CkpnJournal $record): bool => auth()->user()?->can('update', $record) ?? false),
             ]);
     }
 }
