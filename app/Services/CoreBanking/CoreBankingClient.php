@@ -51,8 +51,8 @@ class CoreBankingClient
      */
     public function inquireBalance(string $account, ?Model $related = null, ?User $requestedBy = null): array
     {
-        $endpoint = '/account/balance';
-        $query = ['account' => $account];
+        $endpoint = '/saving/inq/balance';
+        $query = ['accountNumber' => $account];
         $headers = ['Accept' => 'application/json'];
         $status = null;
         $responseBody = null;
@@ -283,7 +283,7 @@ class CoreBankingClient
 
     private function url(string $endpoint): string
     {
-        return rtrim((string) config('core_banking.base_url'), '/').'/'.ltrim($endpoint, '/');
+        return rtrim((string) config('core_banking.base_url'), '/') . '/' . ltrim($endpoint, '/');
     }
 
     /**

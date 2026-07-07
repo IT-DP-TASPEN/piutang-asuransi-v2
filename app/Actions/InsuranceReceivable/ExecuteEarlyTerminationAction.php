@@ -30,16 +30,18 @@ class ExecuteEarlyTerminationAction
             ]);
         }
 
-        if ($insuranceReceivable->workflow_status !== InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED
+        if (
+            $insuranceReceivable->workflow_status !== InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED
             && $insuranceReceivable->system_status !== InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED
             && $insuranceReceivable->system_status !== InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED
-            && $insuranceReceivable->system_status !== InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING) {
+            && $insuranceReceivable->system_status !== InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PROCESSING
+        ) {
             throw ValidationException::withMessages([
                 'workflow_status' => 'Early termination requires receivable formed status.',
             ]);
         }
 
-        $transaction = DB::transaction(fn (): EarlyTerminationTransaction => $this->findOrCreateTransaction($insuranceReceivable, $user));
+        $transaction = DB::transaction(fn(): EarlyTerminationTransaction => $this->findOrCreateTransaction($insuranceReceivable, $user));
         $payload = $transaction->request_payload ?: $this->payloadFor($insuranceReceivable, $transaction->trx_reference);
 
         if ($transaction->request_payload === null) {
@@ -132,7 +134,7 @@ class ExecuteEarlyTerminationAction
             'principalPaid' => $this->apiMoneyNumber($insuranceReceivable->loan_outstanding),
             'interestPaid' => 0,
             'penaltyPaid' => 0,
-            'principalWaive' => $this->apiMoneyNumber($insuranceReceivable->loan_outstanding),
+            'principalWaive' => 0,
             'interestWaive' => 0,
             'description' => 'Pelunasan Debitur MD',
             'branchCode' => $insuranceReceivable->branch_code,
