@@ -15,7 +15,6 @@ use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
 use App\Actions\CkpnWorkpaper\ApproveCkpnWorkpaperAction;
 use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
 use App\Actions\InsuranceReceivable\CancelInsuranceReceivableAction;
-use App\Actions\ReceivablePayment\RecordReceivablePaymentAction;
 use App\Jobs\GenerateCkpnWorkpaperJob;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
@@ -27,8 +26,11 @@ use App\Models\ClaimStatus;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceCompany;
 use App\Models\InsuranceReceivable;
+use App\Models\ReceivablePayment;
 use App\Models\User;
 use App\Services\Ckpn\CkpnWorkpaperReadinessValidator;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Database\Seeders\BranchOfficeSeeder;
 use Database\Seeders\CkpnAgeBucketSeeder;
 use Database\Seeders\CkpnCalculationRuleSeeder;
@@ -185,14 +187,8 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         ]);
         $maker = $this->userWithRole('accounting_maker', '000');
 
-        app(RecordReceivablePaymentAction::class)->handle($legacy, [
-            'amount' => '3000.00',
-            'paid_at' => '2026-06-30',
-        ], $maker);
-        app(RecordReceivablePaymentAction::class)->handle($legacy->refresh(), [
-            'amount' => '2000.00',
-            'paid_at' => '2026-07-01',
-        ], $maker);
+        $this->recordSuccessfulPayment($legacy, $maker, '3000.00', '2026-06-30');
+        $this->recordSuccessfulPayment($legacy->refresh(), $maker, '2000.00', '2026-07-01');
 
         $workpaper = CkpnWorkpaper::query()->create(['period' => '2026-06-30', 'branch_office_id' => $branch->id]);
         $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
@@ -216,10 +212,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         ]);
         $maker = $this->userWithRole('accounting_maker', '000');
 
-        app(RecordReceivablePaymentAction::class)->handle($legacy, [
-            'amount' => '10000.00',
-            'paid_at' => '2026-06-30',
-        ], $maker);
+        $this->recordSuccessfulPayment($legacy, $maker, '10000.00', '2026-06-30');
 
         $workpaper = CkpnWorkpaper::query()->create(['period' => '2026-06-30', 'branch_office_id' => $branch->id]);
         $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
@@ -240,10 +233,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         ]);
         $maker = $this->userWithRole('accounting_maker', '000');
 
-        app(RecordReceivablePaymentAction::class)->handle($receivable, [
-            'amount' => '3000.00',
-            'paid_at' => '2026-07-01',
-        ], $maker);
+        $this->recordSuccessfulPayment($receivable, $maker, '3000.00', '2026-07-01');
 
         $workpaper = CkpnWorkpaper::query()->create(['period' => '2026-06-30', 'branch_office_id' => $branch->id]);
         $workpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
@@ -270,10 +260,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $lockedItem = $lockedWorkpaper->items()->sole();
         $lockedWorkpaper->forceFill(['status' => CkpnWorkpaper::STATUS_LOCKED])->save();
 
-        app(RecordReceivablePaymentAction::class)->handle($receivable, [
-            'amount' => '3000.00',
-            'paid_at' => '2026-07-01',
-        ], $maker);
+        $this->recordSuccessfulPayment($receivable, $maker, '3000.00', '2026-07-01');
 
         $this->assertSame('10000.00', $lockedItem->refresh()->receivable_amount);
         $this->assertSame('10000.00', $lockedWorkpaper->refresh()->total_receivable_amount);
@@ -1061,6 +1048,24 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
             'date_of_death' => '2026-01-01',
             ...$attributes,
         ]);
+    }
+
+    private function recordSuccessfulPayment(InsuranceReceivable $receivable, User $user, string $amount, string $paidAt): ReceivablePayment
+    {
+        $payment = ReceivablePayment::query()->create([
+            'insurance_receivable_id' => $receivable->id,
+            'amount' => $amount,
+            'paid_at' => $paidAt,
+            'created_by' => $user->id,
+        ]);
+
+        $receivable->forceFill([
+            'remaining_receivable_amount' => (string) BigDecimal::of($receivable->remaining_receivable_amount)
+                ->minus($amount)
+                ->toScale(2, RoundingMode::HalfUp),
+        ])->save();
+
+        return $payment;
     }
 
     private function userWithRole(string $role, string $branchCode): User

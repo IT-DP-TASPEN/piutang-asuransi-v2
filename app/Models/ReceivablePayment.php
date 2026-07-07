@@ -11,6 +11,7 @@ use Illuminate\Validation\ValidationException;
 
 #[Fillable([
     'insurance_receivable_id',
+    'receivable_payment_request_id',
     'amount',
     'paid_at',
     'created_by',
@@ -37,6 +38,14 @@ class ReceivablePayment extends Model
     }
 
     /**
+     * @return BelongsTo<ReceivablePaymentRequest, $this>
+     */
+    public function paymentRequest(): BelongsTo
+    {
+        return $this->belongsTo(ReceivablePaymentRequest::class, 'receivable_payment_request_id');
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -45,7 +54,7 @@ class ReceivablePayment extends Model
     {
         return [
             'amount' => 'decimal:2',
-            'paid_at' => 'date',
+            'paid_at' => 'datetime',
         ];
     }
 

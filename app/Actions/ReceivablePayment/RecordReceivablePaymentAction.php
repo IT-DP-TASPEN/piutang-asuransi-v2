@@ -18,6 +18,10 @@ class RecordReceivablePaymentAction
      */
     public function handle(InsuranceReceivable $receivable, array $data, User $user): ReceivablePayment
     {
+        throw ValidationException::withMessages([
+            'payment' => 'Receivable payments must be recorded through approved payment requests.',
+        ]);
+
         return DB::transaction(function () use ($receivable, $data, $user): ReceivablePayment {
             $locked = $this->lockedReceivable($receivable);
             $this->validateReceivable($locked);

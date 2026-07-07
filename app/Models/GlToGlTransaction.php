@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'ckpn_workpaper_id',
     'insurance_receivable_id',
     'early_termination_balance_inquiry_id',
+    'receivable_payment_request_id',
+    'receivable_payment_id',
     'reference_number',
     'receipt_number',
     'request_payload',
@@ -27,6 +29,8 @@ class GlToGlTransaction extends Model
     public const PURPOSE_CKPN_JOURNAL = 'ckpn_journal';
 
     public const PURPOSE_EARLY_TERMINATION_REPAYMENT_TOP_UP = 'early_termination_repayment_top_up';
+
+    public const PURPOSE_RECEIVABLE_PAYMENT = 'receivable_payment';
 
     public const STATUS_PENDING = 'pending';
 
@@ -64,6 +68,22 @@ class GlToGlTransaction extends Model
     public function earlyTerminationBalanceInquiry(): BelongsTo
     {
         return $this->belongsTo(EarlyTerminationBalanceInquiry::class);
+    }
+
+    /**
+     * @return BelongsTo<ReceivablePaymentRequest, $this>
+     */
+    public function receivablePaymentRequest(): BelongsTo
+    {
+        return $this->belongsTo(ReceivablePaymentRequest::class);
+    }
+
+    /**
+     * @return BelongsTo<ReceivablePayment, $this>
+     */
+    public function receivablePayment(): BelongsTo
+    {
+        return $this->belongsTo(ReceivablePayment::class);
     }
 
     /**

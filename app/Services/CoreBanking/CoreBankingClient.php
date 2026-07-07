@@ -283,7 +283,7 @@ class CoreBankingClient
 
     private function url(string $endpoint): string
     {
-        return rtrim((string) config('core_banking.base_url'), '/') . '/' . ltrim($endpoint, '/');
+        return rtrim((string) config('core_banking.base_url'), '/').'/'.ltrim($endpoint, '/');
     }
 
     /**

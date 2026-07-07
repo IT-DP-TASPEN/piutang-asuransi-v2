@@ -45,6 +45,8 @@ class ApprovalRequest extends Model
 
     public const WORKFLOW_CKPN_ADJUSTMENT = 'ckpn_adjustment';
 
+    public const WORKFLOW_RECEIVABLE_PAYMENT = 'receivable_payment';
+
     /**
      * @return MorphTo<Model, $this>
      */

@@ -59,7 +59,7 @@ class AdjustmentsRelationManager extends RelationManager
     {
         return Action::make('approve')
             ->requiresConfirmation()
-            ->visible(fn(CkpnAdjustment $record): bool => (auth()->user()?->can('approve', $record) ?? false)
+            ->visible(fn (CkpnAdjustment $record): bool => (auth()->user()?->can('approve', $record) ?? false)
                 && $record->status === CkpnAdjustment::STATUS_SUBMITTED)
             ->form([
                 Textarea::make('notes')->maxLength(65535),
@@ -80,7 +80,7 @@ class AdjustmentsRelationManager extends RelationManager
         return Action::make('reject')
             ->color('danger')
             ->requiresConfirmation()
-            ->visible(fn(CkpnAdjustment $record): bool => (auth()->user()?->can('reject', $record) ?? false)
+            ->visible(fn (CkpnAdjustment $record): bool => (auth()->user()?->can('reject', $record) ?? false)
                 && $record->status === CkpnAdjustment::STATUS_SUBMITTED)
             ->form([
                 Textarea::make('notes')->required()->maxLength(65535),
@@ -102,7 +102,7 @@ class AdjustmentsRelationManager extends RelationManager
             ->label('Return')
             ->color('warning')
             ->requiresConfirmation()
-            ->visible(fn(CkpnAdjustment $record): bool => (auth()->user()?->can('returnRequest', $record) ?? false)
+            ->visible(fn (CkpnAdjustment $record): bool => (auth()->user()?->can('returnRequest', $record) ?? false)
                 && $record->status === CkpnAdjustment::STATUS_SUBMITTED)
             ->form([
                 Textarea::make('notes')->required()->maxLength(65535),
@@ -123,7 +123,7 @@ class AdjustmentsRelationManager extends RelationManager
         return Action::make('cancel')
             ->color('danger')
             ->requiresConfirmation()
-            ->visible(fn(CkpnAdjustment $record): bool => (auth()->user()?->can('cancel', $record) ?? false)
+            ->visible(fn (CkpnAdjustment $record): bool => (auth()->user()?->can('cancel', $record) ?? false)
                 && in_array($record->status, [
                     CkpnAdjustment::STATUS_DRAFT,
                     CkpnAdjustment::STATUS_RETURNED,

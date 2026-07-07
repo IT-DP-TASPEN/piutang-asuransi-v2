@@ -2,19 +2,27 @@
 
 namespace Tests\Feature;
 
+use App\Actions\ReceivablePayment\ExecuteReceivablePaymentRequestAction;
 use App\Actions\ReceivablePayment\RecordReceivablePaymentAction;
+use App\Actions\ReceivablePayment\SubmitReceivablePaymentRequestAction;
 use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
 use App\Filament\Resources\InsuranceReceivables\Pages\ViewInsuranceReceivable;
 use App\Filament\Resources\RelationManagers\ReceivablePaymentsRelationManager;
+use App\Models\ApprovalRequest;
+use App\Models\ApprovalStep;
 use App\Models\BranchOffice;
+use App\Models\GlToGlTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\ReceivablePayment;
+use App\Models\ReceivablePaymentRequest;
 use App\Models\User;
 use Database\Seeders\BranchOfficeSeeder;
 use Database\Seeders\ClaimStatusSeeder;
 use Database\Seeders\InsuranceCompanySeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -23,147 +31,225 @@ class ReceivablePaymentTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_can_record_legacy_payment_and_decrease_remaining_amount(): void
+    protected function setUp(): void
     {
-        $this->seedDependencies();
-        $user = $this->userWithRole('accounting_maker', '000');
-        $legacy = InsuranceReceivable::factory()->legacy()->create([
-            'receivable_amount' => '10000.00',
-            'remaining_receivable_amount' => '10000.00',
-        ]);
+        parent::setUp();
 
-        $payment = app(RecordReceivablePaymentAction::class)->handle($legacy, [
+        config([
+            'core_banking.base_url' => 'http://core.test',
+            'core_banking.signature_secret' => 'secret-key',
+        ]);
+        Carbon::setTestNow('2026-07-07 10:20:30');
+        $this->seedDependencies();
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+
+    public function test_maker_current_account_submit_creates_request_and_pending_approval_only(): void
+    {
+        Http::fake();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $receivable = $this->receivable();
+
+        $request = app(SubmitReceivablePaymentRequestAction::class)->handle($receivable, [
             'amount' => '2500.00',
-            'paid_at' => '2026-06-01',
-        ], $user);
+            'payment_source' => ReceivablePaymentRequest::PAYMENT_SOURCE_CURRENT_ACCOUNT_MANDIRI_02,
+        ], $maker);
 
-        $this->assertSame($legacy->id, $payment->insurance_receivable_id);
-        $this->assertSame($user->id, $payment->created_by);
-        $this->assertSame('7500.00', $legacy->refresh()->remaining_receivable_amount);
+        $this->assertSame(ReceivablePaymentRequest::STATUS_SUBMITTED, $request->status);
+        $this->assertSame($maker->id, $request->requested_by);
+        $this->assertNull($request->gl_to_gl_transaction_id);
+        $this->assertNull($request->receivable_payment_id);
+        $this->assertSame('10000.00', $receivable->refresh()->remaining_receivable_amount);
+        $this->assertDatabaseCount('receivable_payments', 0);
+        $this->assertDatabaseCount('gl_to_gl_transactions', 0);
+
+        $approval = ApprovalRequest::query()->sole();
+        $this->assertSame(ApprovalRequest::WORKFLOW_RECEIVABLE_PAYMENT, $approval->workflow_code);
+        $this->assertSame(ApprovalRequest::STATUS_SUBMITTED, $approval->status);
+        $this->assertSame('accounting_approver', ApprovalStep::query()->sole()->role_name);
+        Http::assertNothingSent();
     }
 
-    public function test_legacy_overpayment_and_soft_deleted_receivable_are_rejected(): void
+    public function test_maker_debtor_saving_submit_reinquires_and_stores_snapshot(): void
     {
-        $this->seedDependencies();
-        $user = $this->userWithRole('accounting_maker', '000');
-        $legacy = InsuranceReceivable::factory()->legacy()->create([
-            'receivable_amount' => '10000.00',
-            'remaining_receivable_amount' => '10000.00',
+        Http::fake([
+            'http://core.test/saving/inq/balance*' => Http::response($this->balanceResponse('7500.00')),
+        ]);
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $receivable = $this->receivable([
+            'saving_account_for_loan_repayment' => '1000010000000691',
         ]);
 
+        $request = app(SubmitReceivablePaymentRequestAction::class)->handle($receivable, [
+            'amount' => '2500.00',
+            'payment_source' => ReceivablePaymentRequest::PAYMENT_SOURCE_DEBTOR_SAVING,
+        ], $maker);
+
+        $this->assertSame('1000010000000691', $request->saving_account_number);
+        $this->assertSame('Jane Customer', $request->saving_account_snapshot['customerName']);
+        $this->assertSame('Saving Product', $request->saving_account_snapshot['productName']);
+        $this->assertSame('Active', $request->saving_account_snapshot['documentStatus']);
+        $this->assertSame('7500.00', $request->saving_account_snapshot['availableBalance']);
+        $this->assertSame('8000.00', $request->saving_account_snapshot['ledgerBalance']);
+        $this->assertArrayNotHasKey('minimumBalance', $request->saving_account_snapshot);
+        $this->assertArrayNotHasKey('responseCode', $request->saving_account_snapshot);
+        Http::assertSentCount(1);
+    }
+
+    public function test_current_account_approval_executes_rpg01_and_records_payment_only_after_gl_success(): void
+    {
+        Http::fake([
+            'http://core.test/trx/transfer/gl-to-gl' => Http::response([
+                'responseCode' => '00',
+                'description' => 'Accepted',
+                'data' => ['voucher' => 'V-1'],
+            ]),
+        ]);
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $receivable = $this->receivable();
+        $request = $this->submitCurrentAccountRequest($receivable, $maker, '2500.00');
+
+        $result = app(ExecuteReceivablePaymentRequestAction::class)->handle($request, $approver, 'approved');
+        $payment = ReceivablePayment::query()->sole();
+        $gl = GlToGlTransaction::query()->sole();
+
+        $this->assertSame(ReceivablePaymentRequest::STATUS_PAYMENT_RECORDED, $result->status);
+        $this->assertSame($payment->id, $result->receivable_payment_id);
+        $this->assertSame($gl->id, $result->gl_to_gl_transaction_id);
+        $this->assertSame($payment->id, $gl->receivable_payment_id);
+        $this->assertSame('7500.00', $receivable->refresh()->remaining_receivable_amount);
+        $this->assertSame($approver->id, $payment->created_by);
+        $this->assertSame('2026-07-07 10:20:30', $payment->paid_at?->toDateTimeString());
+        $this->assertSame(ApprovalRequest::STATUS_APPROVED, $request->approvalRequest->refresh()->status);
+        $this->assertSame(ApprovalStep::STATUS_APPROVED, ApprovalStep::query()->sole()->status);
+        $this->assertSame('RPG01', $gl->request_payload['trxType']);
+        $this->assertSame('', $gl->request_payload['debitAccount']);
+        $this->assertSame('', $gl->request_payload['creditAccount']);
+        $this->assertArrayNotHasKey('sourceAccount', $gl->request_payload);
+        $this->assertStringNotContainsString('111101202', json_encode($gl->request_payload));
+        $this->assertStringNotContainsString('1971000', json_encode($gl->request_payload));
+        Http::assertSentCount(1);
+    }
+
+    public function test_debtor_saving_validation_failure_on_approval_keeps_approval_pending_and_skips_gl(): void
+    {
+        Http::fake([
+            'http://core.test/saving/inq/balance*' => Http::sequence()
+                ->push($this->balanceResponse('7500.00'))
+                ->push($this->balanceResponse('7500.00', documentStatus: 'Dormant')),
+            'http://core.test/trx/transfer/gl-to-gl' => Http::response([
+                'responseCode' => '00',
+                'description' => 'Should not be called',
+            ]),
+        ]);
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $receivable = $this->receivable(['saving_account_for_loan_repayment' => '1000010000000691']);
+        $request = app(SubmitReceivablePaymentRequestAction::class)->handle($receivable, [
+            'amount' => '2500.00',
+            'payment_source' => ReceivablePaymentRequest::PAYMENT_SOURCE_DEBTOR_SAVING,
+        ], $maker);
+
+        $result = app(ExecuteReceivablePaymentRequestAction::class)->handle($request, $approver);
+
+        $this->assertSame(ReceivablePaymentRequest::STATUS_VALIDATION_FAILED, $result->status);
+        $this->assertStringContainsString('Active', $result->last_error_message);
+        $this->assertSame(ApprovalRequest::STATUS_SUBMITTED, $request->approvalRequest->refresh()->status);
+        $this->assertSame('10000.00', $receivable->refresh()->remaining_receivable_amount);
+        $this->assertDatabaseCount('receivable_payments', 0);
+        $this->assertDatabaseCount('gl_to_gl_transactions', 0);
+        Http::assertSentCount(2);
+    }
+
+    public function test_gl_failure_keeps_pending_and_retry_reuses_reference_before_success(): void
+    {
+        Http::fake([
+            'http://core.test/trx/transfer/gl-to-gl' => Http::sequence()
+                ->push(['responseCode' => '91', 'description' => 'Core timeout', 'data' => []])
+                ->push(['responseCode' => '00', 'description' => 'Accepted', 'data' => []]),
+        ]);
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $receivable = $this->receivable();
+        $request = $this->submitCurrentAccountRequest($receivable, $maker, '2500.00');
+
+        $failed = app(ExecuteReceivablePaymentRequestAction::class)->handle($request, $approver);
+        $firstGl = GlToGlTransaction::query()->sole();
+        $reference = $firstGl->reference_number;
+
+        $this->assertSame(ReceivablePaymentRequest::STATUS_GL_FAILED, $failed->status);
+        $this->assertSame('Core timeout', $failed->last_error_message);
+        $this->assertSame(GlToGlTransaction::STATUS_FAILED, $firstGl->status);
+        $this->assertSame(ApprovalRequest::STATUS_SUBMITTED, $request->approvalRequest->refresh()->status);
+        $this->assertDatabaseCount('receivable_payments', 0);
+        $this->assertSame('10000.00', $receivable->refresh()->remaining_receivable_amount);
+
+        $succeeded = app(ExecuteReceivablePaymentRequestAction::class)->handle($failed->refresh(), $approver);
+        $retriedGl = GlToGlTransaction::query()->sole();
+
+        $this->assertSame(ReceivablePaymentRequest::STATUS_PAYMENT_RECORDED, $succeeded->status);
+        $this->assertSame($firstGl->id, $retriedGl->id);
+        $this->assertSame($reference, $retriedGl->reference_number);
+        $this->assertSame(GlToGlTransaction::STATUS_SUCCESS, $retriedGl->status);
+        $this->assertDatabaseCount('receivable_payments', 1);
+        $this->assertSame('7500.00', $receivable->refresh()->remaining_receivable_amount);
+
+        app(ExecuteReceivablePaymentRequestAction::class)->handle($succeeded->refresh(), $approver);
+        $this->assertDatabaseCount('receivable_payments', 1);
+        Http::assertSentCount(2);
+    }
+
+    public function test_direct_payment_action_policy_and_relation_create_are_blocked(): void
+    {
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $receivable = $this->receivable();
+
+        $this->assertFalse($maker->can('create', ReceivablePayment::class));
+        $this->assertContains(ReceivablePaymentsRelationManager::class, InsuranceReceivableResource::getRelations());
+
         try {
-            app(RecordReceivablePaymentAction::class)->handle($legacy, [
-                'amount' => '10000.01',
-                'paid_at' => '2026-06-01',
-            ], $user);
-
-            $this->fail('Legacy-origin overpayment should be rejected.');
-        } catch (ValidationException) {
-        }
-
-        $legacy->delete();
-
-        try {
-            app(RecordReceivablePaymentAction::class)->handle($legacy, [
+            app(RecordReceivablePaymentAction::class)->handle($receivable, [
                 'amount' => '100.00',
-                'paid_at' => '2026-06-01',
-            ], $user);
+                'paid_at' => '2026-07-07',
+            ], $maker);
 
-            $this->fail('Payment for deleted legacy-origin receivable should be rejected.');
+            $this->fail('Direct payment action should be blocked.');
         } catch (ValidationException) {
         }
-    }
 
-    public function test_can_record_insurance_payment_for_allowed_statuses(): void
-    {
-        $this->seedDependencies();
-        $user = $this->userWithRole('accounting_maker', '000');
-
-        foreach ([
-            InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
-            InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED,
-            InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED,
-        ] as $status) {
-            $receivable = $this->insuranceReceivable($status);
-
-            $payment = app(RecordReceivablePaymentAction::class)->handle($receivable, [
-                'amount' => '2500.00',
-                'paid_at' => '2026-06-01',
-            ], $user);
-
-            $this->assertSame($receivable->id, $payment->insurance_receivable_id);
-            $this->assertSame('7500.00', $receivable->refresh()->remaining_receivable_amount);
-        }
-    }
-
-    public function test_insurance_payment_rejects_disallowed_statuses_and_overpayment(): void
-    {
-        $this->seedDependencies();
-        $user = $this->userWithRole('accounting_maker', '000');
-
-        foreach ([
-            InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
-            InsuranceReceivable::WORKFLOW_STATUS_REJECTED,
-            InsuranceReceivable::WORKFLOW_STATUS_CANCELLED,
-        ] as $status) {
-            $receivable = $this->insuranceReceivable($status);
-
-            try {
-                app(RecordReceivablePaymentAction::class)->handle($receivable, [
-                    'amount' => '100.00',
-                    'paid_at' => '2026-06-01',
-                ], $user);
-
-                $this->fail("Insurance payment should be rejected for {$status}.");
-            } catch (ValidationException) {
-            }
-
-            $this->assertSame('10000.00', $receivable->refresh()->remaining_receivable_amount);
-        }
-
-        $receivable = $this->insuranceReceivable(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED);
-
-        $this->expectException(ValidationException::class);
-
-        app(RecordReceivablePaymentAction::class)->handle($receivable, [
-            'amount' => '10000.01',
-            'paid_at' => '2026-06-01',
-        ], $user);
-    }
-
-    public function test_payment_requires_insurance_receivable_target(): void
-    {
-        $this->seedDependencies();
-        $user = $this->userWithRole('accounting_maker', '000');
-        $base = [
-            'amount' => '100.00',
-            'paid_at' => '2026-06-01',
-            'created_by' => $user->id,
-        ];
-
-        try {
-            ReceivablePayment::query()->create($base);
-
-            $this->fail('Payment without target should be rejected.');
-        } catch (ValidationException) {
-        }
+        Livewire::actingAs($maker)
+            ->test(ReceivablePaymentsRelationManager::class, [
+                'ownerRecord' => $receivable,
+                'pageClass' => ViewInsuranceReceivable::class,
+            ])
+            ->assertTableHeaderActionsExistInOrder(['createPaymentRequest'])
+            ->assertTableActionsExistInOrder([]);
     }
 
     public function test_recorded_payment_cannot_be_updated_or_deleted(): void
     {
-        $this->seedDependencies();
-        $user = $this->userWithRole('accounting_maker', '000');
-        $legacy = InsuranceReceivable::factory()->legacy()->create();
-        $payment = app(RecordReceivablePaymentAction::class)->handle($legacy, [
+        $user = $this->userWithRole('accounting_approver', '000');
+        $receivable = $this->receivable();
+        $payment = ReceivablePayment::query()->create([
+            'insurance_receivable_id' => $receivable->id,
             'amount' => '100.00',
-            'paid_at' => '2026-06-01',
-        ], $user);
+            'paid_at' => now(),
+            'created_by' => $user->id,
+        ]);
 
         try {
             $payment->forceFill(['amount' => '200.00'])->save();
 
             $this->fail('Recorded payment update should be rejected.');
         } catch (ValidationException) {
+            $this->assertTrue(true);
         }
 
         try {
@@ -171,33 +257,16 @@ class ReceivablePaymentTest extends TestCase
 
             $this->fail('Recorded payment delete should be rejected.');
         } catch (ValidationException) {
+            $this->assertTrue(true);
         }
     }
 
-    public function test_payment_relation_manager_is_create_only_for_legacy_and_workflow_origins(): void
+    private function submitCurrentAccountRequest(InsuranceReceivable $receivable, User $maker, string $amount): ReceivablePaymentRequest
     {
-        $this->seedDependencies();
-        $user = $this->userWithRole('accounting_maker', '000');
-        $legacy = InsuranceReceivable::factory()->legacy()->create();
-        $insurance = $this->insuranceReceivable(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED);
-
-        $this->assertContains(ReceivablePaymentsRelationManager::class, InsuranceReceivableResource::getRelations());
-
-        Livewire::actingAs($user)
-            ->test(ReceivablePaymentsRelationManager::class, [
-                'ownerRecord' => $legacy,
-                'pageClass' => ViewInsuranceReceivable::class,
-            ])
-            ->assertTableHeaderActionsExistInOrder(['create'])
-            ->assertTableActionsExistInOrder([]);
-
-        Livewire::actingAs($user)
-            ->test(ReceivablePaymentsRelationManager::class, [
-                'ownerRecord' => $insurance,
-                'pageClass' => ViewInsuranceReceivable::class,
-            ])
-            ->assertTableHeaderActionsExistInOrder(['create'])
-            ->assertTableActionsExistInOrder([]);
+        return app(SubmitReceivablePaymentRequestAction::class)->handle($receivable, [
+            'amount' => $amount,
+            'payment_source' => ReceivablePaymentRequest::PAYMENT_SOURCE_CURRENT_ACCOUNT_MANDIRI_02,
+        ], $maker);
     }
 
     private function seedDependencies(): void
@@ -219,13 +288,37 @@ class ReceivablePaymentTest extends TestCase
         return $user;
     }
 
-    private function insuranceReceivable(string $workflowStatus): InsuranceReceivable
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function receivable(array $attributes = []): InsuranceReceivable
     {
         return InsuranceReceivable::factory()->create([
-            'workflow_status' => $workflowStatus,
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
             'receivable_formation_date' => '2026-01-01',
             'receivable_amount' => '10000.00',
             'remaining_receivable_amount' => '10000.00',
+            ...$attributes,
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function balanceResponse(string $availableBalance, string $documentStatus = 'Active'): array
+    {
+        return [
+            'responseCode' => '00',
+            'description' => 'SUCCESS',
+            'data' => [
+                'accountNumber' => '1000010000000691',
+                'customerName' => 'Jane Customer',
+                'productName' => 'Saving Product',
+                'documentStatus' => $documentStatus,
+                'availableBalance' => $availableBalance,
+                'ledgerBalance' => '8000.00',
+            ],
+        ];
     }
 }

@@ -51,7 +51,7 @@ class CkpnJournalsTable
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()
-                    ->visible(fn(CkpnJournal $record): bool => auth()->user()?->can('update', $record) ?? false),
+                    ->visible(fn (CkpnJournal $record): bool => auth()->user()?->can('update', $record) ?? false),
             ]);
     }
 }

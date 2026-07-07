@@ -9,6 +9,7 @@ use App\Filament\Resources\InsuranceReceivables\Pages\ViewInsuranceReceivable;
 use App\Filament\Resources\InsuranceReceivables\RelationManagers\ClaimStatusChangeRequestsRelationManager;
 use App\Filament\Resources\InsuranceReceivables\RelationManagers\DocumentsRelationManager;
 use App\Filament\Resources\InsuranceReceivables\RelationManagers\InsuranceCoverLettersRelationManager;
+use App\Filament\Resources\InsuranceReceivables\RelationManagers\ReceivablePaymentRequestsRelationManager;
 use App\Filament\Resources\InsuranceReceivables\RelationManagers\StageLogsRelationManager;
 use App\Filament\Resources\InsuranceReceivables\Schemas\InsuranceReceivableForm;
 use App\Filament\Resources\InsuranceReceivables\Schemas\InsuranceReceivableInfolist;
@@ -80,6 +81,7 @@ class InsuranceReceivableResource extends Resource
         return [
             StageLogsRelationManager::class,
             ReceivablePaymentsRelationManager::class,
+            ReceivablePaymentRequestsRelationManager::class,
             DocumentsRelationManager::class,
             ClaimStatusChangeRequestsRelationManager::class,
             InsuranceCoverLettersRelationManager::class,

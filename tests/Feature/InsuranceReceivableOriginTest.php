@@ -7,12 +7,14 @@ use App\Actions\InsuranceCoverLetter\GenerateInsuranceCoverLetterAction;
 use App\Actions\InsuranceReceivable\QueueEarlyTerminationAction;
 use App\Actions\InsuranceReceivable\StoreClaimDocumentAction;
 use App\Actions\InsuranceReceivable\SubmitInsuranceReceivableForApprovalAction;
-use App\Actions\ReceivablePayment\RecordReceivablePaymentAction;
 use App\Models\BranchOffice;
 use App\Models\ClaimStatus;
 use App\Models\InsuranceReceivable;
+use App\Models\ReceivablePayment;
 use App\Models\User;
 use App\Services\InsuranceReceivable\InsuranceReceivableInquiryDispatcher;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Database\Seeders\BranchOfficeSeeder;
 use Database\Seeders\ClaimStatusSeeder;
 use Database\Seeders\InsuranceCompanySeeder;
@@ -57,10 +59,7 @@ class InsuranceReceivableOriginTest extends TestCase
             ->where('code', 'approved')
             ->firstOrFail();
 
-        $payment = app(RecordReceivablePaymentAction::class)->handle($legacy, [
-            'amount' => '2500.00',
-            'paid_at' => '2026-06-01',
-        ], $user);
+        $payment = $this->recordSuccessfulPayment($legacy, $user, '2500.00', '2026-06-01');
         $request = app(CreateAndSubmitClaimStatusChangeFromReceivableAction::class)->handle($legacy->refresh(), $user, [
             'to_claim_status_id' => $toStatus->id,
             'reason' => 'Claim accepted by insurer.',
@@ -94,6 +93,24 @@ class InsuranceReceivableOriginTest extends TestCase
             $this->fail('Legacy-origin guard should reject this action.');
         } catch (ValidationException) {
         }
+    }
+
+    private function recordSuccessfulPayment(InsuranceReceivable $receivable, User $user, string $amount, string $paidAt): ReceivablePayment
+    {
+        $payment = ReceivablePayment::query()->create([
+            'insurance_receivable_id' => $receivable->id,
+            'amount' => $amount,
+            'paid_at' => $paidAt,
+            'created_by' => $user->id,
+        ]);
+
+        $receivable->forceFill([
+            'remaining_receivable_amount' => (string) BigDecimal::of($receivable->remaining_receivable_amount)
+                ->minus($amount)
+                ->toScale(2, RoundingMode::HalfUp),
+        ])->save();
+
+        return $payment;
     }
 
     private function seedDependencies(): void

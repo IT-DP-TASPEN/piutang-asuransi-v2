@@ -40,6 +40,9 @@ class ApprovalService
         ApprovalRequest::WORKFLOW_CKPN_ADJUSTMENT => [
             ['role_name' => 'accounting_approver'],
         ],
+        ApprovalRequest::WORKFLOW_RECEIVABLE_PAYMENT => [
+            ['role_name' => 'accounting_approver'],
+        ],
     ];
 
     /**

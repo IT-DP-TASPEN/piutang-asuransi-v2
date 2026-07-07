@@ -455,6 +455,14 @@ class InsuranceReceivable extends Model
     }
 
     /**
+     * @return HasMany<ReceivablePaymentRequest, $this>
+     */
+    public function paymentRequests(): HasMany
+    {
+        return $this->hasMany(ReceivablePaymentRequest::class, 'insurance_receivable_id');
+    }
+
+    /**
      * @return HasMany<ClaimStatusChangeRequest, $this>
      */
     public function claimStatusChangeRequests(): HasMany

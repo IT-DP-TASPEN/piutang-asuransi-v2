@@ -32,7 +32,7 @@ class InsuranceReceivablesTable
                 TextColumn::make('origin_type')
                     ->label('Origin')
                     ->badge()
-                    ->formatStateUsing(fn(?string $state): string => InsuranceReceivable::originTypeOptions()[$state] ?? (string) $state)
+                    ->formatStateUsing(fn (?string $state): string => InsuranceReceivable::originTypeOptions()[$state] ?? (string) $state)
                     ->sortable(),
                 TextColumn::make('insuranceCompany.name')
                     ->label('Insurance')
@@ -92,7 +92,7 @@ class InsuranceReceivablesTable
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()
-                    ->visible(fn(InsuranceReceivable $record): bool => auth()->user()?->can('update', $record) ?? false),
+                    ->visible(fn (InsuranceReceivable $record): bool => auth()->user()?->can('update', $record) ?? false),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

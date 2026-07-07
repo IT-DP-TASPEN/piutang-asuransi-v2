@@ -22,7 +22,7 @@ class ReceivablePaymentPolicy
 
     public function create(User $user): bool
     {
-        return $this->can($user, 'Create');
+        return false;
     }
 
     public function update(User $user, ReceivablePayment $receivablePayment): bool
