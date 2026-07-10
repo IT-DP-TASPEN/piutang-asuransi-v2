@@ -114,6 +114,7 @@ class ReceivablePaymentTest extends TestCase
         $maker = $this->userWithRole('accounting_maker', '000');
         $approver = $this->userWithRole('accounting_approver', '000');
         $receivable = $this->receivable();
+        $claimStatusId = $receivable->claim_status_id;
         $request = $this->submitCurrentAccountRequest($receivable, $maker, '2500.00');
 
         $result = app(ExecuteReceivablePaymentRequestAction::class)->handle($request, $approver, 'approved');
@@ -125,6 +126,7 @@ class ReceivablePaymentTest extends TestCase
         $this->assertSame($gl->id, $result->gl_to_gl_transaction_id);
         $this->assertSame($payment->id, $gl->receivable_payment_id);
         $this->assertSame('7500.00', $receivable->refresh()->remaining_receivable_amount);
+        $this->assertSame($claimStatusId, $receivable->claim_status_id);
         $this->assertSame($approver->id, $payment->created_by);
         $this->assertSame('2026-07-07 10:20:30', $payment->paid_at?->toDateTimeString());
         $this->assertSame(ApprovalRequest::STATUS_APPROVED, $request->approvalRequest->refresh()->status);

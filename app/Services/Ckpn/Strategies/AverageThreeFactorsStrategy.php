@@ -7,6 +7,7 @@ use App\Data\CkpnCalculationResult;
 use App\Models\CkpnCalculationRule;
 use App\Services\Ckpn\CkpnCalculationService;
 use App\Services\Ckpn\Contracts\CkpnCalculationStrategy;
+use App\Services\Ckpn\ResolveClaimStatusCkpnTreatment;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
@@ -14,6 +15,10 @@ use Illuminate\Validation\ValidationException;
 
 class AverageThreeFactorsStrategy implements CkpnCalculationStrategy
 {
+    public function __construct(
+        private readonly ResolveClaimStatusCkpnTreatment $resolveClaimStatusCkpnTreatment,
+    ) {}
+
     public function calculate(CkpnCalculationInput $input, CkpnCalculationRule $rule): CkpnCalculationResult
     {
         $candidate = $input->candidate;
@@ -36,6 +41,12 @@ class AverageThreeFactorsStrategy implements CkpnCalculationStrategy
             ]);
         }
 
+        if (blank($candidate->remainingReceivableAmount)) {
+            throw ValidationException::withMessages([
+                'remaining_receivable_amount' => 'Remaining receivable amount is required for CKPN calculation.',
+            ]);
+        }
+
         $formationDate = CarbonImmutable::parse($candidate->receivableFormationDate)->startOfDay();
         $asOfDate = CarbonImmutable::parse($input->asOfDate)->startOfDay();
         $ageDays = (int) $formationDate->diffInDays($asOfDate, false);
@@ -49,22 +60,29 @@ class AverageThreeFactorsStrategy implements CkpnCalculationStrategy
         $ageBucket = CkpnCalculationService::ageBucketFor($ageDays);
         $insuranceCompanyWeight = CkpnCalculationService::scale4($candidate->insuranceCompanyWeight);
         $ageWeight = CkpnCalculationService::scale4($ageBucket->ckpn_weight);
-        $claimStatusWeight = CkpnCalculationService::scale4($candidate->claimStatusWeight);
+        $claimStatusTreatment = $this->resolveClaimStatusCkpnTreatment->handle(
+            $candidate->claimStatusCode,
+            $candidate->receivableAmount,
+            $candidate->remainingReceivableAmount,
+        );
+        $claimStatusFactor = CkpnCalculationService::scale4($claimStatusTreatment->factor);
 
         $finalRate = BigDecimal::of($insuranceCompanyWeight)
             ->plus($ageWeight)
-            ->plus($claimStatusWeight)
+            ->plus($claimStatusFactor)
             ->dividedBy('3', 4, RoundingMode::HalfUp);
-        $explanation = 'Average of insurance company, age bucket, and claim status weights divided by 3.';
+        $explanation = 'Average of insurance company weight, age bucket weight, and derived claim status factor divided by 3.';
 
-        $ckpnAmount = BigDecimal::of($candidate->receivableAmount)
+        $ckpnAmount = BigDecimal::of($candidate->remainingReceivableAmount)
             ->multipliedBy($finalRate)
             ->dividedBy('100', 2, RoundingMode::HalfUp);
 
         return new CkpnCalculationResult(
             insuranceCompanyWeight: $insuranceCompanyWeight,
             ageWeight: $ageWeight,
-            claimStatusWeight: $claimStatusWeight,
+            claimStatusFactor: $claimStatusFactor,
+            claimStatusName: $claimStatusTreatment->claimStatusName,
+            claimStatusKeterangan: $claimStatusTreatment->keterangan,
             finalCkpnRate: (string) $finalRate->toScale(4, RoundingMode::HalfUp),
             ckpnAmount: (string) $ckpnAmount->toScale(2, RoundingMode::HalfUp),
             calculationExplanation: $explanation,

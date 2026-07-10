@@ -91,11 +91,19 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame($receivable->id, $item->insurance_receivable_id);
         $this->assertSame('Snapshot Customer', $item->customer_name);
         $this->assertSame('TEST SNAPSHOT', $item->insurance_company_name);
+        $this->assertSame(ClaimStatus::ON_PROCESS_CODE, $item->claim_status_code);
+        $this->assertSame(ClaimStatus::LABELS[ClaimStatus::ON_PROCESS_CODE], $item->claim_status_name);
+        $this->assertSame('ON PROSES', $item->claim_status_keterangan);
+        $this->assertSame('10000.00', $item->receivable_amount);
+        $this->assertSame('10000.00', $item->remaining_receivable_amount);
+        $this->assertSame('0.0000', $item->claim_status_weight);
         $this->assertSame('1.0000', $item->calculated_ckpn_rate);
         $this->assertSame('100.00', $item->calculated_ckpn_amount);
         $this->assertSame('1.0000', $item->effective_ckpn_rate);
         $this->assertSame('100.00', $item->effective_ckpn_amount);
         $this->assertSame('TEST SNAPSHOT', $item->snapshot['insurance_company']['name']);
+        $this->assertSame('ON PROSES', $item->snapshot['claim_status']['keterangan']);
+        $this->assertSame('0.0000', $item->snapshot['claim_status']['factor']);
     }
 
     public function test_master_changes_do_not_mutate_existing_workpaper_item_snapshot(): void
@@ -117,7 +125,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $item = $workpaper->refresh()->items()->sole();
 
         $insuranceCompany->forceFill(['name' => 'CHANGED', 'ckpn_weight' => '100.0000'])->save();
-        $receivable->claimStatus->forceFill(['name' => 'Changed Status', 'ckpn_weight' => '100.0000'])->save();
+        $receivable->claimStatus->forceFill(['name' => 'Changed Status'])->save();
 
         $item = $item->refresh();
         $this->assertSame('IMMUTABLE', $item->insurance_company_name);
@@ -197,7 +205,8 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame(InsuranceReceivable::ORIGIN_TYPE_LEGACY, $item->origin_type);
         $this->assertSame($legacy->id, $item->insurance_receivable_id);
         $this->assertSame('Legacy', $item->source_label);
-        $this->assertSame('5000.00', $item->receivable_amount);
+        $this->assertSame('10000.00', $item->receivable_amount);
+        $this->assertSame('5000.00', $item->remaining_receivable_amount);
         $this->assertSame('5000.00', $workpaper->total_receivable_amount);
     }
 
@@ -240,7 +249,8 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $item = $workpaper->items()->sole();
 
         $this->assertSame(InsuranceReceivable::ORIGIN_TYPE_WORKFLOW, $item->origin_type);
-        $this->assertSame('7000.00', $item->receivable_amount);
+        $this->assertSame('10000.00', $item->receivable_amount);
+        $this->assertSame('7000.00', $item->remaining_receivable_amount);
         $this->assertSame('7000.00', $workpaper->total_receivable_amount);
     }
 
@@ -263,12 +273,14 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->recordSuccessfulPayment($receivable, $maker, '3000.00', '2026-07-01');
 
         $this->assertSame('10000.00', $lockedItem->refresh()->receivable_amount);
+        $this->assertSame('10000.00', $lockedItem->refresh()->remaining_receivable_amount);
         $this->assertSame('10000.00', $lockedWorkpaper->refresh()->total_receivable_amount);
 
         $nextWorkpaper = CkpnWorkpaper::query()->create(['period' => '2026-07-31', 'branch_office_id' => $branch->id]);
         $nextWorkpaper = app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($nextWorkpaper);
 
-        $this->assertSame('7000.00', $nextWorkpaper->items()->sole()->receivable_amount);
+        $this->assertSame('10000.00', $nextWorkpaper->items()->sole()->receivable_amount);
+        $this->assertSame('7000.00', $nextWorkpaper->items()->sole()->remaining_receivable_amount);
         $this->assertSame('7000.00', $nextWorkpaper->total_receivable_amount);
     }
 

@@ -3,6 +3,7 @@
 namespace App\Actions\ClaimStatusChangeRequest;
 
 use App\Models\ApprovalRequest;
+use App\Models\ClaimStatus;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
@@ -47,6 +48,8 @@ class SubmitClaimStatusChangeRequestAction
             ]);
         }
 
+        $this->assertDecisionTarget($request->to_claim_status_id);
+
         return DB::transaction(function () use ($request, $user, $notes): ClaimStatusChangeRequest {
             $request->forceFill([
                 'from_claim_status_id' => $request->insuranceReceivable->claim_status_id,
@@ -73,5 +76,18 @@ class SubmitClaimStatusChangeRequestAction
 
             return $request->refresh();
         });
+    }
+
+    private function assertDecisionTarget(mixed $targetStatusId): void
+    {
+        if (! ClaimStatus::query()
+            ->whereKey($targetStatusId)
+            ->where('is_active', true)
+            ->whereIn('code', ClaimStatus::DECISION_CODES)
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'to_claim_status_id' => 'Target claim status must be an active claim decision status.',
+            ]);
+        }
     }
 }

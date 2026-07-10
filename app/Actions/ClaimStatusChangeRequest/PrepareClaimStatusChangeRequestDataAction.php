@@ -2,6 +2,7 @@
 
 namespace App\Actions\ClaimStatusChangeRequest;
 
+use App\Models\ClaimStatus;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
@@ -41,11 +42,26 @@ class PrepareClaimStatusChangeRequestDataAction
             ]);
         }
 
+        $this->assertDecisionTarget($data['to_claim_status_id'] ?? null);
+
         return [
             ...$data,
             'from_claim_status_id' => $receivable->claim_status_id,
             'requested_by' => $data['requested_by'] ?? $user->id,
             'status' => $data['status'] ?? ClaimStatusChangeRequest::STATUS_DRAFT,
         ];
+    }
+
+    private function assertDecisionTarget(mixed $targetStatusId): void
+    {
+        if (! ClaimStatus::query()
+            ->whereKey($targetStatusId)
+            ->where('is_active', true)
+            ->whereIn('code', ClaimStatus::DECISION_CODES)
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'to_claim_status_id' => 'Target claim status must be an active claim decision status.',
+            ]);
+        }
     }
 }

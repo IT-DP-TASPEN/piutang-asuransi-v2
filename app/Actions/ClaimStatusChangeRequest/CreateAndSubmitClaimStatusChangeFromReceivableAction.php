@@ -3,6 +3,7 @@
 namespace App\Actions\ClaimStatusChangeRequest;
 
 use App\Models\ApprovalRequest;
+use App\Models\ClaimStatus;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
@@ -41,6 +42,8 @@ class CreateAndSubmitClaimStatusChangeFromReceivableAction
             ]);
         }
 
+        $this->assertDecisionTarget($data['to_claim_status_id'] ?? null);
+
         return DB::transaction(function () use ($receivable, $user, $data): ClaimStatusChangeRequest {
             $request = $receivable->claimStatusChangeRequests()->create([
                 'from_claim_status_id' => $receivable->claim_status_id,
@@ -70,5 +73,18 @@ class CreateAndSubmitClaimStatusChangeFromReceivableAction
 
             return $request->refresh();
         });
+    }
+
+    private function assertDecisionTarget(mixed $targetStatusId): void
+    {
+        if (! ClaimStatus::query()
+            ->whereKey($targetStatusId)
+            ->where('is_active', true)
+            ->whereIn('code', ClaimStatus::DECISION_CODES)
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'to_claim_status_id' => 'Target claim status must be an active claim decision status.',
+            ]);
+        }
     }
 }

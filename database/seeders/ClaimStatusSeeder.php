@@ -15,40 +15,27 @@ class ClaimStatusSeeder extends Seeder
         $statuses = [
             [
                 'code' => ClaimStatus::DEFAULT_CODE,
-                'name' => 'On proses',
-                'ckpn_weight' => '0',
+                'name' => ClaimStatus::LABELS[ClaimStatus::ON_PROCESS_CODE],
                 'is_default' => true,
                 'is_terminal' => false,
             ],
             [
-                'code' => 'approved',
-                'name' => 'Approved',
-                'ckpn_weight' => '0',
-                'is_default' => false,
-                'is_terminal' => false,
-            ],
-            [
-                'code' => 'reject_loss',
-                'name' => 'DITOLAK ASURANSI',
-                'ckpn_weight' => '100',
+                'code' => ClaimStatus::APPROVED_CODE,
+                'name' => ClaimStatus::LABELS[ClaimStatus::APPROVED_CODE],
                 'is_default' => false,
                 'is_terminal' => true,
             ],
             [
-                'code' => 'reject_installment_heir',
-                'name' => 'DICICIL AHLI WARIS',
-                'ckpn_weight' => '0.5',
+                'code' => ClaimStatus::REJECTED_CODE,
+                'name' => ClaimStatus::LABELS[ClaimStatus::REJECTED_CODE],
                 'is_default' => false,
-                'is_terminal' => false,
-            ],
-            [
-                'code' => 'installment_insurance',
-                'name' => 'DICICIL ASURANSI',
-                'ckpn_weight' => '0',
-                'is_default' => false,
-                'is_terminal' => false,
+                'is_terminal' => true,
             ],
         ];
+
+        ClaimStatus::query()
+            ->whereNotIn('code', ClaimStatus::DECISION_CODES)
+            ->delete();
 
         foreach ($statuses as $status) {
             ClaimStatus::query()->updateOrCreate(

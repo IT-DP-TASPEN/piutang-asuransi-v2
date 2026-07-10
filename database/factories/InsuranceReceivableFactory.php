@@ -64,7 +64,7 @@ class InsuranceReceivableFactory extends Factory
         );
         $claimStatus = ClaimStatus::query()->firstOrCreate(
             ['code' => ClaimStatus::DEFAULT_CODE],
-            ['name' => 'On proses', 'ckpn_weight' => '0', 'is_default' => true, 'is_terminal' => false, 'is_active' => true],
+            ['name' => ClaimStatus::LABELS[ClaimStatus::DEFAULT_CODE], 'is_default' => true, 'is_terminal' => false, 'is_active' => true],
         );
 
         return [

@@ -69,14 +69,17 @@ class GenerateMonthlyCkpnWorkpaperAction
                     'loan_account_number' => $candidate->loanAccountNumber,
                     'customer_name' => $candidate->customerName,
                     'insurance_company_name' => $candidate->insuranceCompanyName,
-                    'claim_status_name' => $candidate->claimStatusName,
+                    'claim_status_code' => $candidate->claimStatusCode,
+                    'claim_status_name' => $result->claimStatusName,
+                    'claim_status_keterangan' => $result->claimStatusKeterangan,
                     'receivable_formation_date' => $candidate->receivableFormationDate,
                     'receivable_amount' => $candidate->receivableAmount,
+                    'remaining_receivable_amount' => $candidate->remainingReceivableAmount,
                     'age_days' => $result->ageDays,
                     'age_bucket_name' => $result->ageBucketName,
                     'insurance_company_weight' => $result->insuranceCompanyWeight,
                     'age_weight' => $result->ageWeight,
-                    'claim_status_weight' => $result->claimStatusWeight,
+                    'claim_status_weight' => $result->claimStatusFactor,
                     'calculated_ckpn_rate' => $result->finalCkpnRate,
                     'calculated_ckpn_amount' => $result->ckpnAmount,
                     'adjusted_ckpn_rate' => null,
@@ -91,7 +94,7 @@ class GenerateMonthlyCkpnWorkpaperAction
                     'snapshot' => $this->snapshot($candidate, $result),
                 ]);
 
-                $totalReceivable = $totalReceivable->plus($candidate->receivableAmount);
+                $totalReceivable = $totalReceivable->plus($candidate->remainingReceivableAmount);
                 $totalCalculatedCkpn = $totalCalculatedCkpn->plus($result->ckpnAmount);
             }
 
@@ -142,11 +145,13 @@ class GenerateMonthlyCkpnWorkpaperAction
             'claim_status' => [
                 'id' => $candidate->claimStatusId,
                 'code' => $candidate->claimStatusCode,
-                'name' => $candidate->claimStatusName,
-                'ckpn_weight' => $result->claimStatusWeight,
+                'name' => $result->claimStatusName,
+                'keterangan' => $result->claimStatusKeterangan,
+                'factor' => $result->claimStatusFactor,
             ],
             'receivable_formation_date' => $candidate->receivableFormationDate,
             'receivable_amount' => $candidate->receivableAmount,
+            'remaining_receivable_amount' => $candidate->remainingReceivableAmount,
             'age_days' => $result->ageDays,
             'age_bucket' => [
                 'id' => $result->ageBucketId,

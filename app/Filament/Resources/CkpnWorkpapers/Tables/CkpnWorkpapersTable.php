@@ -87,13 +87,13 @@ class CkpnWorkpapersTable
                 SelectFilter::make('period')
                     ->label('Tanggal Cutoff')
                     ->options(
-                        fn() => CkpnWorkpaper::query()
+                        fn () => CkpnWorkpaper::query()
                             ->selectRaw('DATE(period) as period_date')
                             ->whereNotNull('period')
                             ->distinct()
                             ->orderByDesc('period_date')
                             ->pluck('period_date', 'period_date')
-                            ->mapWithKeys(fn($date) => [
+                            ->mapWithKeys(fn ($date) => [
                                 $date => Carbon::parse($date)->translatedFormat('d M Y'),
                             ])
                             ->toArray()
@@ -101,7 +101,7 @@ class CkpnWorkpapersTable
                     ->query(function (Builder $query, array $data): Builder {
                         return $query->when(
                             $data['value'] ?? null,
-                            fn(Builder $query, string $date) => $query->whereDate('period', $date),
+                            fn (Builder $query, string $date) => $query->whereDate('period', $date),
                         );
                     })
                     ->searchable()
@@ -117,13 +117,13 @@ class CkpnWorkpapersTable
             ->recordActions([
                 ViewAction::make(),
                 EditAction::make()
-                    ->visible(fn(CkpnWorkpaper $record): bool => (auth()->user()?->can('update', $record) ?? false)
+                    ->visible(fn (CkpnWorkpaper $record): bool => (auth()->user()?->can('update', $record) ?? false)
                         && in_array($record->status, [
                             CkpnWorkpaper::STATUS_DRAFT,
                             CkpnWorkpaper::STATUS_RETURNED,
                         ], true)),
                 DeleteAction::make()
-                    ->visible(fn(CkpnWorkpaper $record): bool => (auth()->user()?->can('delete', $record) ?? false)
+                    ->visible(fn (CkpnWorkpaper $record): bool => (auth()->user()?->can('delete', $record) ?? false)
                         && $record->status === CkpnWorkpaper::STATUS_DRAFT),
             ])
             ->groups([

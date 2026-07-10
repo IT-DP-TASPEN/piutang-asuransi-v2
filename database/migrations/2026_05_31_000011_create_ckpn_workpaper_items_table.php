@@ -22,9 +22,12 @@ return new class extends Migration
             $table->string('loan_account_number')->nullable();
             $table->string('customer_name')->nullable();
             $table->string('insurance_company_name')->nullable();
+            $table->string('claim_status_code')->nullable();
             $table->string('claim_status_name')->nullable();
+            $table->string('claim_status_keterangan')->nullable();
             $table->date('receivable_formation_date')->nullable();
             $table->decimal('receivable_amount', 20, 2);
+            $table->decimal('remaining_receivable_amount', 20, 2);
             $table->integer('age_days');
             $table->string('age_bucket_name')->nullable();
             $table->decimal('insurance_company_weight', 8, 4);

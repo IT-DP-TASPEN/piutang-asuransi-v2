@@ -38,10 +38,10 @@ class ReceivablePaymentRequestsRelationManager extends RelationManager
                 TextColumn::make('submitted_at')->dateTime()->sortable(),
                 TextColumn::make('amount')->money('IDR', 0, 'id_ID')->sortable(),
                 TextColumn::make('payment_source')
-                    ->formatStateUsing(fn(?string $state): string => ReceivablePaymentRequest::paymentSourceOptions()[$state] ?? (string) $state)
+                    ->formatStateUsing(fn (?string $state): string => ReceivablePaymentRequest::paymentSourceOptions()[$state] ?? (string) $state)
                     ->badge(),
                 TextColumn::make('status')
-                    ->formatStateUsing(fn(?string $state): string => ReceivablePaymentRequest::statusOptions()[$state] ?? (string) $state)
+                    ->formatStateUsing(fn (?string $state): string => ReceivablePaymentRequest::statusOptions()[$state] ?? (string) $state)
                     ->badge()
                     ->sortable(),
                 TextColumn::make('requester.name')->label('Requested by')->sortable(),
@@ -50,19 +50,19 @@ class ReceivablePaymentRequestsRelationManager extends RelationManager
             ])
             ->recordActions([
                 Action::make('approve')
-                    ->visible(fn(ReceivablePaymentRequest $record): bool => (auth()->user()?->can('approve', $record) ?? false)
+                    ->visible(fn (ReceivablePaymentRequest $record): bool => (auth()->user()?->can('approve', $record) ?? false)
                         && $record->status === ReceivablePaymentRequest::STATUS_SUBMITTED)
                     ->requiresConfirmation()
                     ->form([Textarea::make('notes')->maxLength(65535)])
-                    ->action(fn(ReceivablePaymentRequest $record, array $data): mixed => $this->execute($record, $data['notes'] ?? null)),
+                    ->action(fn (ReceivablePaymentRequest $record, array $data): mixed => $this->execute($record, $data['notes'] ?? null)),
                 Action::make('retry')
-                    ->visible(fn(ReceivablePaymentRequest $record): bool => auth()->user()?->can('retry', $record) ?? false)
+                    ->visible(fn (ReceivablePaymentRequest $record): bool => auth()->user()?->can('retry', $record) ?? false)
                     ->requiresConfirmation()
                     ->form([Textarea::make('notes')->maxLength(65535)])
-                    ->action(fn(ReceivablePaymentRequest $record, array $data): mixed => $this->execute($record, $data['notes'] ?? null)),
+                    ->action(fn (ReceivablePaymentRequest $record, array $data): mixed => $this->execute($record, $data['notes'] ?? null)),
                 Action::make('reject')
                     ->color('danger')
-                    ->visible(fn(ReceivablePaymentRequest $record): bool => auth()->user()?->can('reject', $record) ?? false)
+                    ->visible(fn (ReceivablePaymentRequest $record): bool => auth()->user()?->can('reject', $record) ?? false)
                     ->requiresConfirmation()
                     ->form([Textarea::make('notes')->required()->maxLength(65535)])
                     ->action(function (ReceivablePaymentRequest $record, array $data): void {

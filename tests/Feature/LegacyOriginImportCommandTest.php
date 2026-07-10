@@ -43,7 +43,7 @@ class LegacyOriginImportCommandTest extends TestCase
         $this->assertSame('2023-04-01', $first->receivable_formation_date?->toDateString());
         $this->assertSame(BranchOffice::query()->where('branch_code', '001')->value('id'), $first->branch_office_id);
         $this->assertSame(InsuranceCompany::query()->where('name', 'Taspen Life')->value('id'), $first->insurance_company_id);
-        $this->assertSame(ClaimStatus::query()->where('name', 'On Proses')->value('id'), $first->claim_status_id);
+        $this->assertSame(ClaimStatus::query()->where('name', ClaimStatus::LABELS[ClaimStatus::DEFAULT_CODE])->value('id'), $first->claim_status_id);
         $this->assertNull($first->created_by);
 
         $this->assertSame('16826662.00', $second->receivable_amount);
@@ -85,8 +85,7 @@ class LegacyOriginImportCommandTest extends TestCase
 
         ClaimStatus::create([
             'code' => ClaimStatus::DEFAULT_CODE,
-            'name' => 'On Proses',
-            'ckpn_weight' => '0',
+            'name' => ClaimStatus::LABELS[ClaimStatus::DEFAULT_CODE],
             'is_default' => true,
             'is_terminal' => false,
             'is_active' => true,

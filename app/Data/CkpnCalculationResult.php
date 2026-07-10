@@ -7,7 +7,9 @@ class CkpnCalculationResult
     public function __construct(
         public readonly string $insuranceCompanyWeight,
         public readonly string $ageWeight,
-        public readonly string $claimStatusWeight,
+        public readonly string $claimStatusFactor,
+        public readonly string $claimStatusName,
+        public readonly string $claimStatusKeterangan,
         public readonly string $finalCkpnRate,
         public readonly string $ckpnAmount,
         public readonly string $calculationExplanation,

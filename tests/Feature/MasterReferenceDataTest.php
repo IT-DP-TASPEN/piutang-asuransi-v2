@@ -8,6 +8,7 @@ use App\Models\ClaimStatus;
 use App\Models\InsuranceCompany;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class MasterReferenceDataTest extends TestCase
@@ -23,18 +24,26 @@ class MasterReferenceDataTest extends TestCase
             BranchOffice::query()->orderBy('branch_code')->pluck('branch_code')->all(),
         );
 
-        $this->assertSame('0.5000', InsuranceCompany::query()->where('name', 'HEKSA')->firstOrFail()->ckpn_weight);
-        $this->assertSame('50.0000', InsuranceCompany::query()->where('name', 'ABB')->firstOrFail()->ckpn_weight);
+        $this->assertSame('0.5000', InsuranceCompany::query()->where('name', 'HEKSA INSURANCE')->firstOrFail()->ckpn_weight);
+        $this->assertSame('50.0000', InsuranceCompany::query()->where('name', 'PT ASURANSI BHAKTI BHAYANGKARA')->firstOrFail()->ckpn_weight);
         $this->assertSame('100.0000', InsuranceCompany::query()->where('name', 'TASPEN LIFE')->firstOrFail()->ckpn_weight);
 
         $defaultStatus = ClaimStatus::query()->where('is_default', true)->sole();
+        $this->assertFalse(Schema::hasColumn('claim_statuses', 'ckpn_weight'));
         $this->assertSame(ClaimStatus::DEFAULT_CODE, $defaultStatus->code);
-        $this->assertSame('On proses', $defaultStatus->name);
+        $this->assertSame(ClaimStatus::LABELS[ClaimStatus::DEFAULT_CODE], $defaultStatus->name);
+        $this->assertSame(
+            [ClaimStatus::APPROVED_CODE, ClaimStatus::ON_PROCESS_CODE, ClaimStatus::REJECTED_CODE],
+            ClaimStatus::query()->where('is_active', true)->orderBy('code')->pluck('code')->all(),
+        );
+        $this->assertDatabaseMissing('claim_statuses', ['code' => 'reject_loss']);
+        $this->assertDatabaseMissing('claim_statuses', ['code' => 'reject_installment_heir']);
+        $this->assertDatabaseMissing('claim_statuses', ['code' => 'installment_insurance']);
 
         $activeRule = CkpnCalculationRule::query()->where('is_active', true)->sole();
-        $this->assertSame('average_three_factors_with_reject_loss_override', $activeRule->code);
+        $this->assertSame('average_three_factors', $activeRule->code);
         $this->assertSame(
-            'App\\Services\\Ckpn\\Strategies\\AverageThreeFactorsWithRejectLossOverrideStrategy',
+            'App\\Services\\Ckpn\\Strategies\\AverageThreeFactorsStrategy',
             $activeRule->strategy_class,
         );
 

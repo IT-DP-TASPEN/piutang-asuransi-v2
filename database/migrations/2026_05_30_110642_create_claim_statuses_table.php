@@ -15,7 +15,6 @@ return new class extends Migration
             $table->id();
             $table->string('code')->unique();
             $table->string('name');
-            $table->decimal('ckpn_weight', 8, 4);
             $table->boolean('is_default')->default(false);
             $table->boolean('is_terminal')->default(false);
             $table->boolean('is_active')->default(true);

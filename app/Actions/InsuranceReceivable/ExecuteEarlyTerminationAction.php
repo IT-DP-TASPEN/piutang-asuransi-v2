@@ -41,7 +41,7 @@ class ExecuteEarlyTerminationAction
             ]);
         }
 
-        $transaction = DB::transaction(fn(): EarlyTerminationTransaction => $this->findOrCreateTransaction($insuranceReceivable, $user));
+        $transaction = DB::transaction(fn (): EarlyTerminationTransaction => $this->findOrCreateTransaction($insuranceReceivable, $user));
         $payload = $transaction->request_payload ?: $this->payloadFor($insuranceReceivable, $transaction->trx_reference);
 
         if ($transaction->request_payload === null) {

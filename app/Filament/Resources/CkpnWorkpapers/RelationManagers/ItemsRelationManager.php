@@ -47,9 +47,12 @@ class ItemsRelationManager extends RelationManager
                 TextColumn::make('customer_name')->label('Customer')->searchable(),
                 TextColumn::make('insurance_company_name')->label('Insurance'),
                 TextColumn::make('claim_status_name')->label('Claim status')->badge(),
+                TextColumn::make('claim_status_keterangan')->label('Keterangan')->badge(),
                 TextColumn::make('age_days')->label('Age days')->sortable(),
                 TextColumn::make('age_bucket_name')->label('Age bucket'),
                 TextColumn::make('receivable_amount')->money('IDR', 0, 'id_ID')->sortable(),
+                TextColumn::make('remaining_receivable_amount')->label('Remaining')->money('IDR', 0, 'id_ID')->sortable(),
+                TextColumn::make('claim_status_weight')->label('Claim status factor')->numeric(4)->suffix('%')->sortable(),
                 TextColumn::make('calculated_ckpn_rate')->label('Calculated rate')->numeric(4)->suffix('%')->sortable(),
                 TextColumn::make('calculated_ckpn_amount')->label('Calculated CKPN')->money('IDR', 0, 'id_ID')->sortable(),
                 TextColumn::make('adjusted_ckpn_rate')->label('Adjusted rate')->numeric(4)->suffix('%')->placeholder('-')->sortable(),
@@ -80,6 +83,14 @@ class ItemsRelationManager extends RelationManager
                         ->distinct()
                         ->orderBy('claim_status_name')
                         ->pluck('claim_status_name', 'claim_status_name')
+                        ->all()),
+                SelectFilter::make('claim_status_keterangan')
+                    ->label('Keterangan')
+                    ->options(fn (): array => CkpnWorkpaperItem::query()
+                        ->whereNotNull('claim_status_keterangan')
+                        ->distinct()
+                        ->orderBy('claim_status_keterangan')
+                        ->pluck('claim_status_keterangan', 'claim_status_keterangan')
                         ->all()),
                 SelectFilter::make('insurance_company_name')
                     ->label('Insurance company')

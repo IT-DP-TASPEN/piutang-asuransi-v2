@@ -20,6 +20,7 @@ class CollectCurrentReceivableCandidatesAction
         return InsuranceReceivable::query()
             ->with(['branchOffice', 'insuranceCompany', 'claimStatus'])
             ->whereNotNull('receivable_formation_date')
+            ->whereNotNull('receivable_amount')
             ->whereDate('receivable_formation_date', '<=', $periodEnd)
             ->where('remaining_receivable_amount', '>', 0)
             ->whereNotIn('workflow_status', [
@@ -44,9 +45,9 @@ class CollectCurrentReceivableCandidatesAction
                 claimStatusId: $receivable->claim_status_id,
                 claimStatusCode: $receivable->claimStatus->code,
                 claimStatusName: $receivable->claimStatus->name,
-                claimStatusWeight: $receivable->claimStatus->ckpn_weight,
                 receivableFormationDate: $receivable->receivable_formation_date->toDateString(),
-                receivableAmount: $receivable->remaining_receivable_amount,
+                receivableAmount: $receivable->receivable_amount,
+                remainingReceivableAmount: $receivable->remaining_receivable_amount,
                 dateOfDeath: $receivable->date_of_death?->toDateString(),
                 creditLimit: $receivable->credit_limit,
                 loanOutstanding: $receivable->loan_outstanding,

@@ -54,7 +54,7 @@ class ReceivablePaymentsRelationManager extends RelationManager
             ->headerActions([
                 Action::make('createPaymentRequest')
                     ->label('Create Receivable Payment')
-                    ->visible(fn(): bool => $this->canCreatePaymentRequest())
+                    ->visible(fn (): bool => $this->canCreatePaymentRequest())
                     ->schema([
                         Select::make('payment_source')
                             ->label('Payment Source')
@@ -99,9 +99,9 @@ class ReceivablePaymentsRelationManager extends RelationManager
                                     ->disabled()
                                     ->dehydrated(false)
                                     ->columnSpanFull()
-                                    ->visible(fn($get): bool => $get('preview_error') !== null),
+                                    ->visible(fn ($get): bool => $get('preview_error') !== null),
                             ])
-                            ->visible(fn($get): bool => $get('payment_source') === ReceivablePaymentRequest::PAYMENT_SOURCE_DEBTOR_SAVING),
+                            ->visible(fn ($get): bool => $get('payment_source') === ReceivablePaymentRequest::PAYMENT_SOURCE_DEBTOR_SAVING),
                         TextInput::make('amount')
                             ->numeric()
                             ->step('0.01')
@@ -128,6 +128,7 @@ class ReceivablePaymentsRelationManager extends RelationManager
                                 ->title('Failed to submit receivable payment request')
                                 ->body($exception->getMessage())
                                 ->send();
+
                             return;
                         }
 

@@ -31,7 +31,7 @@ class ExecuteGlToGlTransferAction
             ]);
         }
 
-        $transaction = DB::transaction(fn(): GlToGlTransaction => $this->findOrCreateTransaction($journal, $user));
+        $transaction = DB::transaction(fn (): GlToGlTransaction => $this->findOrCreateTransaction($journal, $user));
         $payload = $transaction->request_payload ?: $this->payloadBuilder->build(
             journal: $journal,
             referenceNumber: $transaction->reference_number,
@@ -70,7 +70,7 @@ class ExecuteGlToGlTransferAction
     {
         $existing = $journal->glToGlTransactions()
             ->where('purpose', GlToGlTransaction::PURPOSE_CKPN_JOURNAL)
-            ->where(fn($query) => $query
+            ->where(fn ($query) => $query
                 ->whereNull('status')
                 ->orWhere('status', '!=', GlToGlTransaction::STATUS_SUCCESS))
             ->latest('id')

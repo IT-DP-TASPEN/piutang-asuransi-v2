@@ -53,7 +53,7 @@ class CkpnAdjustmentsTable
                 Action::make('cancel')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->visible(fn(CkpnAdjustment $record): bool => (auth()->user()?->can('cancel', $record) ?? false)
+                    ->visible(fn (CkpnAdjustment $record): bool => (auth()->user()?->can('cancel', $record) ?? false)
                         && in_array($record->status, [
                             CkpnAdjustment::STATUS_DRAFT,
                             CkpnAdjustment::STATUS_RETURNED,

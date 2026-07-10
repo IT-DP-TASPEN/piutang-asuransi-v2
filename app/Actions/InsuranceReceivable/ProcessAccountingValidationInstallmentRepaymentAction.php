@@ -78,7 +78,7 @@ class ProcessAccountingValidationInstallmentRepaymentAction
             }
 
             $this->validateBalance($repayment, $user);
-            $reference = 'IRREP' . now()->format('YmdHisv');
+            $reference = 'IRREP'.now()->format('YmdHisv');
             $payload = $this->repaymentPayload($repayment, $reference);
 
             $repayment = DB::transaction(function () use ($repayment, $payload, $reference, $user): InsuranceReceivableInstallmentRepayment {

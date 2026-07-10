@@ -18,13 +18,6 @@ class CkpnCalculationRuleSeeder extends Seeder
                 'name' => 'Average Three Factors',
                 'strategy_class' => 'App\\Services\\Ckpn\\Strategies\\AverageThreeFactorsStrategy',
                 'description' => null,
-                'is_active' => false,
-            ],
-            [
-                'code' => 'average_three_factors_with_reject_loss_override',
-                'name' => 'Average Three Factors With Reject Loss Override',
-                'strategy_class' => 'App\\Services\\Ckpn\\Strategies\\AverageThreeFactorsWithRejectLossOverrideStrategy',
-                'description' => null,
                 'is_active' => true,
             ],
         ];

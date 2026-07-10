@@ -24,13 +24,6 @@ class ClaimStatusForm
                         TextInput::make('name')
                             ->required()
                             ->maxLength(255),
-                        TextInput::make('ckpn_weight')
-                            ->label('CKPN weight (%)')
-                            ->required()
-                            ->numeric()
-                            ->minValue(0)
-                            ->maxValue(100)
-                            ->step('0.0001'),
                         Toggle::make('is_default')
                             ->label('Default')
                             ->default(false)

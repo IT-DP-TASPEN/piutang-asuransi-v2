@@ -92,37 +92,40 @@ class CkpnCalculationTest extends TestCase
         $this->assertSame('100.00', $result->ckpnAmount);
     }
 
-    public function test_reject_loss_over_365_days_returns_100_percent(): void
+    public function test_rejected_partial_remaining_uses_half_percent_factor_in_average(): void
     {
         $this->seedDependencies();
-        $rejectLoss = ClaimStatus::query()->where('code', 'reject_loss')->firstOrFail();
+        $rejected = ClaimStatus::query()->where('code', ClaimStatus::REJECTED_CODE)->firstOrFail();
         $receivable = $this->receivable([
-            'claim_status_id' => $rejectLoss->id,
+            'claim_status_id' => $rejected->id,
+            'receivable_formation_date' => '2026-01-01',
+            'receivable_amount' => '10000.00',
+            'remaining_receivable_amount' => '6000.00',
+        ]);
+
+        $result = app(CkpnCalculationService::class)->calculate($this->input($receivable, '2026-06-30'));
+
+        $this->assertSame('0.5000', $result->claimStatusFactor);
+        $this->assertSame('0.1667', $result->finalCkpnRate);
+        $this->assertSame('10.00', $result->ckpnAmount);
+    }
+
+    public function test_rejected_over_365_days_uses_plain_average_not_special_override(): void
+    {
+        $this->seedDependencies();
+        $rejected = ClaimStatus::query()->where('code', ClaimStatus::REJECTED_CODE)->firstOrFail();
+        $receivable = $this->receivable([
+            'claim_status_id' => $rejected->id,
             'receivable_formation_date' => '2026-01-01',
             'receivable_amount' => '10000.00',
         ]);
 
         $result = app(CkpnCalculationService::class)->calculate($this->input($receivable, '2027-01-02'));
 
-        $this->assertSame('100.0000', $result->finalCkpnRate);
-        $this->assertSame('10000.00', $result->ckpnAmount);
-        $this->assertStringContainsString('overridden', $result->calculationExplanation);
-    }
-
-    public function test_reject_loss_365_days_or_less_uses_average_rule(): void
-    {
-        $this->seedDependencies();
-        $rejectLoss = ClaimStatus::query()->where('code', 'reject_loss')->firstOrFail();
-        $receivable = $this->receivable([
-            'claim_status_id' => $rejectLoss->id,
-            'receivable_formation_date' => '2026-01-01',
-            'receivable_amount' => '10000.00',
-        ]);
-
-        $result = app(CkpnCalculationService::class)->calculate($this->input($receivable, '2026-06-30'));
-
-        $this->assertSame('33.3333', $result->finalCkpnRate);
-        $this->assertSame('3333.33', $result->ckpnAmount);
+        $this->assertSame('100.0000', $result->ageWeight);
+        $this->assertSame('100.0000', $result->claimStatusFactor);
+        $this->assertSame('66.6667', $result->finalCkpnRate);
+        $this->assertSame('6666.67', $result->ckpnAmount);
     }
 
     public function test_service_requires_active_valid_strategy_rule(): void
@@ -198,9 +201,9 @@ class CkpnCalculationTest extends TestCase
                 claimStatusId: $receivable->claim_status_id,
                 claimStatusCode: $receivable->claimStatus->code,
                 claimStatusName: $receivable->claimStatus->name,
-                claimStatusWeight: $receivable->claimStatus->ckpn_weight,
                 receivableFormationDate: $receivable->receivable_formation_date->toDateString(),
                 receivableAmount: $receivable->receivable_amount,
+                remainingReceivableAmount: $receivable->remaining_receivable_amount,
             ),
             asOfDate: CarbonImmutable::parse($asOfDate),
         );

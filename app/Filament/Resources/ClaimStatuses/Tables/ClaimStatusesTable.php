@@ -23,11 +23,6 @@ class ClaimStatusesTable
                 TextColumn::make('name')
                     ->searchable()
                     ->sortable(),
-                TextColumn::make('ckpn_weight')
-                    ->label('CKPN weight')
-                    ->numeric(2)
-                    ->suffix('%')
-                    ->sortable(),
                 IconColumn::make('is_default')
                     ->label('Default')
                     ->boolean()

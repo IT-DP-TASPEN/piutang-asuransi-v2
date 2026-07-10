@@ -47,6 +47,7 @@ class ClaimStatusChangeRequestForm
                             ->label('Target claim status')
                             ->options(fn (): array => ClaimStatus::query()
                                 ->where('is_active', true)
+                                ->whereIn('code', ClaimStatus::DECISION_CODES)
                                 ->orderBy('name')
                                 ->pluck('name', 'id')
                                 ->all())

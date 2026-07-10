@@ -25,6 +25,7 @@ use Database\Seeders\InsuranceCoverLetterSettingSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class ClaimStatusChangeRequestWorkflowTest extends TestCase
@@ -62,7 +63,7 @@ class ClaimStatusChangeRequestWorkflowTest extends TestCase
         $maker = $this->userWithRole('business_maker', '000');
         $approver = $this->userWithRole('business_approver', '000');
         $receivable = InsuranceReceivable::factory()->create();
-        $targetStatus = ClaimStatus::query()->where('code', 'reject_loss')->firstOrFail();
+        $targetStatus = ClaimStatus::query()->where('code', ClaimStatus::REJECTED_CODE)->firstOrFail();
         $request = $this->createDraftRequest($receivable, $targetStatus, $maker);
 
         $request = app(SubmitClaimStatusChangeRequestAction::class)->handle($request, $maker);
@@ -82,7 +83,7 @@ class ClaimStatusChangeRequestWorkflowTest extends TestCase
         $approver = $this->userWithRole('business_approver', '000');
         $receivable = InsuranceReceivable::factory()->create();
         $originalStatusId = $receivable->claim_status_id;
-        $targetStatus = ClaimStatus::query()->where('code', 'reject_loss')->firstOrFail();
+        $targetStatus = ClaimStatus::query()->where('code', ClaimStatus::REJECTED_CODE)->firstOrFail();
         $request = $this->createDraftRequest($receivable, $targetStatus, $maker);
 
         $request = app(SubmitClaimStatusChangeRequestAction::class)->handle($request, $maker);
@@ -98,7 +99,7 @@ class ClaimStatusChangeRequestWorkflowTest extends TestCase
         $this->seedDependencies();
         $maker = $this->userWithRole('business_maker', '000');
         $receivable = InsuranceReceivable::factory()->create();
-        $targetStatus = ClaimStatus::query()->where('code', 'reject_loss')->firstOrFail();
+        $targetStatus = ClaimStatus::query()->where('code', ClaimStatus::REJECTED_CODE)->firstOrFail();
         $request = $this->createDraftRequest($receivable, $targetStatus, $maker);
 
         $request = app(CancelClaimStatusChangeRequestAction::class)->handle($request, $maker, 'not needed');
@@ -107,27 +108,22 @@ class ClaimStatusChangeRequestWorkflowTest extends TestCase
         $this->assertTrue($receivable->stageLogs()->where('event', 'claim_status_update_cancelled')->exists());
     }
 
-    public function test_claim_status_request_uses_master_claim_status_rows(): void
+    public function test_claim_status_request_rejects_non_decision_target_status(): void
     {
         $this->seedDependencies();
         $maker = $this->userWithRole('business_maker', '000');
-        $approver = $this->userWithRole('business_approver', '000');
         $receivable = InsuranceReceivable::factory()->create();
         $customStatus = ClaimStatus::query()->create([
             'code' => 'custom_phase4_status',
             'name' => 'Custom Phase 4 Status',
-            'ckpn_weight' => '12.5000',
             'is_default' => false,
             'is_terminal' => false,
             'is_active' => true,
         ]);
-        $request = $this->createDraftRequest($receivable, $customStatus, $maker);
 
-        $request = app(SubmitClaimStatusChangeRequestAction::class)->handle($request, $maker);
-        app(ApproveClaimStatusChangeRequestAction::class)->handle($request, $approver);
+        $this->expectException(ValidationException::class);
 
-        $this->assertSame('custom_phase4_status', $receivable->refresh()->claimStatus->code);
-        $this->assertSame($customStatus->id, $request->refresh()->to_claim_status_id);
+        $this->createDraftRequest($receivable, $customStatus, $maker);
     }
 
     public function test_cover_letter_draft_can_be_generated_from_receivable(): void

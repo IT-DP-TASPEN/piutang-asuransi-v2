@@ -74,7 +74,7 @@ class MasterAuthorizationTest extends TestCase
             ClaimStatus::class => ClaimStatus::query()->where('code', ClaimStatus::DEFAULT_CODE)->firstOrFail(),
             CkpnAgeBucket::class => CkpnAgeBucket::query()->where('name', '1 - 6 bulan')->firstOrFail(),
             CkpnCalculationRule::class => CkpnCalculationRule::query()
-                ->where('code', 'average_three_factors_with_reject_loss_override')
+                ->where('code', 'average_three_factors')
                 ->firstOrFail(),
         ];
     }

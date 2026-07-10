@@ -55,6 +55,8 @@ class CkpnWorkpaperItemsExportTest extends TestCase
             'origin_type' => InsuranceReceivable::ORIGIN_TYPE_WORKFLOW,
             'loan_account_number' => 'SNAP-LOAN',
             'receivable_amount' => '1000.50',
+            'remaining_receivable_amount' => '777.77',
+            'claim_status_keterangan' => 'SNAPSHOT KETERANGAN',
             'calculated_ckpn_amount' => '100.10',
             'effective_ckpn_amount' => '150.30',
             'snapshot' => [
@@ -103,21 +105,23 @@ class CkpnWorkpaperItemsExportTest extends TestCase
         $this->assertSame('SNAP-LOAN', $rows[1][5]);
         $this->assertSame('SNAP-ALT', $rows[1][6]);
         $this->assertSame('Customer One', $rows[1][4]);
-        $this->assertSame(1000.50, $rows[1][12]);
-        $this->assertEqualsWithDelta(0.25, $rows[1][13], 0.0000001);
-        $this->assertEqualsWithDelta(0.05, $rows[1][14], 0.0000001);
-        $this->assertEqualsWithDelta(0.10, $rows[1][15], 0.0000001);
-        $this->assertEqualsWithDelta(0.125, $rows[1][16], 0.0000001);
-        $this->assertSame(100.10, $rows[1][17]);
-        $this->assertSame(222.22, $rows[1][18]);
-        $this->assertSame(150.30, $rows[1][19]);
-        $this->assertSame('Approved adjustment note', $rows[1][20]);
+        $this->assertSame('SNAPSHOT KETERANGAN', $rows[1][11]);
+        $this->assertSame(1000.50, $rows[1][13]);
+        $this->assertSame(777.77, $rows[1][14]);
+        $this->assertEqualsWithDelta(0.25, $rows[1][15], 0.0000001);
+        $this->assertEqualsWithDelta(0.05, $rows[1][16], 0.0000001);
+        $this->assertEqualsWithDelta(0.10, $rows[1][17], 0.0000001);
+        $this->assertEqualsWithDelta(0.125, $rows[1][18], 0.0000001);
+        $this->assertSame(100.10, $rows[1][19]);
+        $this->assertSame(222.22, $rows[1][20]);
+        $this->assertSame(150.30, $rows[1][21]);
+        $this->assertSame('Approved adjustment note', $rows[1][22]);
         $this->assertInstanceOf(DateTimeInterface::class, $rows[1][8]);
         $this->assertSame('2026-01-15', $rows[1][8]->format('Y-m-d'));
         $this->assertSame('2026-02-01', $rows[1][9]->format('Y-m-d'));
 
         $this->assertSame('SNAP-LOAN-2', $rows[2][5]);
-        $this->assertEqualsWithDelta(0.20, $rows[2][18], 0.0000001);
+        $this->assertEqualsWithDelta(0.20, $rows[2][20], 0.0000001);
         $this->assertNotContains('Other Workpaper Customer', array_column($rows, 4));
 
         $this->actingAs($user)
@@ -275,9 +279,12 @@ class CkpnWorkpaperItemsExportTest extends TestCase
             'loan_account_number' => 'SNAP-LOAN',
             'customer_name' => 'Customer One',
             'insurance_company_name' => 'ASKRINDO',
-            'claim_status_name' => 'On proses',
+            'claim_status_code' => 'on_process',
+            'claim_status_name' => 'ON PROSES',
+            'claim_status_keterangan' => 'ON PROSES',
             'receivable_formation_date' => '2026-02-01',
             'receivable_amount' => '1000.50',
+            'remaining_receivable_amount' => '1000.50',
             'age_days' => 143,
             'age_bucket_name' => '1 - 6 bulan',
             'insurance_company_weight' => '25.0000',
@@ -319,11 +326,13 @@ class CkpnWorkpaperItemsExportTest extends TestCase
             'Tanggal Meninggal',
             'Tanggal Pembentukan Piutang',
             'Status Klaim',
+            'Keterangan Status Klaim',
             'Umur Piutang',
             'Nominal Piutang',
+            'Sisa Piutang',
             'Faktor Asuransi',
             'Faktor Umur Piutang',
-            'Faktor Status Klaim',
+            'Faktor Status Klaim Digunakan',
             'Bobot CKPN',
             'Calculated CKPN',
             'Adjustment Delta',
