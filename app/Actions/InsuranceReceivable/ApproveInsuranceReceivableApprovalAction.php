@@ -12,6 +12,7 @@ class ApproveInsuranceReceivableApprovalAction
 {
     public function __construct(
         private readonly ApprovalService $approvalService,
+        private readonly ApproveAccountingValidationAction $approveAccountingValidationAction,
     ) {}
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, ?string $notes = null): InsuranceReceivable
@@ -28,7 +29,13 @@ class ApproveInsuranceReceivableApprovalAction
             ]);
         }
 
-        $this->approvalService->approveCurrentStep($this->activeRequestFor($insuranceReceivable), $user, $notes);
+        $request = $this->activeRequestFor($insuranceReceivable);
+
+        if ($request->workflow_code === ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION) {
+            return $this->approveAccountingValidationAction->handle($insuranceReceivable, $request, $user, $notes);
+        }
+
+        $this->approvalService->approveCurrentStep($request, $user, $notes);
 
         return $insuranceReceivable->refresh();
     }

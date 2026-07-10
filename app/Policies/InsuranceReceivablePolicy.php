@@ -186,6 +186,22 @@ class InsuranceReceivablePolicy
             && $insuranceReceivable->canResolveEarlyTermination();
     }
 
+    public function retryInstallmentRepayment(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'RetryInstallmentRepayment')
+            && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
+            && $insuranceReceivable->canRetryInstallmentRepayment();
+    }
+
+    public function resolveInstallmentRepayment(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'ResolveInstallmentRepayment')
+            && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
+            && $insuranceReceivable->canResolveInstallmentRepayment();
+    }
+
     private function can(User $user, string $action): bool
     {
         return $user->can("{$action}:".self::SUBJECT);

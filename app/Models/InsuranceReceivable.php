@@ -32,6 +32,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'dpd',
     'product_id',
     'product_name',
+    'saving_account_for_loan_repayment',
     'start_period',
     'end_period',
     'receivable_formation_date',
@@ -280,6 +281,32 @@ class InsuranceReceivable extends Model
             && $this->workflow_status !== self::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING;
     }
 
+    public function canRetryInstallmentRepayment(): bool
+    {
+        if ($this->isLegacyOrigin() || $this->isTerminal()) {
+            return false;
+        }
+
+        $repayment = $this->installmentRepayment;
+
+        return $repayment instanceof InsuranceReceivableInstallmentRepayment
+            && $repayment->canRetry()
+            && $this->workflow_status === self::WORKFLOW_STATUS_ACCOUNTING_VALIDATION;
+    }
+
+    public function canResolveInstallmentRepayment(): bool
+    {
+        if ($this->isLegacyOrigin() || $this->isTerminal()) {
+            return false;
+        }
+
+        $repayment = $this->installmentRepayment;
+
+        return $repayment instanceof InsuranceReceivableInstallmentRepayment
+            && $repayment->canResolve()
+            && $this->workflow_status === self::WORKFLOW_STATUS_ACCOUNTING_VALIDATION;
+    }
+
     public function requiresManualEarlyTerminationExecution(): bool
     {
         return $this->isWorkflowOrigin()
@@ -389,11 +416,11 @@ class InsuranceReceivable extends Model
     }
 
     /**
-     * @return HasMany<ReceivableFormationJournal, $this>
+     * @return HasOne<InsuranceReceivableInstallmentRepayment, $this>
      */
-    public function receivableFormationJournals(): HasMany
+    public function installmentRepayment(): HasOne
     {
-        return $this->hasMany(ReceivableFormationJournal::class);
+        return $this->hasOne(InsuranceReceivableInstallmentRepayment::class);
     }
 
     /**

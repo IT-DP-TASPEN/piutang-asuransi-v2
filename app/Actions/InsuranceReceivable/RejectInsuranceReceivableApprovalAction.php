@@ -4,7 +4,6 @@ namespace App\Actions\InsuranceReceivable;
 
 use App\Models\ApprovalRequest;
 use App\Models\InsuranceReceivable;
-use App\Models\ReceivableFormationJournal;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
@@ -37,19 +36,6 @@ class RejectInsuranceReceivableApprovalAction
             $request = $this->approvalService->rejectCurrentStep($request, $user, $notes);
             $fromWorkflowStatus = $insuranceReceivable->workflow_status;
 
-            if ($request->workflow_code === ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION) {
-                $insuranceReceivable->receivableFormationJournals()
-                    ->where('approval_request_id', $request->id)
-                    ->where('status', ReceivableFormationJournal::STATUS_SUBMITTED)
-                    ->first()
-                    ?->forceFill([
-                        'status' => ReceivableFormationJournal::STATUS_REJECTED,
-                        'rejected_by' => $user->id,
-                        'rejected_at' => now(),
-                    ])
-                    ->save();
-            }
-
             $insuranceReceivable->forceFill([
                 'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_REJECTED,
             ])->save();
@@ -62,11 +48,6 @@ class RejectInsuranceReceivableApprovalAction
                 fromStatus: $fromWorkflowStatus,
                 toStatus: InsuranceReceivable::WORKFLOW_STATUS_REJECTED,
                 description: $notes ?: 'Approval rejected.',
-                metadata: $request->workflow_code === ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION
-                    ? ['receivable_formation_journal_id' => $insuranceReceivable->receivableFormationJournals()
-                        ->where('approval_request_id', $request->id)
-                        ->value('id')]
-                    : [],
                 actor: $user,
                 approvalRequest: $request,
             );

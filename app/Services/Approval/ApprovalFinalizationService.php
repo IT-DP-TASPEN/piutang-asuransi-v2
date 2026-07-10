@@ -9,9 +9,11 @@ use App\Models\CkpnAdjustment;
 use App\Models\CkpnJournal;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceReceivable;
-use App\Models\ReceivableFormationJournal;
+use App\Models\InsuranceReceivableInstallmentRepayment;
 use App\Models\User;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -68,32 +70,20 @@ class ApprovalFinalizationService
             return;
         }
 
-        $journal = $receivable->receivableFormationJournals()
-            ->where('approval_request_id', $approvalRequest->id)
-            ->where('status', ReceivableFormationJournal::STATUS_SUBMITTED)
-            ->first();
-
-        if (! $journal instanceof ReceivableFormationJournal) {
-            throw ValidationException::withMessages([
-                'journal' => 'Submitted receivable formation journal not found.',
-            ]);
-        }
-
         $fromStatus = $receivable->workflow_status;
 
-        DB::transaction(function () use ($receivable, $journal, $actor, $approvalRequest, $fromStatus, $notes): void {
-            $snapshot = $journal->frozenSnapshot();
+        DB::transaction(function () use ($receivable, $actor, $approvalRequest, $fromStatus, $notes): void {
+            $locked = InsuranceReceivable::query()
+                ->whereKey($receivable->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+            $amount = $this->finalReceivableAmount($locked);
 
-            $journal->forceFill([
-                'status' => ReceivableFormationJournal::STATUS_APPROVED,
-                'approved_by' => $actor->id,
-                'approved_at' => now(),
-            ])->save();
-
-            $receivable->forceFill([
-                'receivable_formation_date' => $snapshot['journal_date'] ?? $journal->journal_date,
-                'receivable_amount' => $snapshot['amount'] ?? $journal->amount,
-                'remaining_receivable_amount' => $snapshot['amount'] ?? $journal->amount,
+            $locked->forceFill([
+                'receivable_formation_date' => now()->toDateString(),
+                'loan_outstanding' => $amount,
+                'receivable_amount' => $amount,
+                'remaining_receivable_amount' => $amount,
                 'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
                 'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
                 'last_error_message' => null,
@@ -101,31 +91,55 @@ class ApprovalFinalizationService
             ])->save();
 
             $this->stageLogger->log(
-                receivable: $receivable,
+                receivable: $locked,
                 event: 'accounting_validation_approved',
                 fromStatus: $fromStatus,
                 toStatus: InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
                 description: $notes ?: 'Accounting validation approved.',
-                metadata: [
-                    'receivable_formation_journal_id' => $journal->id,
-                    'snapshot' => $snapshot,
-                ],
+                metadata: ['receivable_amount' => $amount],
                 actor: $actor,
                 approvalRequest: $approvalRequest,
             );
 
             $this->stageLogger->log(
-                receivable: $receivable,
+                receivable: $locked,
                 event: 'early_termination_confirmation_pending',
                 fromStatus: null,
                 toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
                 description: 'Awaiting Accounting confirmation to execute early termination.',
-                metadata: ['receivable_formation_journal_id' => $journal->id],
                 actor: $actor,
                 approvalRequest: $approvalRequest,
             );
         });
 
+    }
+
+    private function finalReceivableAmount(InsuranceReceivable $receivable): string
+    {
+        $repayment = $receivable->installmentRepayment()->first();
+
+        if ($repayment instanceof InsuranceReceivableInstallmentRepayment
+            && in_array($repayment->status, [
+                InsuranceReceivableInstallmentRepayment::STATUS_EXECUTED,
+                InsuranceReceivableInstallmentRepayment::STATUS_RESOLVED_MANUALLY,
+            ], true)
+            && $repayment->loan_outstanding_after !== null
+        ) {
+            return $this->normalizedMoney($repayment->loan_outstanding_after);
+        }
+
+        return $this->normalizedMoney($receivable->loan_outstanding);
+    }
+
+    private function normalizedMoney(mixed $amount): string
+    {
+        if ($amount === null || $amount === '') {
+            throw ValidationException::withMessages([
+                'loan_outstanding' => 'Loan outstanding is required to form receivable.',
+            ]);
+        }
+
+        return (string) BigDecimal::of(str_replace(',', '', (string) $amount))->toScale(2, RoundingMode::HalfUp);
     }
 
     private function finalizeClaimStatusUpdate(ApprovalRequest $approvalRequest, User $actor, ?string $notes): void

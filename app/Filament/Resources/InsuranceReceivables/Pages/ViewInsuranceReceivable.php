@@ -12,6 +12,8 @@ use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
 use App\Actions\InsuranceReceivable\QueueEarlyTerminationAction;
 use App\Actions\InsuranceReceivable\RejectInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\ResolveEarlyTerminationManuallyAction;
+use App\Actions\InsuranceReceivable\ResolveInstallmentRepaymentAction;
+use App\Actions\InsuranceReceivable\RetryInstallmentRepaymentAction;
 use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitManualEarlyTerminationConfirmationAction;
 use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
@@ -25,7 +27,6 @@ use App\Services\InsuranceReceivable\InsuranceReceivableInquiryDispatcher;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\EditAction;
-use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -56,6 +57,8 @@ class ViewInsuranceReceivable extends ViewRecord
                 ->visible(fn (): bool => $this->hasVisibleApprovalActions()),
             ActionGroup::make([
                 $this->retryInquiryAction(),
+                $this->retryInstallmentRepaymentAction(),
+                $this->resolveInstallmentRepaymentAction(),
                 $this->cancelReceivableAction(),
                 $this->executeEarlyTerminationAction(),
                 $this->retryEarlyTerminationAction(),
@@ -97,11 +100,6 @@ class ViewInsuranceReceivable extends ViewRecord
                     InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER,
                 ], true))
             ->form([
-                DatePicker::make('journal_date')->default(now())->required(),
-                TextInput::make('amount')->default(fn () => $this->getRecord()->loan_outstanding)->required()->numeric(),
-                TextInput::make('debit_account')->maxLength(255),
-                TextInput::make('credit_account')->maxLength(255),
-                Textarea::make('description')->maxLength(65535),
                 Textarea::make('notes')->maxLength(65535),
             ])
             ->action(function (array $data): void {
@@ -228,6 +226,54 @@ class ViewInsuranceReceivable extends ViewRecord
                 }
 
                 Notification::make()->success()->title('Early termination retry queued')->send();
+            });
+    }
+
+    private function retryInstallmentRepaymentAction(): Action
+    {
+        return Action::make('retryInstallmentRepayment')
+            ->label('Retry Repayment')
+            ->color('warning')
+            ->requiresConfirmation()
+            ->modalDescription('Retry re-inquires loan and balance before posting repayment again. Unknown or already-posted states must use Resolve Repayment.')
+            ->visible(fn (): bool => (auth()->user()?->can('retryInstallmentRepayment', $this->getRecord()) ?? false)
+                && $this->getRecord()->canRetryInstallmentRepayment())
+            ->form([
+                Textarea::make('notes')->maxLength(65535),
+            ])
+            ->action(function (array $data): void {
+                $user = auth()->user();
+
+                if ($user instanceof User) {
+                    app(RetryInstallmentRepaymentAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
+                    $this->record = $this->getRecord()->refresh();
+                }
+
+                Notification::make()->success()->title('Installment repayment retried')->send();
+            });
+    }
+
+    private function resolveInstallmentRepaymentAction(): Action
+    {
+        return Action::make('resolveInstallmentRepayment')
+            ->label('Resolve Repayment')
+            ->color('warning')
+            ->requiresConfirmation()
+            ->modalDescription('Use after repayment was verified or performed manually in core. The app verifies that loan outstanding decreased.')
+            ->visible(fn (): bool => (auth()->user()?->can('resolveInstallmentRepayment', $this->getRecord()) ?? false)
+                && $this->getRecord()->canResolveInstallmentRepayment())
+            ->form([
+                Textarea::make('notes')->maxLength(65535),
+            ])
+            ->action(function (array $data): void {
+                $user = auth()->user();
+
+                if ($user instanceof User) {
+                    app(ResolveInstallmentRepaymentAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
+                    $this->record = $this->getRecord()->refresh();
+                }
+
+                Notification::make()->success()->title('Installment repayment resolved')->send();
             });
     }
 
@@ -511,7 +557,15 @@ class ViewInsuranceReceivable extends ViewRecord
         $canResolveEarlyTermination = ($user?->can('resolveEarlyTermination', $record) ?? false)
             && $record->canResolveEarlyTermination();
 
+        $canRetryInstallmentRepayment = ($user?->can('retryInstallmentRepayment', $record) ?? false)
+            && $record->canRetryInstallmentRepayment();
+
+        $canResolveInstallmentRepayment = ($user?->can('resolveInstallmentRepayment', $record) ?? false)
+            && $record->canResolveInstallmentRepayment();
+
         return $canRetryInquiry
+            || $canRetryInstallmentRepayment
+            || $canResolveInstallmentRepayment
             || $canCancel
             || $canExecuteEarlyTermination
             || $canRetryEarlyTermination

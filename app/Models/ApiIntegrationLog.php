@@ -52,6 +52,14 @@ class ApiIntegrationLog extends Model
     }
 
     /**
+     * @return HasOne<InsuranceReceivableInstallmentRepayment, $this>
+     */
+    public function installmentRepayment(): HasOne
+    {
+        return $this->hasOne(InsuranceReceivableInstallmentRepayment::class);
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

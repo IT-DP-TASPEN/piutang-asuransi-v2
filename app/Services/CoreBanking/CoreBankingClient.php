@@ -144,6 +144,29 @@ class CoreBankingClient
      *     error_message: string|null
      * }
      */
+    public function repayLoan(array $payload, ?Model $related = null, ?User $requestedBy = null): array
+    {
+        return $this->post(
+            endpoint: '/loan/repayment/',
+            payload: $payload,
+            related: $related,
+            requestedBy: $requestedBy,
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{
+     *     ok: bool,
+     *     status: int|null,
+     *     response_code: string|null,
+     *     description: string|null,
+     *     data: array<string, mixed>,
+     *     raw_body: string|null,
+     *     log_id: int|null,
+     *     error_message: string|null
+     * }
+     */
     public function transferGlToGl(array $payload, ?Model $related = null, ?User $requestedBy = null): array
     {
         return $this->post(

@@ -262,12 +262,16 @@ class WorkflowQueueAutomationTest extends TestCase
 
     public function test_accounting_approval_waits_for_early_termination_confirmation(): void
     {
+        config(['core_banking.base_url' => 'http://core.test', 'core_banking.signature_secret' => 'secret-key']);
         $this->seedDependencies();
         $maker = $this->userWithRole('branch_maker', '001');
         $branchApprover = $this->userWithRole('branch_approver', '001');
         $accountingMaker = $this->userWithRole('accounting_maker', '000');
         $accountingApprover = $this->userWithRole('accounting_approver', '000');
-        $receivable = $this->receivableReadyForSubmit($maker, ['loan_outstanding' => '230929055.00']);
+        $receivable = $this->receivableReadyForSubmit($maker, [
+            'date_of_death' => '2026-05-01',
+            'loan_outstanding' => '230929055.00',
+        ]);
 
         app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
         $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $branchApprover);
@@ -278,6 +282,23 @@ class WorkflowQueueAutomationTest extends TestCase
         ]);
 
         Queue::fake();
+        Http::fake([
+            'http://core.test/inquiry/detail/loan' => Http::response([
+                'responseCode' => '00',
+                'description' => 'Success',
+                'data' => [
+                    'accountNumber' => $receivable->loan_account_number,
+                    'altNumber' => 'ALT-1',
+                    'branchCode' => '001',
+                    'collectability' => '1',
+                    'dpd' => 0,
+                    'saForLoanRepayment' => '1000010000000691',
+                    'loanOutStanding' => '230929055.00',
+                    'installmentAmount' => '1000.00',
+                    'nextDueDate' => '20260501',
+                ],
+            ]),
+        ]);
         $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $accountingApprover);
 
         Queue::assertNotPushed(ExecuteEarlyTerminationJob::class);

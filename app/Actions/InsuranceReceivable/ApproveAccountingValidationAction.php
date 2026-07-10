@@ -1,0 +1,71 @@
+<?php
+
+namespace App\Actions\InsuranceReceivable;
+
+use App\Models\ApprovalRequest;
+use App\Models\ApprovalStep;
+use App\Models\InsuranceReceivable;
+use App\Models\User;
+use App\Services\Approval\ApprovalService;
+use Illuminate\Validation\ValidationException;
+
+class ApproveAccountingValidationAction
+{
+    public function __construct(
+        private readonly ApprovalService $approvalService,
+        private readonly ProcessAccountingValidationInstallmentRepaymentAction $repaymentAction,
+    ) {}
+
+    public function handle(InsuranceReceivable $insuranceReceivable, ApprovalRequest $request, User $user, ?string $notes = null): InsuranceReceivable
+    {
+        $this->assertAccountingRequest($request);
+        $this->assertCanActOnApproval($request, $user);
+
+        $this->repaymentAction->handle($insuranceReceivable, $user);
+        $this->approvalService->approveCurrentStep($request->refresh(), $user, $notes);
+
+        return $insuranceReceivable->refresh();
+    }
+
+    private function assertAccountingRequest(ApprovalRequest $request): void
+    {
+        if (
+            $request->workflow_code !== ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION
+            || $request->status !== ApprovalRequest::STATUS_SUBMITTED
+        ) {
+            throw ValidationException::withMessages([
+                'approval' => 'Active Accounting Validation approval request not found.',
+            ]);
+        }
+    }
+
+    private function assertCanActOnApproval(ApprovalRequest $request, User $user): void
+    {
+        $step = $request->steps()
+            ->where('status', ApprovalStep::STATUS_PENDING)
+            ->orderBy('step_order')
+            ->first();
+
+        if (! $step instanceof ApprovalStep) {
+            throw ValidationException::withMessages([
+                'approval' => 'No pending approval step found.',
+            ]);
+        }
+
+        if ($user->hasRole('super_admin')) {
+            return;
+        }
+
+        if ($step->assigned_user_id !== null && $step->assigned_user_id !== $user->id) {
+            throw ValidationException::withMessages([
+                'approval' => 'Approval step is assigned to another user.',
+            ]);
+        }
+
+        if ($step->role_name !== null && ! $user->hasRole($step->role_name)) {
+            throw ValidationException::withMessages([
+                'approval' => "Approval step requires role {$step->role_name}.",
+            ]);
+        }
+    }
+}

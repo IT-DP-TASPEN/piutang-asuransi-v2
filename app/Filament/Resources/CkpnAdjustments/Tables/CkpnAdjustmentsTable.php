@@ -35,11 +35,11 @@ class CkpnAdjustmentsTable
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('calculated_ckpn_rate')->numeric(4)->suffix('%'),
-                TextColumn::make('calculated_ckpn_amount')->numeric(2),
+                TextColumn::make('calculated_ckpn_amount')->money('IDR', 0, 'id_ID'),
                 TextColumn::make('requested_adjusted_ckpn_rate')->numeric(4)->suffix('%'),
-                TextColumn::make('requested_adjusted_ckpn_amount')->numeric(2),
+                TextColumn::make('requested_adjusted_ckpn_amount')->money('IDR', 0, 'id_ID'),
                 TextColumn::make('approved_adjusted_ckpn_rate')->numeric(4)->suffix('%')->toggleable(),
-                TextColumn::make('approved_adjusted_ckpn_amount')->numeric(2)->toggleable(),
+                TextColumn::make('approved_adjusted_ckpn_amount')->money('IDR', 0, 'id_ID')->toggleable(),
                 TextColumn::make('status')->badge()->sortable(),
                 TextColumn::make('requester.name')->label('Requested by')->sortable(),
                 TextColumn::make('approver.name')->label('Approved by')->sortable(),
@@ -53,7 +53,7 @@ class CkpnAdjustmentsTable
                 Action::make('cancel')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->visible(fn (CkpnAdjustment $record): bool => (auth()->user()?->can('cancel', $record) ?? false)
+                    ->visible(fn(CkpnAdjustment $record): bool => (auth()->user()?->can('cancel', $record) ?? false)
                         && in_array($record->status, [
                             CkpnAdjustment::STATUS_DRAFT,
                             CkpnAdjustment::STATUS_RETURNED,
