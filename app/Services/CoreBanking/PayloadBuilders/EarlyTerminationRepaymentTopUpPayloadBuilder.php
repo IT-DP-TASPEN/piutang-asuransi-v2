@@ -24,9 +24,22 @@ class EarlyTerminationRepaymentTopUpPayloadBuilder
         $branchCode = $insuranceReceivable->branchOffice?->branch_code
             ?? $insuranceReceivable->branch_code
             ?? '';
-        $description = 'Top up repayment account before early termination';
+        $description = trim(
+            sprintf(
+                'Piutang Asuransi %s %s %s',
+                $insuranceReceivable->loan_account_number ?? '',
+                $insuranceReceivable->customer_name ?? '',
+                $insuranceReceivable->insuranceCompany?->name ?? '',
+            )
+        );
         $loanAccount = trim((string) $insuranceReceivable->loan_account_number);
-        $narrative = $loanAccount === '' ? $description : "{$description} {$loanAccount}";
+        $narrative = trim(
+            sprintf(
+                'Piutang Asuransi %s %s',
+                $loanAccount,
+                $insuranceReceivable->customer_name ?? '',
+            )
+        );
 
         return [
             'referenceNumber' => $referenceNumber,

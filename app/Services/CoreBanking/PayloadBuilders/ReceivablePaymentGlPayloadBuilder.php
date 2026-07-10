@@ -19,14 +19,30 @@ class ReceivablePaymentGlPayloadBuilder
         string $receiptNumber,
         ?CarbonInterface $dateTime = null,
     ): array {
-        $request->loadMissing('insuranceReceivable.branchOffice');
+        $request->loadMissing([
+            'insuranceReceivable.branchOffice',
+            'insuranceReceivable.insuranceCompany',
+        ]);
         $receivable = $request->insuranceReceivable;
         $branchCode = $receivable?->branchOffice?->branch_code
             ?? $receivable?->branch_code
             ?? '';
-        $description = 'Insurance receivable payment';
+        $description = trim(
+            sprintf(
+                'Pemb Piutang Asuransi %s %s %s',
+                $receivable?->loan_account_number ?? '',
+                $receivable?->customer_name ?? '',
+                $receivable?->insuranceCompany?->name ?? '',
+            )
+        );
         $loanAccount = trim((string) $receivable?->loan_account_number);
-        $narrative = $loanAccount === '' ? $description : "{$description} {$loanAccount}";
+        $narrative = trim(
+            sprintf(
+                'Pemb Piutang Asuransi %s %s',
+                $loanAccount,
+                $receivable?->customer_name ?? '',
+            )
+        );
 
         $payload = [
             'referenceNumber' => $referenceNumber,
