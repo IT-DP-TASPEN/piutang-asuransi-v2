@@ -28,6 +28,8 @@ use App\Models\InsuranceCompany;
 use App\Models\InsuranceReceivable;
 use App\Models\ReceivablePayment;
 use App\Models\User;
+use App\Services\Approval\ApprovalFinalizationService;
+use App\Services\Approval\ApprovalService;
 use App\Services\Ckpn\CkpnWorkpaperReadinessValidator;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -37,6 +39,7 @@ use Database\Seeders\CkpnCalculationRuleSeeder;
 use Database\Seeders\ClaimStatusSeeder;
 use Database\Seeders\InsuranceCompanySeeder;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -322,6 +325,214 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame(CkpnWorkpaper::STATUS_APPROVED, $workpaper->status);
         $this->assertSame($approver->id, $workpaper->approved_by);
         $this->assertNotNull($workpaper->approved_at);
+    }
+
+    public function test_rejected_and_returned_workpapers_can_be_resubmitted_on_same_record(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+
+        $returned = app(SubmitCkpnWorkpaperAction::class)->handle(
+            $this->generatedWorkpaperForSubmit('001', '2026-09-30'),
+            $maker,
+        );
+        $returned->approvalRequests()->latest('id')->firstOrFail()->forceFill([
+            'status' => ApprovalRequest::STATUS_RETURNED,
+        ])->save();
+        $returned->forceFill(['status' => CkpnWorkpaper::STATUS_RETURNED])->save();
+
+        $rejected = app(SubmitCkpnWorkpaperAction::class)->handle(
+            $this->generatedWorkpaperForSubmit('002', '2026-09-30'),
+            $maker,
+        );
+        $rejected->approvalRequests()->latest('id')->firstOrFail()->forceFill([
+            'status' => ApprovalRequest::STATUS_REJECTED,
+        ])->save();
+        $rejected->forceFill(['status' => CkpnWorkpaper::STATUS_REJECTED])->save();
+
+        app(SubmitCkpnWorkpaperAction::class)->handle($returned->refresh(), $maker);
+        app(SubmitCkpnWorkpaperAction::class)->handle($rejected->refresh(), $maker);
+
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $returned->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $rejected->refresh()->status);
+        $this->assertSame(
+            [ApprovalRequest::STATUS_RETURNED, ApprovalRequest::STATUS_SUBMITTED],
+            $returned->approvalRequests()->orderBy('id')->pluck('status')->all(),
+        );
+        $this->assertSame(
+            [ApprovalRequest::STATUS_REJECTED, ApprovalRequest::STATUS_SUBMITTED],
+            $rejected->approvalRequests()->orderBy('id')->pluck('status')->all(),
+        );
+    }
+
+    public function test_single_submit_blocks_active_monthly_workpaper_approval(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $workpaper = $this->generatedWorkpaperForSubmit('001', '2026-10-15');
+        $workpaper->approvalRequests()->create([
+            'workflow_code' => ApprovalRequest::WORKFLOW_MONTHLY_CKPN_WORKPAPER,
+            'status' => ApprovalRequest::STATUS_SUBMITTED,
+            'submitted_by' => $maker->id,
+            'submitted_at' => now(),
+        ]);
+
+        $this->expectException(ValidationException::class);
+
+        app(SubmitCkpnWorkpaperAction::class)->handle($workpaper, $maker);
+    }
+
+    public function test_bulk_submit_submits_selected_generated_returned_and_rejected_workpapers(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $generated = $this->generatedWorkpaperForSubmit('001', '2026-10-31');
+        $returned = $this->generatedWorkpaperForSubmit('002', '2026-10-31');
+        $rejected = $this->generatedWorkpaperForSubmit('003', '2026-10-31');
+        $returned->forceFill(['status' => CkpnWorkpaper::STATUS_RETURNED])->save();
+        $rejected->forceFill(['status' => CkpnWorkpaper::STATUS_REJECTED])->save();
+
+        $submitted = app(SubmitCkpnWorkpaperAction::class)->handleMany([
+            $rejected,
+            $generated,
+            $returned,
+        ], $maker);
+
+        $this->assertSame([$generated->id, $returned->id, $rejected->id], $submitted->pluck('id')->values()->all());
+        $this->assertSame(3, CkpnWorkpaper::query()->where('status', CkpnWorkpaper::STATUS_SUBMITTED)->count());
+        $this->assertSame(3, ApprovalRequest::query()
+            ->where('workflow_code', ApprovalRequest::WORKFLOW_MONTHLY_CKPN_WORKPAPER)
+            ->where('status', ApprovalRequest::STATUS_SUBMITTED)
+            ->count());
+    }
+
+    public function test_bulk_submit_fails_all_or_nothing_for_ineligible_status(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $valid = $this->generatedWorkpaperForSubmit('001', '2026-11-30');
+        $draft = CkpnWorkpaper::query()->create([
+            'period' => '2026-11-30',
+            'branch_office_id' => BranchOffice::query()->where('branch_code', '002')->firstOrFail()->id,
+            'status' => CkpnWorkpaper::STATUS_DRAFT,
+        ]);
+
+        try {
+            app(SubmitCkpnWorkpaperAction::class)->handleMany([$valid, $draft], $maker);
+            $this->fail('Bulk submit should fail when one selected workpaper is ineligible.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                '1 selected CKPN Workpapers are not eligible for submission.',
+                collect($exception->errors())->flatten()->first(),
+            );
+        }
+
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $valid->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_DRAFT, $draft->refresh()->status);
+        $this->assertSame(0, ApprovalRequest::query()->count());
+    }
+
+    public function test_bulk_submit_requires_same_cutoff_date(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $first = $this->generatedWorkpaperForSubmit('001', '2026-12-15');
+        $second = $this->generatedWorkpaperForSubmit('002', '2026-12-31');
+
+        try {
+            app(SubmitCkpnWorkpaperAction::class)->handleMany([$first, $second], $maker);
+            $this->fail('Bulk submit should fail for mixed cutoff dates.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'Selected CKPN Workpapers must have the same cutoff date.',
+                collect($exception->errors())->flatten()->first(),
+            );
+        }
+
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $first->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $second->refresh()->status);
+        $this->assertSame(0, ApprovalRequest::query()->count());
+    }
+
+    public function test_bulk_submit_blocks_only_active_monthly_workpaper_approval_for_same_workpaper(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $first = $this->generatedWorkpaperForSubmit('001', '2027-01-31');
+        $second = $this->generatedWorkpaperForSubmit('002', '2027-01-31');
+        $first->approvalRequests()->create([
+            'workflow_code' => ApprovalRequest::WORKFLOW_CKPN_ADJUSTMENT,
+            'status' => ApprovalRequest::STATUS_SUBMITTED,
+            'submitted_by' => $maker->id,
+            'submitted_at' => now(),
+        ]);
+
+        app(SubmitCkpnWorkpaperAction::class)->handleMany([$first, $second], $maker);
+
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $first->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $second->refresh()->status);
+
+        $third = $this->generatedWorkpaperForSubmit('003', '2027-02-28');
+        $fourth = $this->generatedWorkpaperForSubmit('004', '2027-02-28');
+        $third->approvalRequests()->create([
+            'workflow_code' => ApprovalRequest::WORKFLOW_MONTHLY_CKPN_WORKPAPER,
+            'status' => ApprovalRequest::STATUS_SUBMITTED,
+            'submitted_by' => $maker->id,
+            'submitted_at' => now(),
+        ]);
+
+        try {
+            app(SubmitCkpnWorkpaperAction::class)->handleMany([$third, $fourth], $maker);
+            $this->fail('Active monthly workpaper approval should block bulk submit.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'One or more selected CKPN Workpapers already have active approval requests.',
+                collect($exception->errors())->flatten()->first(),
+            );
+        }
+
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $third->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $fourth->refresh()->status);
+    }
+
+    public function test_bulk_submit_rolls_back_when_mutation_fails(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $first = $this->generatedWorkpaperForSubmit('001', '2027-03-31');
+        $second = $this->generatedWorkpaperForSubmit('002', '2027-03-31');
+        $approvalService = new class(app(ApprovalFinalizationService::class)) extends ApprovalService
+        {
+            public int $calls = 0;
+
+            /**
+             * @param  array<string, mixed>  $metadata
+             */
+            public function submit(Model $approvable, string $workflowCode, User $actor, ?string $notes = null, array $metadata = []): ApprovalRequest
+            {
+                $request = parent::submit($approvable, $workflowCode, $actor, $notes, $metadata);
+                $this->calls++;
+
+                if ($this->calls === 2) {
+                    throw ValidationException::withMessages([
+                        'submit' => 'Simulated submit failure.',
+                    ]);
+                }
+
+                return $request;
+            }
+        };
+
+        try {
+            (new SubmitCkpnWorkpaperAction($approvalService))->handleMany([$first, $second], $maker);
+            $this->fail('Bulk submit should rollback when one mutation fails.');
+        } catch (ValidationException $exception) {
+            $this->assertSame('Simulated submit failure.', collect($exception->errors())->flatten()->first());
+        }
+
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $first->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $second->refresh()->status);
+        $this->assertSame(0, ApprovalRequest::query()->count());
     }
 
     public function test_adjustment_requires_reason_and_approval_preserves_item_values(): void
@@ -1022,6 +1233,23 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
             CkpnCalculationRuleSeeder::class,
             RolePermissionSeeder::class,
         ]);
+    }
+
+    private function generatedWorkpaperForSubmit(string $branchCode, string $period): CkpnWorkpaper
+    {
+        $branch = BranchOffice::query()->where('branch_code', $branchCode)->firstOrFail();
+        $this->receivable($branch, [
+            'receivable_formation_date' => '2026-01-01',
+            'receivable_amount' => '10000.00',
+            'remaining_receivable_amount' => '10000.00',
+        ]);
+
+        $workpaper = CkpnWorkpaper::query()->create([
+            'period' => $period,
+            'branch_office_id' => $branch->id,
+        ]);
+
+        return app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
     }
 
     private function insuranceCompany(string $name, string $weight): InsuranceCompany

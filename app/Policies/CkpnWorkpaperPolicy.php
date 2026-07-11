@@ -97,7 +97,7 @@ class CkpnWorkpaperPolicy
     {
         return $this->can($user, 'Submit')
             && $this->canAccessRecord($user, $ckpnWorkpaper)
-            && $ckpnWorkpaper->status === CkpnWorkpaper::STATUS_GENERATED;
+            && in_array($ckpnWorkpaper->status, CkpnWorkpaper::submittableStatuses(), true);
     }
 
     public function approve(User $user, CkpnWorkpaper $ckpnWorkpaper): bool

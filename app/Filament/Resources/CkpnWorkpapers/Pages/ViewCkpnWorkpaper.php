@@ -16,6 +16,7 @@ use App\Filament\Resources\GeneratedExports\GeneratedExportResource;
 use App\Filament\Resources\GlToGlTransactions\GlToGlTransactionResource;
 use App\Jobs\ExecuteGlToGlJob;
 use App\Jobs\GenerateCkpnWorkpaperJob;
+use App\Models\ApprovalRequest;
 use App\Models\CkpnJournal;
 use App\Models\CkpnWorkpaper;
 use App\Models\GeneratedExport;
@@ -391,10 +392,13 @@ class ViewCkpnWorkpaper extends ViewRecord
     private function canSubmit(): bool
     {
         return (auth()->user()?->can('submit', $this->workpaper()) ?? false)
-            && in_array($this->workpaper()->status, [
-                CkpnWorkpaper::STATUS_GENERATED,
-            ], true)
-            && $this->workpaper()->items()->exists();
+            && in_array($this->workpaper()->status, CkpnWorkpaper::submittableStatuses(), true)
+            && $this->workpaper()->items()->exists()
+            && ! $this->workpaper()
+                ->approvalRequests()
+                ->where('workflow_code', ApprovalRequest::WORKFLOW_MONTHLY_CKPN_WORKPAPER)
+                ->where('status', ApprovalRequest::STATUS_SUBMITTED)
+                ->exists();
     }
 
     private function canApprove(): bool

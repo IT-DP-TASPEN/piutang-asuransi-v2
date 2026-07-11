@@ -52,6 +52,18 @@ class CkpnWorkpaper extends Model
     public const STATUS_CANCELLED = 'cancelled';
 
     /**
+     * @return list<string>
+     */
+    public static function submittableStatuses(): array
+    {
+        return [
+            self::STATUS_GENERATED,
+            self::STATUS_RETURNED,
+            self::STATUS_REJECTED,
+        ];
+    }
+
+    /**
      * @return array<string, string>
      */
     public static function statusOptions(): array

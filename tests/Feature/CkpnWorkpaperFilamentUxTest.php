@@ -99,6 +99,54 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
             ->assertActionHidden('createAllBranchWorkpapers');
     }
 
+    public function test_list_page_bulk_submit_action_visibility_uses_submit_permission(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $businessMaker = $this->userWithRole('business_maker', '000');
+
+        Livewire::actingAs($maker)
+            ->test(ListCkpnWorkpapers::class)
+            ->assertTableBulkActionVisible('submitSelectedWorkpapers')
+            ->assertTableBulkActionHasLabel('submitSelectedWorkpapers', 'Submit Selected Workpapers');
+
+        Livewire::actingAs($businessMaker)
+            ->test(ListCkpnWorkpapers::class)
+            ->assertTableBulkActionHidden('submitSelectedWorkpapers');
+    }
+
+    public function test_list_page_bulk_submit_action_submits_selected_workpapers(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $first = $this->workpaper(CkpnWorkpaper::STATUS_GENERATED, '2026-11-30', '001');
+        $second = $this->workpaper(CkpnWorkpaper::STATUS_GENERATED, '2026-11-30', '002');
+
+        Livewire::actingAs($maker)
+            ->test(ListCkpnWorkpapers::class)
+            ->callTableBulkAction('submitSelectedWorkpapers', [$first, $second])
+            ->assertNotified('2 CKPN Workpapers have been submitted for approval.');
+
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $first->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $second->refresh()->status);
+    }
+
+    public function test_list_page_bulk_submit_action_notifies_validation_failure_without_partial_submit(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $generated = $this->workpaper(CkpnWorkpaper::STATUS_GENERATED, '2026-12-31', '001');
+        $draft = $this->workpaper(CkpnWorkpaper::STATUS_DRAFT, '2026-12-31', '002');
+
+        Livewire::actingAs($maker)
+            ->test(ListCkpnWorkpapers::class)
+            ->callTableBulkAction('submitSelectedWorkpapers', [$generated, $draft])
+            ->assertNotified('1 selected CKPN Workpapers are not eligible for submission.');
+
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $generated->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_DRAFT, $draft->refresh()->status);
+    }
+
     public function test_list_page_bulk_create_action_queues_all_active_branch_workpapers(): void
     {
         $this->seedDependencies();
@@ -349,11 +397,15 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
         return $user;
     }
 
-    private function workpaper(string $status): CkpnWorkpaper
+    private function workpaper(string $status, ?string $period = null, ?string $branchCode = null): CkpnWorkpaper
     {
         $month = CkpnWorkpaper::query()->count() + 1;
+        $branchId = $branchCode === null
+            ? null
+            : BranchOffice::query()->where('branch_code', $branchCode)->firstOrFail()->id;
         $workpaper = CkpnWorkpaper::create([
-            'period' => sprintf('2026-%02d-15', $month),
+            'period' => $period ?? sprintf('2026-%02d-15', $month),
+            'branch_office_id' => $branchId,
             'status' => $status,
             'total_receivable_amount' => '1000.00',
             'total_calculated_ckpn_amount' => '100.00',
@@ -362,7 +414,7 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
             'total_ckpn_amount' => '100.00',
         ]);
 
-        if ($status === CkpnWorkpaper::STATUS_GENERATED) {
+        if (in_array($status, CkpnWorkpaper::submittableStatuses(), true)) {
             $this->workpaperItem($workpaper);
         }
 

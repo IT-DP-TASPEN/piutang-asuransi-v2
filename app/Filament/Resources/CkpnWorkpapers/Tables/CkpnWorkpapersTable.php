@@ -2,17 +2,24 @@
 
 namespace App\Filament\Resources\CkpnWorkpapers\Tables;
 
+use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
 use App\Models\CkpnWorkpaper;
+use App\Models\User;
 use Carbon\Carbon;
+use Filament\Actions\BulkAction;
+use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\Summarizers\Sum;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Grouping\Group;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Validation\ValidationException;
 
 class CkpnWorkpapersTable
 {
@@ -125,6 +132,39 @@ class CkpnWorkpapersTable
                 DeleteAction::make()
                     ->visible(fn (CkpnWorkpaper $record): bool => (auth()->user()?->can('delete', $record) ?? false)
                         && $record->status === CkpnWorkpaper::STATUS_DRAFT),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    BulkAction::make('submitSelectedWorkpapers')
+                        ->label('Submit Selected Workpapers')
+                        ->requiresConfirmation()
+                        ->modalDescription(fn (EloquentCollection $records): string => "You are about to submit {$records->count()} CKPN Workpapers. This will create workpaper approval requests. Continue?")
+                        ->visible(fn (): bool => auth()->user()?->can('Submit:CkpnWorkpaper') ?? false)
+                        ->action(function (EloquentCollection $records): void {
+                            $user = auth()->user();
+
+                            if (! $user instanceof User) {
+                                abort(403);
+                            }
+
+                            try {
+                                $submitted = app(SubmitCkpnWorkpaperAction::class)->handleMany($records, $user);
+                            } catch (ValidationException $exception) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title(collect($exception->errors())->flatten()->first() ?: $exception->getMessage())
+                                    ->send();
+
+                                return;
+                            }
+
+                            Notification::make()
+                                ->success()
+                                ->title("{$submitted->count()} CKPN Workpapers have been submitted for approval.")
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                ]),
             ])
             ->groups([
                 Group::make('period')
