@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\CkpnWorkpapers\Tables;
 
+use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
+use App\Actions\CkpnWorkpaper\ApproveCkpnWorkpaperAction;
 use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
 use App\Models\CkpnWorkpaper;
 use App\Models\User;
@@ -161,6 +163,64 @@ class CkpnWorkpapersTable
                             Notification::make()
                                 ->success()
                                 ->title("{$submitted->count()} CKPN Workpapers have been submitted for approval.")
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    BulkAction::make('approveSelectedWorkpapers')
+                        ->label('Approve Selected Workpapers')
+                        ->requiresConfirmation()
+                        ->modalDescription(fn (EloquentCollection $records): string => "You are about to approve {$records->count()} CKPN Workpapers. Continue?")
+                        ->visible(fn (): bool => auth()->user()?->can('Approve:CkpnWorkpaper') ?? false)
+                        ->action(function (EloquentCollection $records): void {
+                            $user = auth()->user();
+
+                            if (! $user instanceof User) {
+                                abort(403);
+                            }
+
+                            try {
+                                $approved = app(ApproveCkpnWorkpaperAction::class)->handleMany($records, $user);
+                            } catch (ValidationException $exception) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title(collect($exception->errors())->flatten()->first() ?: $exception->getMessage())
+                                    ->send();
+
+                                return;
+                            }
+
+                            Notification::make()
+                                ->success()
+                                ->title("{$approved->count()} CKPN Workpapers have been approved.")
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    BulkAction::make('createJournalsForSelectedWorkpapers')
+                        ->label('Create CKPN Journals')
+                        ->requiresConfirmation()
+                        ->modalDescription(fn (EloquentCollection $records): string => "You are about to create CKPN Journals for {$records->count()} approved CKPN Workpapers. Continue?")
+                        ->visible(fn (): bool => auth()->user()?->can('CreateJournal:CkpnWorkpaper') ?? false)
+                        ->action(function (EloquentCollection $records): void {
+                            $user = auth()->user();
+
+                            if (! $user instanceof User) {
+                                abort(403);
+                            }
+
+                            try {
+                                $journals = app(CreateCkpnJournalFromWorkpaperAction::class)->handleMany($records, $user);
+                            } catch (ValidationException $exception) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title(collect($exception->errors())->flatten()->first() ?: $exception->getMessage())
+                                    ->send();
+
+                                return;
+                            }
+
+                            Notification::make()
+                                ->success()
+                                ->title("{$journals->count()} CKPN Journals have been created.")
                                 ->send();
                         })
                         ->deselectRecordsAfterCompletion(),

@@ -2,12 +2,19 @@
 
 namespace App\Filament\Resources\CkpnJournals\Tables;
 
+use App\Actions\CkpnJournal\SubmitCkpnJournalAction;
 use App\Models\CkpnJournal;
+use App\Models\User;
+use Filament\Actions\BulkAction;
+use Filament\Actions\BulkActionGroup;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Validation\ValidationException;
 
 class CkpnJournalsTable
 {
@@ -52,6 +59,39 @@ class CkpnJournalsTable
                 ViewAction::make(),
                 EditAction::make()
                     ->visible(fn (CkpnJournal $record): bool => auth()->user()?->can('update', $record) ?? false),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    BulkAction::make('submitSelectedJournals')
+                        ->label('Submit Selected Journals')
+                        ->requiresConfirmation()
+                        ->modalDescription(fn (EloquentCollection $records): string => "You are about to submit {$records->count()} CKPN Journals for approval. Continue?")
+                        ->visible(fn (): bool => auth()->user()?->can('Submit:CkpnJournal') ?? false)
+                        ->action(function (EloquentCollection $records): void {
+                            $user = auth()->user();
+
+                            if (! $user instanceof User) {
+                                abort(403);
+                            }
+
+                            try {
+                                $submitted = app(SubmitCkpnJournalAction::class)->handleMany($records, $user);
+                            } catch (ValidationException $exception) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title(collect($exception->errors())->flatten()->first() ?: $exception->getMessage())
+                                    ->send();
+
+                                return;
+                            }
+
+                            Notification::make()
+                                ->success()
+                                ->title("{$submitted->count()} CKPN Journals have been submitted for approval.")
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                ]),
             ]);
     }
 }

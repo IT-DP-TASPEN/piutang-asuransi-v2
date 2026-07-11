@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Actions\CkpnJournal\SubmitCkpnJournalAction;
 use App\Filament\Resources\CkpnJournals\CkpnJournalResource;
 use App\Filament\Resources\CkpnJournals\Pages\EditCkpnJournal;
+use App\Filament\Resources\CkpnJournals\Pages\ListCkpnJournals;
 use App\Filament\Resources\CkpnJournals\Pages\ViewCkpnJournal;
 use App\Jobs\ExecuteGlToGlJob;
 use App\Models\ApprovalRequest;
@@ -16,6 +17,7 @@ use Database\Seeders\BranchOfficeSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Tests\TestCase;
 
@@ -105,6 +107,138 @@ class CkpnJournalWorkflowTest extends TestCase
         $this->assertSame('1000.00', $journal->total_amount);
     }
 
+    public function test_list_page_bulk_submit_action_visibility_uses_submit_permission(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $businessMaker = $this->userWithRole('business_maker', '000');
+
+        Livewire::actingAs($maker)
+            ->test(ListCkpnJournals::class)
+            ->assertTableBulkActionVisible('submitSelectedJournals')
+            ->assertTableBulkActionHasLabel('submitSelectedJournals', 'Submit Selected Journals');
+
+        Livewire::actingAs($businessMaker)
+            ->test(ListCkpnJournals::class)
+            ->assertTableBulkActionHidden('submitSelectedJournals');
+    }
+
+    public function test_list_page_bulk_submit_action_submits_selected_draft_and_returned_journals(): void
+    {
+        $this->seedDependencies();
+        Queue::fake();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $draft = $this->journal(CkpnJournal::STATUS_DRAFT, '1000.00', '2027-01-31', '001');
+        $returned = $this->journal(CkpnJournal::STATUS_RETURNED, '2000.00', '2027-01-31', '002');
+        $draft->approvalRequests()->create([
+            'workflow_code' => ApprovalRequest::WORKFLOW_CKPN_JOURNAL_APPROVAL,
+            'status' => ApprovalRequest::STATUS_REJECTED,
+            'submitted_by' => $maker->id,
+            'submitted_at' => now(),
+        ]);
+        $returned->approvalRequests()->create([
+            'workflow_code' => ApprovalRequest::WORKFLOW_CKPN_JOURNAL_APPROVAL,
+            'status' => ApprovalRequest::STATUS_RETURNED,
+            'submitted_by' => $maker->id,
+            'submitted_at' => now(),
+        ]);
+
+        Livewire::actingAs($maker)
+            ->test(ListCkpnJournals::class)
+            ->callTableBulkAction('submitSelectedJournals', [$returned, $draft])
+            ->assertNotified('2 CKPN Journals have been submitted for approval.');
+
+        $this->assertSame(CkpnJournal::STATUS_SUBMITTED, $draft->refresh()->status);
+        $this->assertSame(CkpnJournal::STATUS_SUBMITTED, $returned->refresh()->status);
+        $this->assertSame('1000.00', $draft->total_amount);
+        $this->assertSame('2000.00', $returned->total_amount);
+        $this->assertSame(
+            [ApprovalRequest::STATUS_REJECTED, ApprovalRequest::STATUS_SUBMITTED],
+            $draft->approvalRequests()->orderBy('id')->pluck('status')->all(),
+        );
+        $this->assertSame(
+            [ApprovalRequest::STATUS_RETURNED, ApprovalRequest::STATUS_SUBMITTED],
+            $returned->approvalRequests()->orderBy('id')->pluck('status')->all(),
+        );
+        Queue::assertNotPushed(ExecuteGlToGlJob::class);
+    }
+
+    public function test_list_page_bulk_submit_action_notifies_validation_failure_without_partial_submit(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $draft = $this->journal(CkpnJournal::STATUS_DRAFT, '1000.00', '2027-02-28', '001');
+        $rejected = $this->journal(CkpnJournal::STATUS_REJECTED, '1000.00', '2027-02-28', '002');
+
+        Livewire::actingAs($maker)
+            ->test(ListCkpnJournals::class)
+            ->callTableBulkAction('submitSelectedJournals', [$draft, $rejected])
+            ->assertNotified('1 selected CKPN Journals are not eligible for submission.');
+
+        $this->assertSame(CkpnJournal::STATUS_DRAFT, $draft->refresh()->status);
+        $this->assertSame(CkpnJournal::STATUS_REJECTED, $rejected->refresh()->status);
+        $this->assertSame(0, ApprovalRequest::query()->count());
+    }
+
+    public function test_bulk_submit_requires_same_cutoff_and_blocks_active_approval_requests(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $first = $this->journal(CkpnJournal::STATUS_DRAFT, '1000.00', '2027-03-31', '001');
+        $second = $this->journal(CkpnJournal::STATUS_DRAFT, '1000.00', '2027-04-30', '002');
+
+        try {
+            app(SubmitCkpnJournalAction::class)->handleMany([$first, $second], $maker);
+            $this->fail('Expected validation exception.');
+        } catch (ValidationException $exception) {
+            $this->assertSame('Selected CKPN Journals must have the same cutoff date.', collect($exception->errors())->flatten()->first());
+        }
+
+        $this->assertSame(CkpnJournal::STATUS_DRAFT, $first->refresh()->status);
+        $this->assertSame(CkpnJournal::STATUS_DRAFT, $second->refresh()->status);
+
+        $second->ckpnWorkpaper->forceFill(['period' => '2027-03-31'])->save();
+        $second->approvalRequests()->create([
+            'workflow_code' => ApprovalRequest::WORKFLOW_CKPN_JOURNAL_APPROVAL,
+            'status' => ApprovalRequest::STATUS_SUBMITTED,
+            'submitted_by' => $maker->id,
+            'submitted_at' => now(),
+        ]);
+
+        try {
+            app(SubmitCkpnJournalAction::class)->handleMany([$first->refresh(), $second->refresh()], $maker);
+            $this->fail('Expected validation exception.');
+        } catch (ValidationException $exception) {
+            $this->assertSame('One or more selected CKPN Journals already have active approval requests.', collect($exception->errors())->flatten()->first());
+        }
+
+        $this->assertSame(CkpnJournal::STATUS_DRAFT, $first->refresh()->status);
+        $this->assertSame(CkpnJournal::STATUS_DRAFT, $second->refresh()->status);
+        $this->assertSame(1, ApprovalRequest::query()->count());
+    }
+
+    public function test_submit_fails_clearly_when_journal_has_no_workpaper(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $journal = new CkpnJournal([
+            'branch_office_id' => $branch->id,
+            'journal_date' => '2027-05-31',
+            'total_amount' => '1000.00',
+            'status' => CkpnJournal::STATUS_DRAFT,
+        ]);
+
+        try {
+            app(SubmitCkpnJournalAction::class)->handle($journal, $maker);
+            $this->fail('Expected validation exception.');
+        } catch (ValidationException $exception) {
+            $this->assertSame('Selected CKPN Journals must have related CKPN Workpapers.', collect($exception->errors())->flatten()->first());
+        }
+
+        $this->assertSame(0, ApprovalRequest::query()->count());
+    }
+
     private function seedDependencies(): void
     {
         $this->seed([
@@ -113,12 +247,16 @@ class CkpnJournalWorkflowTest extends TestCase
         ]);
     }
 
-    private function journal(string $status = CkpnJournal::STATUS_DRAFT, string $effectiveTotal = '1000.00'): CkpnJournal
-    {
-        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+    private function journal(
+        string $status = CkpnJournal::STATUS_DRAFT,
+        string $effectiveTotal = '1000.00',
+        ?string $period = null,
+        string $branchCode = '001',
+    ): CkpnJournal {
+        $branch = BranchOffice::query()->where('branch_code', $branchCode)->firstOrFail();
         $month = CkpnWorkpaper::query()->count() + 1;
         $workpaper = CkpnWorkpaper::query()->create([
-            'period' => sprintf('2026-%02d-01', $month),
+            'period' => $period ?? sprintf('2026-%02d-01', $month),
             'branch_office_id' => $branch->id,
             'status' => CkpnWorkpaper::STATUS_APPROVED,
             'total_receivable_amount' => '10000.00',

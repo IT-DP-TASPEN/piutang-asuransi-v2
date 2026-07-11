@@ -535,6 +535,211 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame(0, ApprovalRequest::query()->count());
     }
 
+    public function test_bulk_approve_approves_selected_submitted_workpapers_without_creating_journals(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $first = app(SubmitCkpnWorkpaperAction::class)->handle($this->generatedWorkpaperForSubmit('001', '2027-04-30'), $maker);
+        $second = app(SubmitCkpnWorkpaperAction::class)->handle($this->generatedWorkpaperForSubmit('002', '2027-04-30'), $maker);
+
+        $approved = app(ApproveCkpnWorkpaperAction::class)->handleMany([$second, $first], $approver);
+
+        $this->assertSame([$first->id, $second->id], $approved->pluck('id')->all());
+        $this->assertSame(CkpnWorkpaper::STATUS_APPROVED, $first->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_APPROVED, $second->refresh()->status);
+        $this->assertSame(2, ApprovalRequest::query()
+            ->where('workflow_code', ApprovalRequest::WORKFLOW_MONTHLY_CKPN_WORKPAPER)
+            ->where('status', ApprovalRequest::STATUS_APPROVED)
+            ->count());
+        $this->assertSame(0, CkpnJournal::query()->count());
+    }
+
+    public function test_bulk_approve_fails_all_or_nothing_for_missing_active_approval(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $valid = app(SubmitCkpnWorkpaperAction::class)->handle($this->generatedWorkpaperForSubmit('001', '2027-05-31'), $maker);
+        $missingApproval = $this->generatedWorkpaperForSubmit('002', '2027-05-31');
+        $missingApproval->forceFill(['status' => CkpnWorkpaper::STATUS_SUBMITTED])->save();
+
+        try {
+            app(ApproveCkpnWorkpaperAction::class)->handleMany([$valid, $missingApproval], $approver);
+            $this->fail('Bulk approve should fail when one active approval is missing.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'One or more selected CKPN Workpapers do not have active workpaper approval requests.',
+                collect($exception->errors())->flatten()->first(),
+            );
+        }
+
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $valid->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $missingApproval->refresh()->status);
+        $this->assertSame(0, ApprovalRequest::query()->where('status', ApprovalRequest::STATUS_APPROVED)->count());
+    }
+
+    public function test_bulk_approve_requires_same_cutoff_date(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $first = app(SubmitCkpnWorkpaperAction::class)->handle($this->generatedWorkpaperForSubmit('001', '2027-06-15'), $maker);
+        $second = app(SubmitCkpnWorkpaperAction::class)->handle($this->generatedWorkpaperForSubmit('002', '2027-06-30'), $maker);
+
+        try {
+            app(ApproveCkpnWorkpaperAction::class)->handleMany([$first, $second], $approver);
+            $this->fail('Bulk approve should fail for mixed cutoff dates.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'Selected CKPN Workpapers must have the same cutoff date.',
+                collect($exception->errors())->flatten()->first(),
+            );
+        }
+
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $first->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $second->refresh()->status);
+    }
+
+    public function test_bulk_approve_rolls_back_when_mutation_fails(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $first = app(SubmitCkpnWorkpaperAction::class)->handle($this->generatedWorkpaperForSubmit('001', '2027-07-31'), $maker);
+        $second = app(SubmitCkpnWorkpaperAction::class)->handle($this->generatedWorkpaperForSubmit('002', '2027-07-31'), $maker);
+        $approvalService = new class(app(ApprovalFinalizationService::class)) extends ApprovalService
+        {
+            public int $calls = 0;
+
+            public function approveCurrentStep(ApprovalRequest $request, User $actor, ?string $notes = null): ApprovalRequest
+            {
+                $request = parent::approveCurrentStep($request, $actor, $notes);
+                $this->calls++;
+
+                if ($this->calls === 2) {
+                    throw ValidationException::withMessages([
+                        'approve' => 'Simulated approve failure.',
+                    ]);
+                }
+
+                return $request;
+            }
+        };
+
+        try {
+            (new ApproveCkpnWorkpaperAction($approvalService))->handleMany([$first, $second], $approver);
+            $this->fail('Bulk approve should rollback when one mutation fails.');
+        } catch (ValidationException $exception) {
+            $this->assertSame('Simulated approve failure.', collect($exception->errors())->flatten()->first());
+        }
+
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $first->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $second->refresh()->status);
+        $this->assertSame(2, ApprovalRequest::query()->where('status', ApprovalRequest::STATUS_SUBMITTED)->count());
+    }
+
+    public function test_single_create_journal_allows_new_attempt_after_rejected_journal(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $workpaper = $this->approvedWorkpaperForJournal('001', '2027-08-31');
+        $rejected = app(CreateCkpnJournalFromWorkpaperAction::class)->handle($workpaper, $maker);
+        $rejected->forceFill(['status' => CkpnJournal::STATUS_REJECTED])->save();
+
+        $new = app(CreateCkpnJournalFromWorkpaperAction::class)->handle($workpaper->refresh(), $maker);
+
+        $this->assertSame(CkpnJournal::STATUS_REJECTED, $rejected->refresh()->status);
+        $this->assertSame(CkpnJournal::STATUS_DRAFT, $new->status);
+        $this->assertSame(
+            [CkpnJournal::STATUS_REJECTED, CkpnJournal::STATUS_DRAFT],
+            $workpaper->journals()->orderBy('id')->pluck('status')->all(),
+        );
+    }
+
+    public function test_bulk_create_journals_creates_drafts_and_no_approval_requests(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $first = $this->approvedWorkpaperForJournal('001', '2027-09-30');
+        $second = $this->approvedWorkpaperForJournal('002', '2027-09-30');
+
+        $journals = app(CreateCkpnJournalFromWorkpaperAction::class)->handleMany([$second, $first], $maker);
+
+        $this->assertSame([$first->id, $second->id], $journals->pluck('ckpn_workpaper_id')->all());
+        $this->assertSame([CkpnJournal::STATUS_DRAFT, CkpnJournal::STATUS_DRAFT], $journals->pluck('status')->all());
+        $this->assertSame($first->total_effective_ckpn_amount, $journals->first()->total_amount);
+        $this->assertSame(0, ApprovalRequest::query()
+            ->where('workflow_code', ApprovalRequest::WORKFLOW_CKPN_JOURNAL_APPROVAL)
+            ->count());
+    }
+
+    public function test_bulk_create_journals_fails_all_or_nothing_for_invalid_status_or_cutoff(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $approved = $this->approvedWorkpaperForJournal('001', '2027-10-31');
+        $generated = $this->generatedWorkpaperForSubmit('002', '2027-10-31');
+
+        try {
+            app(CreateCkpnJournalFromWorkpaperAction::class)->handleMany([$approved, $generated], $maker);
+            $this->fail('Bulk create journal should fail for non-approved workpaper.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                '1 selected CKPN Workpapers are not eligible for CKPN Journal creation.',
+                collect($exception->errors())->flatten()->first(),
+            );
+        }
+
+        $this->assertSame(0, CkpnJournal::query()->count());
+
+        $otherCutoff = $this->approvedWorkpaperForJournal('003', '2027-10-15');
+
+        try {
+            app(CreateCkpnJournalFromWorkpaperAction::class)->handleMany([$approved, $otherCutoff], $maker);
+            $this->fail('Bulk create journal should fail for mixed cutoff dates.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'Selected CKPN Workpapers must have the same cutoff date.',
+                collect($exception->errors())->flatten()->first(),
+            );
+        }
+
+        $this->assertSame(0, CkpnJournal::query()->count());
+    }
+
+    public function test_bulk_create_journals_blocks_active_journal_but_ignores_rejected_journal(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $withRejected = $this->approvedWorkpaperForJournal('001', '2027-11-30');
+        $clean = $this->approvedWorkpaperForJournal('002', '2027-11-30');
+        $rejected = app(CreateCkpnJournalFromWorkpaperAction::class)->handle($withRejected, $maker);
+        $rejected->forceFill(['status' => CkpnJournal::STATUS_REJECTED])->save();
+
+        app(CreateCkpnJournalFromWorkpaperAction::class)->handleMany([$withRejected->refresh(), $clean], $maker);
+
+        $this->assertSame(CkpnJournal::STATUS_REJECTED, $rejected->refresh()->status);
+        $this->assertSame(3, CkpnJournal::query()->count());
+
+        $blocked = $this->approvedWorkpaperForJournal('003', '2027-12-31');
+        $other = $this->approvedWorkpaperForJournal('004', '2027-12-31');
+        app(CreateCkpnJournalFromWorkpaperAction::class)->handle($blocked, $maker);
+
+        try {
+            app(CreateCkpnJournalFromWorkpaperAction::class)->handleMany([$blocked->refresh(), $other], $maker);
+            $this->fail('Bulk create journal should fail when one workpaper has a blocking journal.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'One or more selected CKPN Workpapers already have blocking CKPN Journals.',
+                collect($exception->errors())->flatten()->first(),
+            );
+        }
+
+        $this->assertSame(4, CkpnJournal::query()->count());
+        $this->assertSame(0, $other->journals()->count());
+    }
+
     public function test_adjustment_requires_reason_and_approval_preserves_item_values(): void
     {
         $this->seedDependencies();
@@ -1250,6 +1455,14 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         ]);
 
         return app(GenerateMonthlyCkpnWorkpaperAction::class)->handle($workpaper);
+    }
+
+    private function approvedWorkpaperForJournal(string $branchCode, string $period): CkpnWorkpaper
+    {
+        $workpaper = $this->generatedWorkpaperForSubmit($branchCode, $period);
+        $workpaper->forceFill(['status' => CkpnWorkpaper::STATUS_APPROVED])->save();
+
+        return $workpaper->refresh();
     }
 
     private function insuranceCompany(string $name, string $weight): InsuranceCompany

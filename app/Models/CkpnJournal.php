@@ -46,6 +46,23 @@ class CkpnJournal extends Model
     /**
      * @return list<string>
      */
+    public static function blockingWorkpaperJournalStatuses(): array
+    {
+        return [
+            self::STATUS_DRAFT,
+            self::STATUS_SUBMITTED,
+            self::STATUS_APPROVED,
+            self::STATUS_RETURNED,
+            self::STATUS_GL_TO_GL_QUEUED,
+            self::STATUS_GL_TO_GL_PROCESSING,
+            self::STATUS_GL_TO_GL_EXECUTED,
+            self::STATUS_GL_TO_GL_FAILED,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
     public static function editableStatuses(): array
     {
         return [

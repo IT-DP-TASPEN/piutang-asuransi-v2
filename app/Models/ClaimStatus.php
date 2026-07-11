@@ -25,7 +25,7 @@ class ClaimStatus extends Model
 
     public const LABELS = [
         self::ON_PROCESS_CODE => 'ON PROSES',
-        self::APPROVED_CODE => 'APPROVED / DISETUJUI ASURANSI',
+        self::APPROVED_CODE => 'DISETUJUI ASURANSI',
         self::REJECTED_CODE => 'DITOLAK ASURANSI',
     ];
 

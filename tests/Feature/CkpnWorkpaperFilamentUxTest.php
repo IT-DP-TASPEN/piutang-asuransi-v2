@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
+use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
 use App\Filament\Resources\CkpnWorkpapers\CkpnWorkpaperResource;
 use App\Filament\Resources\CkpnWorkpapers\Pages\CreateCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\Pages\EditCkpnWorkpaper;
@@ -10,6 +11,7 @@ use App\Filament\Resources\CkpnWorkpapers\Pages\ListCkpnWorkpapers;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ViewCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\RelationManagers\ItemsRelationManager;
 use App\Jobs\GenerateCkpnWorkpaperJob;
+use App\Models\ApprovalRequest;
 use App\Models\BranchOffice;
 use App\Models\CkpnAdjustment;
 use App\Models\CkpnJournal;
@@ -145,6 +147,106 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
 
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $generated->refresh()->status);
         $this->assertSame(CkpnWorkpaper::STATUS_DRAFT, $draft->refresh()->status);
+    }
+
+    public function test_list_page_bulk_approve_and_create_journal_actions_visibility_uses_single_permissions(): void
+    {
+        $this->seedDependencies();
+        $accountingMaker = $this->userWithRole('accounting_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $businessMaker = $this->userWithRole('business_maker', '000');
+
+        Livewire::actingAs($approver)
+            ->test(ListCkpnWorkpapers::class)
+            ->assertTableBulkActionVisible('approveSelectedWorkpapers')
+            ->assertTableBulkActionHidden('createJournalsForSelectedWorkpapers');
+
+        Livewire::actingAs($accountingMaker)
+            ->test(ListCkpnWorkpapers::class)
+            ->assertTableBulkActionHidden('approveSelectedWorkpapers')
+            ->assertTableBulkActionVisible('createJournalsForSelectedWorkpapers');
+
+        Livewire::actingAs($businessMaker)
+            ->test(ListCkpnWorkpapers::class)
+            ->assertTableBulkActionHidden('approveSelectedWorkpapers')
+            ->assertTableBulkActionHidden('createJournalsForSelectedWorkpapers');
+    }
+
+    public function test_list_page_bulk_approve_action_approves_selected_workpapers(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $first = app(SubmitCkpnWorkpaperAction::class)->handle(
+            $this->workpaper(CkpnWorkpaper::STATUS_GENERATED, '2027-01-31', '001'),
+            $maker,
+        );
+        $second = app(SubmitCkpnWorkpaperAction::class)->handle(
+            $this->workpaper(CkpnWorkpaper::STATUS_GENERATED, '2027-01-31', '002'),
+            $maker,
+        );
+
+        Livewire::actingAs($approver)
+            ->test(ListCkpnWorkpapers::class)
+            ->callTableBulkAction('approveSelectedWorkpapers', [$first, $second])
+            ->assertNotified('2 CKPN Workpapers have been approved.');
+
+        $this->assertSame(CkpnWorkpaper::STATUS_APPROVED, $first->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_APPROVED, $second->refresh()->status);
+        $this->assertSame(0, CkpnJournal::query()->count());
+    }
+
+    public function test_list_page_bulk_approve_action_notifies_validation_failure_without_partial_approval(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $submitted = app(SubmitCkpnWorkpaperAction::class)->handle(
+            $this->workpaper(CkpnWorkpaper::STATUS_GENERATED, '2027-02-28', '001'),
+            $maker,
+        );
+        $generated = $this->workpaper(CkpnWorkpaper::STATUS_GENERATED, '2027-02-28', '002');
+
+        Livewire::actingAs($approver)
+            ->test(ListCkpnWorkpapers::class)
+            ->callTableBulkAction('approveSelectedWorkpapers', [$submitted, $generated])
+            ->assertNotified('1 selected CKPN Workpapers are not eligible for approval.');
+
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $submitted->refresh()->status);
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $generated->refresh()->status);
+    }
+
+    public function test_list_page_bulk_create_journals_action_creates_selected_drafts(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $first = $this->workpaper(CkpnWorkpaper::STATUS_APPROVED, '2027-03-31', '001');
+        $second = $this->workpaper(CkpnWorkpaper::STATUS_APPROVED, '2027-03-31', '002');
+
+        Livewire::actingAs($maker)
+            ->test(ListCkpnWorkpapers::class)
+            ->callTableBulkAction('createJournalsForSelectedWorkpapers', [$first, $second])
+            ->assertNotified('2 CKPN Journals have been created.');
+
+        $this->assertSame(2, CkpnJournal::query()->where('status', CkpnJournal::STATUS_DRAFT)->count());
+        $this->assertSame(0, ApprovalRequest::query()
+            ->where('workflow_code', ApprovalRequest::WORKFLOW_CKPN_JOURNAL_APPROVAL)
+            ->count());
+    }
+
+    public function test_list_page_bulk_create_journals_action_notifies_validation_failure_without_partial_create(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $approved = $this->workpaper(CkpnWorkpaper::STATUS_APPROVED, '2027-04-30', '001');
+        $submitted = $this->workpaper(CkpnWorkpaper::STATUS_SUBMITTED, '2027-04-30', '002');
+
+        Livewire::actingAs($maker)
+            ->test(ListCkpnWorkpapers::class)
+            ->callTableBulkAction('createJournalsForSelectedWorkpapers', [$approved, $submitted])
+            ->assertNotified('1 selected CKPN Workpapers are not eligible for CKPN Journal creation.');
+
+        $this->assertSame(0, CkpnJournal::query()->count());
     }
 
     public function test_list_page_bulk_create_action_queues_all_active_branch_workpapers(): void

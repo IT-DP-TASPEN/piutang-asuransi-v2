@@ -423,7 +423,10 @@ class ViewCkpnWorkpaper extends ViewRecord
     {
         return (auth()->user()?->can('createJournal', $this->workpaper()) ?? false)
             && $this->workpaper()->status === CkpnWorkpaper::STATUS_APPROVED
-            && ! $this->workpaper()->journals()->exists();
+            && ! $this->workpaper()
+                ->journals()
+                ->whereIn('status', CkpnJournal::blockingWorkpaperJournalStatuses())
+                ->exists();
     }
 
     private function canGenerateExport(): bool
