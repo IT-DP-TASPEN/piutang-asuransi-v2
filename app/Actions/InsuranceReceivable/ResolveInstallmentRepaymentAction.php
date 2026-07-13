@@ -24,6 +24,7 @@ class ResolveInstallmentRepaymentAction
     public function __construct(
         private readonly ApprovalService $approvalService,
         private readonly CoreBankingClient $coreBankingClient,
+        private readonly PrepareAccountingValidationContractOutstandingAction $contractOutstandingAction,
         private readonly InsuranceReceivableStageLogger $stageLogger,
     ) {}
 
@@ -119,8 +120,11 @@ class ResolveInstallmentRepaymentAction
                     apiLog: $this->apiLog($result['log_id']),
                 );
 
-                $this->approvalService->approveCurrentStep($request->refresh(), $user, $notes);
             });
+
+            $businessDate = now('Asia/Jakarta')->toDateString();
+            $this->contractOutstandingAction->handle($insuranceReceivable->refresh(), $user, $businessDate);
+            $this->approvalService->approveCurrentStep($request->refresh(), $user, $notes);
 
             return $insuranceReceivable->refresh();
         } finally {

@@ -8,6 +8,8 @@ use App\Models\EarlyTerminationBalanceInquiry;
 use App\Models\GlToGlTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\InsuranceReceivableInstallmentRepayment;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Schema;
@@ -75,8 +77,32 @@ class InsuranceReceivableInfolist
                             ->columns(1)
                             ->schema([
                                 TextEntry::make('loan_outstanding')
-                                    ->label('Loan outstanding')
+                                    ->label('Fincloud outstanding')
                                     ->money('IDR', 0, 'id_ID'),
+                                TextEntry::make('contract_outstanding_amount')
+                                    ->label('Contract outstanding')
+                                    ->money('IDR', 0, 'id_ID')
+                                    ->placeholder('-'),
+                                TextEntry::make('contract_outstanding_spread')
+                                    ->label('Spread')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::contractSpread($record))
+                                    ->money('IDR', 0, 'id_ID'),
+                                TextEntry::make('contract_outstanding_requested_as_of')
+                                    ->label('Contract requested AsOf')
+                                    ->date()
+                                    ->placeholder('-'),
+                                TextEntry::make('contract_outstanding_as_of')
+                                    ->label('Contract returned AsOf')
+                                    ->date()
+                                    ->placeholder('-'),
+                                TextEntry::make('contract_outstanding_product_code')
+                                    ->label('Contract product code')
+                                    ->badge()
+                                    ->placeholder('-'),
+                                TextEntry::make('contract_outstanding_trx_type')
+                                    ->label('LSA trx type')
+                                    ->badge()
+                                    ->placeholder('-'),
                                 TextEntry::make('receivable_amount')
                                     ->label('Receivable amount')
                                     ->money('IDR', 0, 'id_ID'),
@@ -188,62 +214,115 @@ class InsuranceReceivableInfolist
                             ]),
                         Tabs\Tab::make('Early termination top up')
                             ->columnSpan(1)
-                            ->visible(fn (InsuranceReceivable $record): bool => self::latestBalanceInquiry($record) instanceof EarlyTerminationBalanceInquiry
-                                || self::latestTopUp($record) instanceof GlToGlTransaction)
+                            ->visible(fn (InsuranceReceivable $record): bool => self::latestCalculationInquiry($record) instanceof EarlyTerminationBalanceInquiry
+                                || self::latestBalanceInquiry($record) instanceof EarlyTerminationBalanceInquiry
+                                || self::latestPreContractInquiry($record) instanceof EarlyTerminationBalanceInquiry
+                                || self::latestPostVerificationInquiry($record) instanceof EarlyTerminationBalanceInquiry
+                                || self::latestTopUp($record) instanceof GlToGlTransaction
+                                || self::latestFlatSpreadTopUp($record) instanceof GlToGlTransaction
+                                || self::latestContractTopUp($record) instanceof GlToGlTransaction)
                             ->schema([
                                 TextEntry::make('latest_balance_inquiry_available_balance')
-                                    ->label('Latest available balance')
-                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->available_balance)
+                                    ->label('Calculation available balance')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::calculationOrLegacyInquiry($record)?->available_balance)
                                     ->money('IDR', 0, 'id_ID')
                                     ->placeholder('-'),
                                 TextEntry::make('latest_balance_inquiry_required_top_up_amount')
                                     ->label('Required top up amount')
-                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->required_top_up_amount)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::calculationOrLegacyInquiry($record)?->required_top_up_amount)
+                                    ->money('IDR', 0, 'id_ID')
+                                    ->placeholder('-'),
+                                TextEntry::make('latest_lsa_top_up_amount')
+                                    ->label('Current LSA required')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestCalculationInquiry($record)?->lsa_top_up_amount)
+                                    ->money('IDR', 0, 'id_ID')
+                                    ->placeholder('-'),
+                                TextEntry::make('latest_piutang_top_up_amount')
+                                    ->label('Current Piutang required')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestCalculationInquiry($record)?->piutang_top_up_amount)
                                     ->money('IDR', 0, 'id_ID')
                                     ->placeholder('-'),
                                 TextEntry::make('latest_balance_inquiry_status')
                                     ->label('Balance inquiry status')
-                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->status)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::calculationOrLegacyInquiry($record)?->status)
                                     ->badge()
                                     ->placeholder('-'),
                                 TextEntry::make('latest_balance_inquiry_response_code')
                                     ->label('Balance inquiry response code')
-                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->response_code)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::calculationOrLegacyInquiry($record)?->response_code)
                                     ->badge()
                                     ->placeholder('-'),
                                 TextEntry::make('latest_balance_inquiry_description')
                                     ->label('Balance inquiry description')
-                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->response_description
-                                        ?? self::latestBalanceInquiry($record)?->error_message)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::calculationOrLegacyInquiry($record)?->response_description
+                                        ?? self::calculationOrLegacyInquiry($record)?->error_message)
                                     ->placeholder('-'),
                                 TextEntry::make('latest_balance_inquiry_requested_at')
                                     ->label('Balance inquiry requested at')
-                                    ->state(fn (InsuranceReceivable $record): mixed => self::latestBalanceInquiry($record)?->requested_at)
+                                    ->state(fn (InsuranceReceivable $record): mixed => self::calculationOrLegacyInquiry($record)?->requested_at)
                                     ->dateTime()
                                     ->placeholder('-'),
                                 TextEntry::make('latest_balance_inquiry_saving_account')
                                     ->label('Balance inquiry saving account')
-                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestBalanceInquiry($record)?->saving_account_number)
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::calculationOrLegacyInquiry($record)?->saving_account_number)
                                     ->copyable()
                                     ->placeholder('-'),
-                                TextEntry::make('latest_top_up_reference')
-                                    ->label('Top up reference')
-                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestTopUp($record)?->reference_number)
-                                    ->copyable()
-                                    ->placeholder('-'),
-                                TextEntry::make('latest_top_up_amount')
-                                    ->label('Top up amount')
-                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestTopUp($record)?->request_payload['amount'] ?? null)
+                                TextEntry::make('pre_contract_available_balance')
+                                    ->label('Pre-contract available balance')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestPreContractInquiry($record)?->available_balance)
                                     ->money('IDR', 0, 'id_ID')
                                     ->placeholder('-'),
-                                TextEntry::make('latest_top_up_status')
-                                    ->label('Top up status')
-                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestTopUp($record)?->status)
+                                TextEntry::make('post_verification_available_balance')
+                                    ->label('Final verification balance')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestPostVerificationInquiry($record)?->available_balance)
+                                    ->money('IDR', 0, 'id_ID')
+                                    ->placeholder('-'),
+                                TextEntry::make('flat_spread_top_up_reference')
+                                    ->label('LSA reference')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestFlatSpreadTopUp($record)?->reference_number)
+                                    ->copyable()
+                                    ->placeholder('-'),
+                                TextEntry::make('flat_spread_top_up_amount')
+                                    ->label('LSA amount')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestFlatSpreadTopUp($record)?->request_payload['amount'] ?? null)
+                                    ->money('IDR', 0, 'id_ID')
+                                    ->placeholder('-'),
+                                TextEntry::make('flat_spread_top_up_status')
+                                    ->label('LSA status')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestFlatSpreadTopUp($record)?->status ?? self::latestFlatSpreadTopUp($record)?->resolution_status)
                                     ->badge()
                                     ->placeholder('-'),
-                                TextEntry::make('latest_top_up_response')
-                                    ->label('Top up response')
-                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestTopUp($record)?->response_description)
+                                TextEntry::make('flat_spread_top_up_description')
+                                    ->label('LSA description')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestFlatSpreadTopUp($record)?->response_description
+                                        ?? self::latestFlatSpreadTopUp($record)?->resolution_reason)
+                                    ->placeholder('-'),
+                                TextEntry::make('contract_top_up_reference')
+                                    ->label('Piutang reference')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestContractOrLegacyTopUp($record)?->reference_number)
+                                    ->copyable()
+                                    ->placeholder('-'),
+                                TextEntry::make('contract_top_up_amount')
+                                    ->label('Piutang amount')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestContractOrLegacyTopUp($record)?->request_payload['amount'] ?? null)
+                                    ->money('IDR', 0, 'id_ID')
+                                    ->placeholder('-'),
+                                TextEntry::make('contract_top_up_status')
+                                    ->label('Piutang status')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestContractOrLegacyTopUp($record)?->status ?? self::latestContractOrLegacyTopUp($record)?->resolution_status)
+                                    ->badge()
+                                    ->placeholder('-'),
+                                TextEntry::make('contract_top_up_description')
+                                    ->label('Piutang description')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::latestContractOrLegacyTopUp($record)?->response_description
+                                        ?? self::latestContractOrLegacyTopUp($record)?->resolution_reason)
+                                    ->placeholder('-'),
+                                TextEntry::make('top_up_resolution')
+                                    ->label('Resolution')
+                                    ->state(fn (InsuranceReceivable $record): ?string => collect([
+                                        self::latestFlatSpreadTopUp($record)?->resolution_status,
+                                        self::latestContractTopUp($record)?->resolution_status,
+                                    ])->filter()->join(' / '))
                                     ->placeholder('-'),
                             ]),
                         Tabs\Tab::make('Pending claim status update')
@@ -296,6 +375,38 @@ class InsuranceReceivableInfolist
         return $inquiry instanceof EarlyTerminationBalanceInquiry ? $inquiry : null;
     }
 
+    private static function latestCalculationInquiry(InsuranceReceivable $record): ?EarlyTerminationBalanceInquiry
+    {
+        self::loadEarlyTerminationTopUpRelations($record);
+
+        $inquiry = $record->getRelation('latestCalculationInquiry');
+
+        return $inquiry instanceof EarlyTerminationBalanceInquiry ? $inquiry : null;
+    }
+
+    private static function latestPreContractInquiry(InsuranceReceivable $record): ?EarlyTerminationBalanceInquiry
+    {
+        self::loadEarlyTerminationTopUpRelations($record);
+
+        $inquiry = $record->getRelation('latestPreContractTopUpInquiry');
+
+        return $inquiry instanceof EarlyTerminationBalanceInquiry ? $inquiry : null;
+    }
+
+    private static function latestPostVerificationInquiry(InsuranceReceivable $record): ?EarlyTerminationBalanceInquiry
+    {
+        self::loadEarlyTerminationTopUpRelations($record);
+
+        $inquiry = $record->getRelation('latestPostTopUpVerificationInquiry');
+
+        return $inquiry instanceof EarlyTerminationBalanceInquiry ? $inquiry : null;
+    }
+
+    private static function calculationOrLegacyInquiry(InsuranceReceivable $record): ?EarlyTerminationBalanceInquiry
+    {
+        return self::latestCalculationInquiry($record) ?? self::latestBalanceInquiry($record);
+    }
+
     private static function latestTopUp(InsuranceReceivable $record): ?GlToGlTransaction
     {
         self::loadEarlyTerminationTopUpRelations($record);
@@ -305,11 +416,50 @@ class InsuranceReceivableInfolist
         return $topUp instanceof GlToGlTransaction ? $topUp : null;
     }
 
+    private static function latestFlatSpreadTopUp(InsuranceReceivable $record): ?GlToGlTransaction
+    {
+        self::loadEarlyTerminationTopUpRelations($record);
+
+        $topUp = $record->getRelation('latestEarlyTerminationFlatSpreadTopUpTransaction');
+
+        return $topUp instanceof GlToGlTransaction ? $topUp : null;
+    }
+
+    private static function latestContractTopUp(InsuranceReceivable $record): ?GlToGlTransaction
+    {
+        self::loadEarlyTerminationTopUpRelations($record);
+
+        $topUp = $record->getRelation('latestEarlyTerminationContractTopUpTransaction');
+
+        return $topUp instanceof GlToGlTransaction ? $topUp : null;
+    }
+
+    private static function latestContractOrLegacyTopUp(InsuranceReceivable $record): ?GlToGlTransaction
+    {
+        return self::latestContractTopUp($record) ?? self::latestTopUp($record);
+    }
+
     private static function loadEarlyTerminationTopUpRelations(InsuranceReceivable $record): void
     {
         $record->loadMissing([
             'latestEarlyTerminationBalanceInquiry',
+            'latestCalculationInquiry',
+            'latestPreContractTopUpInquiry',
+            'latestPostTopUpVerificationInquiry',
             'latestEarlyTerminationTopUpTransaction',
+            'latestEarlyTerminationFlatSpreadTopUpTransaction',
+            'latestEarlyTerminationContractTopUpTransaction',
         ]);
+    }
+
+    private static function contractSpread(InsuranceReceivable $record): ?string
+    {
+        if ($record->loan_outstanding === null || $record->contract_outstanding_amount === null) {
+            return null;
+        }
+
+        return (string) BigDecimal::of((string) $record->loan_outstanding)
+            ->minus((string) $record->contract_outstanding_amount)
+            ->toScale(2, RoundingMode::HalfUp);
     }
 }

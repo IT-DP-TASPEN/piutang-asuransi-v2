@@ -34,6 +34,10 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
         config([
             'core_banking.base_url' => 'http://core.test',
             'core_banking.signature_secret' => 'secret-key',
+            'services.contract_outstanding.base_url' => 'http://contract.test',
+            'services.contract_outstanding.endpoint' => '/api/slik/inquiry',
+            'services.contract_outstanding.token' => 'test-token',
+            'services.contract_outstanding.retry_times' => 0,
         ]);
 
         $this->seed([
@@ -54,6 +58,7 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
                     'nextDueDate' => '20260615',
                     'loanOutStanding' => '9000.00',
                 ])),
+                'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('9000')),
             ]);
 
             $result = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $approver);
@@ -61,7 +66,7 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
             $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED, $result->workflow_status);
             $this->assertSame('9000.00', $result->receivable_amount);
             $this->assertDatabaseCount('insurance_receivable_installment_repayments', 0);
-            Http::assertSentCount(1);
+            Http::assertSentCount(3);
         }
     }
 
@@ -81,9 +86,16 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
                     'loanOutStanding' => '9500.00',
                     'installmentAmount' => '1500.00',
                     'nextDueDate' => '20260615',
+                ]))
+                ->push($this->loanResponse([
+                    'accountNumber' => $receivable->loan_account_number,
+                    'loanOutStanding' => '9500.00',
+                    'installmentAmount' => '1500.00',
+                    'nextDueDate' => '20260615',
                 ])),
             'http://core.test/saving/inq/balance*' => Http::response($this->balanceResponse('2000.00')),
             'http://core.test/loan/repayment/' => Http::response($this->successResponse()),
+            'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('9500')),
         ]);
 
         $result = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $approver);
@@ -94,20 +106,25 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
         $this->assertSame('10000.00', $repayment->loan_outstanding_before);
         $this->assertSame('9500.00', $repayment->loan_outstanding_after);
         $this->assertSame('9500.00', $result->receivable_amount);
-        $this->assertSame(4, ApiIntegrationLog::query()->count());
+        $this->assertSame(6, ApiIntegrationLog::query()->count());
         Http::assertSent(fn (Request $request): bool => $request->url() === 'http://core.test/loan/repayment/'
-            && str_starts_with((string) (json_decode($request->body(), true)['trxReference'] ?? ''), "IRREP-{$receivable->id}-")
+            && str_starts_with((string) (json_decode($request->body(), true)['trxReference'] ?? ''), 'IRREP')
             && json_decode($request->body(), true)['accountNumber'] === $receivable->loan_account_number
             && json_decode($request->body(), true)['altNumber'] === 'ALT-1'
             && json_decode($request->body(), true)['paymentAmount'] === '1500.00'
             && json_decode($request->body(), true)['branchCode'] === '001');
     }
 
-    public function test_already_executed_repayment_does_not_call_api_again_and_uses_verified_outstanding(): void
+    public function test_already_executed_repayment_reuses_contract_snapshot_and_revalidates_fincloud(): void
     {
         [$receivable, $approver] = $this->accountingValidationReceivable([
             'date_of_death' => '2026-06-14',
             'loan_outstanding' => '10000.00',
+            'contract_outstanding_amount' => '9500.00',
+            'contract_outstanding_requested_as_of' => '2026-06-30',
+            'contract_outstanding_as_of' => '2026-06-30',
+            'contract_outstanding_product_code' => '301',
+            'contract_outstanding_trx_type' => 'LSA01',
         ]);
         InsuranceReceivableInstallmentRepayment::query()->create([
             'insurance_receivable_id' => $receivable->id,
@@ -122,13 +139,21 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
             'date_of_death' => '2026-06-14',
             'status' => InsuranceReceivableInstallmentRepayment::STATUS_EXECUTED,
         ]);
-        Http::fake(fn () => throw new \RuntimeException('No core banking API call expected.'));
+        Http::fake([
+            'http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse([
+                'accountNumber' => $receivable->loan_account_number,
+                'loanOutStanding' => '9500.00',
+                'nextDueDate' => '20260615',
+            ])),
+            'http://contract.test/api/slik/inquiry' => Http::response(['should_not' => 'call']),
+        ]);
 
         $result = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $approver);
 
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED, $result->workflow_status);
         $this->assertSame('9500.00', $result->receivable_amount);
-        Http::assertSentCount(0);
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'contract.test'));
     }
 
     public function test_missing_or_invalid_balance_blocks_before_repayment_post(): void
@@ -206,11 +231,18 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
             'status' => InsuranceReceivableInstallmentRepayment::STATUS_VERIFICATION_FAILED_AFTER_EXECUTION,
         ]);
         Http::fake([
-            'http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse([
-                'accountNumber' => $receivable->loan_account_number,
-                'loanOutStanding' => '9900.00',
-                'nextDueDate' => '20260615',
-            ])),
+            'http://core.test/inquiry/detail/loan' => Http::sequence()
+                ->push($this->loanResponse([
+                    'accountNumber' => $receivable->loan_account_number,
+                    'loanOutStanding' => '9900.00',
+                    'nextDueDate' => '20260615',
+                ]))
+                ->push($this->loanResponse([
+                    'accountNumber' => $receivable->loan_account_number,
+                    'loanOutStanding' => '9900.00',
+                    'nextDueDate' => '20260615',
+                ])),
+            'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('9900')),
         ]);
 
         $result = app(ResolveInstallmentRepaymentAction::class)->handle($receivable, $approver);
@@ -308,6 +340,21 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
                 'documentStatus' => $documentStatus,
                 'availableBalance' => $availableBalance,
                 'ledgerBalance' => $availableBalance,
+            ],
+        ];
+    }
+
+    private function contractResponse(string $bakiDebet): array
+    {
+        return [
+            'result' => [
+                'AccountNumber' => '3010000000000001',
+                'AsOf' => '2026-06-30T00:00:00Z',
+                'BakiDebet' => $bakiDebet,
+            ],
+            'loan' => [
+                'AccountNumber' => '3010000000000001',
+                'Product' => '301 - Kredit Pegawai Aktif',
             ],
         ];
     }

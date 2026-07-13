@@ -14,6 +14,7 @@ class ApproveAccountingValidationAction
     public function __construct(
         private readonly ApprovalService $approvalService,
         private readonly ProcessAccountingValidationInstallmentRepaymentAction $repaymentAction,
+        private readonly PrepareAccountingValidationContractOutstandingAction $contractOutstandingAction,
     ) {}
 
     public function handle(InsuranceReceivable $insuranceReceivable, ApprovalRequest $request, User $user, ?string $notes = null): InsuranceReceivable
@@ -21,7 +22,10 @@ class ApproveAccountingValidationAction
         $this->assertAccountingRequest($request);
         $this->assertCanActOnApproval($request, $user);
 
-        $this->repaymentAction->handle($insuranceReceivable, $user);
+        $businessDate = now('Asia/Jakarta')->toDateString();
+
+        $receivable = $this->repaymentAction->handle($insuranceReceivable, $user);
+        $this->contractOutstandingAction->handle($receivable, $user, $businessDate);
         $this->approvalService->approveCurrentStep($request->refresh(), $user, $notes);
 
         return $insuranceReceivable->refresh();

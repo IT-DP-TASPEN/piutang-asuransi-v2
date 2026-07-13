@@ -9,7 +9,6 @@ use App\Models\CkpnAdjustment;
 use App\Models\CkpnJournal;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceReceivable;
-use App\Models\InsuranceReceivableInstallmentRepayment;
 use App\Models\User;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
 use Brick\Math\BigDecimal;
@@ -81,7 +80,6 @@ class ApprovalFinalizationService
 
             $locked->forceFill([
                 'receivable_formation_date' => now()->toDateString(),
-                'loan_outstanding' => $amount,
                 'receivable_amount' => $amount,
                 'remaining_receivable_amount' => $amount,
                 'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
@@ -116,26 +114,29 @@ class ApprovalFinalizationService
 
     private function finalReceivableAmount(InsuranceReceivable $receivable): string
     {
-        $repayment = $receivable->installmentRepayment()->first();
+        $contract = $this->normalizedMoney($receivable->contract_outstanding_amount, 'Contract outstanding is required to form receivable.');
+        $fincloud = $this->normalizedMoney($receivable->loan_outstanding, 'Fresh Fincloud outstanding is required to form receivable.');
 
-        if ($repayment instanceof InsuranceReceivableInstallmentRepayment
-            && in_array($repayment->status, [
-                InsuranceReceivableInstallmentRepayment::STATUS_EXECUTED,
-                InsuranceReceivableInstallmentRepayment::STATUS_RESOLVED_MANUALLY,
-            ], true)
-            && $repayment->loan_outstanding_after !== null
-        ) {
-            return $this->normalizedMoney($repayment->loan_outstanding_after);
+        if (BigDecimal::of($contract)->isLessThanOrEqualTo('0')) {
+            throw ValidationException::withMessages([
+                'contract_outstanding' => 'Contract Outstanding must be greater than zero.',
+            ]);
         }
 
-        return $this->normalizedMoney($receivable->loan_outstanding);
+        if (BigDecimal::of($contract)->isGreaterThan(BigDecimal::of($fincloud))) {
+            throw ValidationException::withMessages([
+                'contract_outstanding' => 'Contract Outstanding cannot exceed fresh Fincloud outstanding.',
+            ]);
+        }
+
+        return $contract;
     }
 
-    private function normalizedMoney(mixed $amount): string
+    private function normalizedMoney(mixed $amount, string $message): string
     {
         if ($amount === null || $amount === '') {
             throw ValidationException::withMessages([
-                'loan_outstanding' => 'Loan outstanding is required to form receivable.',
+                'loan_outstanding' => $message,
             ]);
         }
 

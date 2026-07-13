@@ -32,6 +32,10 @@ class GlToGlTransactionInfolist
                             ->fontFamily(FontFamily::Mono)
                             ->copyable(),
                         TextEntry::make('status')->badge(),
+                        TextEntry::make('resolution_status')->label('Resolution status')->badge()->placeholder('-'),
+                        TextEntry::make('resolution_reason')->label('Resolution reason')->placeholder('-'),
+                        TextEntry::make('resolver.name')->label('Resolved by')->placeholder('-'),
+                        TextEntry::make('resolved_at')->dateTime()->placeholder('-'),
                         TextEntry::make('response_code')->label('Response code'),
                         TextEntry::make('response_description')->label('Response description'),
                         TextEntry::make('executor.name')->label('Executed by'),
@@ -42,6 +46,11 @@ class GlToGlTransactionInfolist
                             ->placeholder('-')
                             ->columnSpanFull(),
                         CodeEntry::make('response_payload')
+                            ->grammar(Grammar::Json)
+                            ->copyable()
+                            ->placeholder('-')
+                            ->columnSpanFull(),
+                        CodeEntry::make('resolution_payload')
                             ->grammar(Grammar::Json)
                             ->copyable()
                             ->placeholder('-')

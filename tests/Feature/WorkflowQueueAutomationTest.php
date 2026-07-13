@@ -262,7 +262,14 @@ class WorkflowQueueAutomationTest extends TestCase
 
     public function test_accounting_approval_waits_for_early_termination_confirmation(): void
     {
-        config(['core_banking.base_url' => 'http://core.test', 'core_banking.signature_secret' => 'secret-key']);
+        config([
+            'core_banking.base_url' => 'http://core.test',
+            'core_banking.signature_secret' => 'secret-key',
+            'services.contract_outstanding.base_url' => 'http://contract.test',
+            'services.contract_outstanding.endpoint' => '/api/slik/inquiry',
+            'services.contract_outstanding.token' => 'test-token',
+            'services.contract_outstanding.retry_times' => 0,
+        ]);
         $this->seedDependencies();
         $maker = $this->userWithRole('branch_maker', '001');
         $branchApprover = $this->userWithRole('branch_approver', '001');
@@ -298,6 +305,7 @@ class WorkflowQueueAutomationTest extends TestCase
                     'nextDueDate' => '20260501',
                 ],
             ]),
+            'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('230929055', $receivable->loan_account_number)),
         ]);
         $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $accountingApprover);
 
@@ -314,6 +322,11 @@ class WorkflowQueueAutomationTest extends TestCase
         $maker = $this->userWithRole('branch_maker', '001');
         $receivable = $this->receivableReadyForSubmit($maker, [
             'loan_outstanding' => '230929055.00',
+            'contract_outstanding_amount' => '230929055.00',
+            'contract_outstanding_requested_as_of' => '2026-05-31',
+            'contract_outstanding_as_of' => '2026-05-31',
+            'contract_outstanding_product_code' => '301',
+            'contract_outstanding_trx_type' => 'LSA01',
             'alt_number' => 'ALT-1',
             'saving_account_for_loan_repayment' => '1000010000000691',
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
@@ -321,6 +334,17 @@ class WorkflowQueueAutomationTest extends TestCase
         ]);
 
         Http::fake([
+            'http://core.test/inquiry/detail/loan' => Http::response([
+                'responseCode' => '00',
+                'description' => 'Success',
+                'data' => [
+                    'accountNumber' => $receivable->loan_account_number,
+                    'altNumber' => 'ALT-1',
+                    'branchCode' => '001',
+                    'saForLoanRepayment' => '1000010000000691',
+                    'loanOutStanding' => '230929055.00',
+                ],
+            ]),
             'http://core.test/saving/inq/balance*' => Http::response([
                 'responseCode' => '00',
                 'description' => 'Success',
@@ -577,6 +601,21 @@ class WorkflowQueueAutomationTest extends TestCase
         ]);
 
         return app(SubmitCkpnJournalAction::class)->handle($journal, $maker);
+    }
+
+    private function contractResponse(string $bakiDebet, string $accountNumber): array
+    {
+        return [
+            'result' => [
+                'AccountNumber' => $accountNumber,
+                'AsOf' => '2026-05-31T00:00:00Z',
+                'BakiDebet' => $bakiDebet,
+            ],
+            'loan' => [
+                'AccountNumber' => $accountNumber,
+                'Product' => '301 - Kredit Pegawai Aktif',
+            ],
+        ];
     }
 
     private function userWithRole(string $role, string $branchCode): User

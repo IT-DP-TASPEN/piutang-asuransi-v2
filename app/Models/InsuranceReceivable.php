@@ -28,6 +28,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'claim_status_id',
     'credit_limit',
     'loan_outstanding',
+    'contract_outstanding_amount',
+    'contract_outstanding_requested_as_of',
+    'contract_outstanding_as_of',
+    'contract_outstanding_product_code',
+    'contract_outstanding_trx_type',
+    'contract_outstanding_api_log_id',
     'collectability',
     'dpd',
     'product_id',
@@ -281,6 +287,21 @@ class InsuranceReceivable extends Model
             && $this->workflow_status !== self::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING;
     }
 
+    public function canReconcileEarlyTerminationTopUp(): bool
+    {
+        if ($this->isLegacyOrigin() || $this->isTerminal()) {
+            return false;
+        }
+
+        return $this->glToGlTransactions()
+            ->whereIn('purpose', [
+                GlToGlTransaction::PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP,
+                GlToGlTransaction::PURPOSE_EARLY_TERMINATION_CONTRACT_TOP_UP,
+            ])
+            ->where('resolution_status', GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED)
+            ->exists();
+    }
+
     public function canRetryInstallmentRepayment(): bool
     {
         if ($this->isLegacyOrigin() || $this->isTerminal()) {
@@ -448,6 +469,63 @@ class InsuranceReceivable extends Model
     }
 
     /**
+     * @return HasOne<EarlyTerminationBalanceInquiry, $this>
+     */
+    public function latestPreTopUpInquiry(): HasOne
+    {
+        return $this->hasOne(EarlyTerminationBalanceInquiry::class)
+            ->ofMany(['id' => 'max'], fn ($query) => $query->where(
+                'context',
+                EarlyTerminationBalanceInquiry::CONTEXT_PRE_TOP_UP,
+            ));
+    }
+
+    /**
+     * @return HasOne<EarlyTerminationBalanceInquiry, $this>
+     */
+    public function latestRetryPreTopUpInquiry(): HasOne
+    {
+        return $this->hasOne(EarlyTerminationBalanceInquiry::class)
+            ->ofMany(['id' => 'max'], fn ($query) => $query->where(
+                'context',
+                EarlyTerminationBalanceInquiry::CONTEXT_RETRY_PRE_TOP_UP,
+            ));
+    }
+
+    /**
+     * @return HasOne<EarlyTerminationBalanceInquiry, $this>
+     */
+    public function latestPreContractTopUpInquiry(): HasOne
+    {
+        return $this->hasOne(EarlyTerminationBalanceInquiry::class)
+            ->ofMany(['id' => 'max'], fn ($query) => $query->where(
+                'context',
+                EarlyTerminationBalanceInquiry::CONTEXT_PRE_CONTRACT_TOP_UP,
+            ));
+    }
+
+    /**
+     * @return HasOne<EarlyTerminationBalanceInquiry, $this>
+     */
+    public function latestPostTopUpVerificationInquiry(): HasOne
+    {
+        return $this->hasOne(EarlyTerminationBalanceInquiry::class)
+            ->ofMany(['id' => 'max'], fn ($query) => $query->where(
+                'context',
+                EarlyTerminationBalanceInquiry::CONTEXT_POST_TOP_UP_VERIFICATION,
+            ));
+    }
+
+    /**
+     * @return HasOne<EarlyTerminationBalanceInquiry, $this>
+     */
+    public function latestCalculationInquiry(): HasOne
+    {
+        return $this->hasOne(EarlyTerminationBalanceInquiry::class)
+            ->ofMany(['id' => 'max'], fn ($query) => $query->whereNotNull('total_shortage_amount'));
+    }
+
+    /**
      * @return HasMany<GlToGlTransaction, $this>
      */
     public function glToGlTransactions(): HasMany
@@ -461,8 +539,35 @@ class InsuranceReceivable extends Model
     public function latestEarlyTerminationTopUpTransaction(): HasOne
     {
         return $this->hasOne(GlToGlTransaction::class)
-            ->where('purpose', GlToGlTransaction::PURPOSE_EARLY_TERMINATION_REPAYMENT_TOP_UP)
-            ->latestOfMany();
+            ->ofMany(['id' => 'max'], fn ($query) => $query->whereIn('purpose', [
+                GlToGlTransaction::PURPOSE_EARLY_TERMINATION_REPAYMENT_TOP_UP,
+                GlToGlTransaction::PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP,
+                GlToGlTransaction::PURPOSE_EARLY_TERMINATION_CONTRACT_TOP_UP,
+            ]));
+    }
+
+    /**
+     * @return HasOne<GlToGlTransaction, $this>
+     */
+    public function latestEarlyTerminationFlatSpreadTopUpTransaction(): HasOne
+    {
+        return $this->hasOne(GlToGlTransaction::class)
+            ->ofMany(['id' => 'max'], fn ($query) => $query->where(
+                'purpose',
+                GlToGlTransaction::PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP,
+            ));
+    }
+
+    /**
+     * @return HasOne<GlToGlTransaction, $this>
+     */
+    public function latestEarlyTerminationContractTopUpTransaction(): HasOne
+    {
+        return $this->hasOne(GlToGlTransaction::class)
+            ->ofMany(['id' => 'max'], fn ($query) => $query->where(
+                'purpose',
+                GlToGlTransaction::PURPOSE_EARLY_TERMINATION_CONTRACT_TOP_UP,
+            ));
     }
 
     /**
@@ -471,6 +576,14 @@ class InsuranceReceivable extends Model
     public function apiIntegrationLogs(): MorphMany
     {
         return $this->morphMany(ApiIntegrationLog::class, 'related');
+    }
+
+    /**
+     * @return BelongsTo<ApiIntegrationLog, $this>
+     */
+    public function contractOutstandingApiLog(): BelongsTo
+    {
+        return $this->belongsTo(ApiIntegrationLog::class, 'contract_outstanding_api_log_id');
     }
 
     /**
@@ -548,6 +661,9 @@ class InsuranceReceivable extends Model
             'date_of_death' => 'date',
             'credit_limit' => 'decimal:2',
             'loan_outstanding' => 'decimal:2',
+            'contract_outstanding_amount' => 'decimal:2',
+            'contract_outstanding_requested_as_of' => 'date',
+            'contract_outstanding_as_of' => 'date',
             'dpd' => 'integer',
             'start_period' => 'date',
             'end_period' => 'date',

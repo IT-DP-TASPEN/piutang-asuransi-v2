@@ -67,7 +67,13 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
             'date_of_death' => '2026-05-31',
             'loan_outstanding' => '230929055.00',
         ]);
-        config(['core_banking.base_url' => 'http://core.test']);
+        config([
+            'core_banking.base_url' => 'http://core.test',
+            'services.contract_outstanding.base_url' => 'http://contract.test',
+            'services.contract_outstanding.endpoint' => '/api/slik/inquiry',
+            'services.contract_outstanding.token' => 'test-token',
+            'services.contract_outstanding.retry_times' => 0,
+        ]);
 
         app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
         $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $branchApprover);
@@ -110,6 +116,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
                     'nextDueDate' => '20260531',
                 ]),
             ]),
+            'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('230929000', $receivable->loan_account_number)),
         ]);
 
         $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $accountingApprover);
@@ -378,6 +385,21 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
             'installmentAmount' => '1000.00',
             'nextDueDate' => '20260531',
             ...$overrides,
+        ];
+    }
+
+    private function contractResponse(string $bakiDebet, string $accountNumber): array
+    {
+        return [
+            'result' => [
+                'AccountNumber' => $accountNumber,
+                'AsOf' => '2026-06-30T00:00:00Z',
+                'BakiDebet' => $bakiDebet,
+            ],
+            'loan' => [
+                'AccountNumber' => $accountNumber,
+                'Product' => '301 - Kredit Pegawai Aktif',
+            ],
         ];
     }
 }

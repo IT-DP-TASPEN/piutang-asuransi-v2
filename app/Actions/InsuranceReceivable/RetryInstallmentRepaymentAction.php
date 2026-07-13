@@ -14,6 +14,7 @@ class RetryInstallmentRepaymentAction
     public function __construct(
         private readonly ApprovalService $approvalService,
         private readonly ProcessAccountingValidationInstallmentRepaymentAction $repaymentAction,
+        private readonly PrepareAccountingValidationContractOutstandingAction $contractOutstandingAction,
     ) {}
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, ?string $notes = null): InsuranceReceivable
@@ -21,7 +22,9 @@ class RetryInstallmentRepaymentAction
         $request = $this->activeAccountingRequest($insuranceReceivable);
         $this->assertCanActOnApproval($request, $user);
 
-        $this->repaymentAction->handle($insuranceReceivable, $user, retry: true);
+        $businessDate = now('Asia/Jakarta')->toDateString();
+        $receivable = $this->repaymentAction->handle($insuranceReceivable, $user, retry: true);
+        $this->contractOutstandingAction->handle($receivable, $user, $businessDate);
         $this->approvalService->approveCurrentStep($request->refresh(), $user, $notes);
 
         return $insuranceReceivable->refresh();

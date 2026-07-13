@@ -186,6 +186,14 @@ class InsuranceReceivablePolicy
             && $insuranceReceivable->canResolveEarlyTermination();
     }
 
+    public function reconcileEarlyTerminationTopUp(User $user, InsuranceReceivable $insuranceReceivable): bool
+    {
+        return $this->can($user, 'ReconcileEarlyTerminationTopUp')
+            && $this->canAccessRecord($user, $insuranceReceivable)
+            && $insuranceReceivable->isWorkflowOrigin()
+            && $insuranceReceivable->canReconcileEarlyTerminationTopUp();
+    }
+
     public function retryInstallmentRepayment(User $user, InsuranceReceivable $insuranceReceivable): bool
     {
         return $this->can($user, 'RetryInstallmentRepayment')

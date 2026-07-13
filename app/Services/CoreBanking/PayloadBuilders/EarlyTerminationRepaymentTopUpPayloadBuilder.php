@@ -17,6 +17,7 @@ class EarlyTerminationRepaymentTopUpPayloadBuilder
         string $amount,
         string $referenceNumber,
         string $receiptNumber,
+        string $trxType = 'PiutangAsuransi',
         ?CarbonInterface $dateTime = null,
     ): array {
         $insuranceReceivable->loadMissing('branchOffice');
@@ -43,7 +44,7 @@ class EarlyTerminationRepaymentTopUpPayloadBuilder
 
         return [
             'referenceNumber' => $referenceNumber,
-            'trxType' => 'PiutangAsuransi',
+            'trxType' => $trxType,
             'termType' => '',
             'termId' => 'FINCLOUD',
             'receiptNumber' => $receiptNumber,

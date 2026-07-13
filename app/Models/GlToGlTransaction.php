@@ -16,11 +16,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'receivable_payment_id',
     'reference_number',
     'receipt_number',
+    'idempotency_key',
     'request_payload',
     'response_payload',
     'response_code',
     'response_description',
     'status',
+    'resolution_status',
+    'resolution_reason',
+    'resolution_payload',
+    'resolution_notes',
+    'resolved_by',
+    'resolved_at',
     'executed_by',
     'executed_at',
 ])]
@@ -30,6 +37,10 @@ class GlToGlTransaction extends Model
 
     public const PURPOSE_EARLY_TERMINATION_REPAYMENT_TOP_UP = 'early_termination_repayment_top_up';
 
+    public const PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP = 'early_termination_flat_spread_top_up';
+
+    public const PURPOSE_EARLY_TERMINATION_CONTRACT_TOP_UP = 'early_termination_contract_top_up';
+
     public const PURPOSE_RECEIVABLE_PAYMENT = 'receivable_payment';
 
     public const STATUS_PENDING = 'pending';
@@ -37,6 +48,35 @@ class GlToGlTransaction extends Model
     public const STATUS_SUCCESS = 'success';
 
     public const STATUS_FAILED = 'failed';
+
+    public const STATUS_UNKNOWN_TIMEOUT = 'unknown_timeout';
+
+    public const RESOLUTION_STATUS_NO_LONGER_REQUIRED = 'no_longer_required';
+
+    public const RESOLUTION_STATUS_RECONCILIATION_REQUIRED = 'reconciliation_required';
+
+    public const RESOLUTION_STATUS_RESOLVED_MANUALLY = 'resolved_manually';
+
+    /**
+     * @return list<string>
+     */
+    public static function earlyTerminationTopUpPurposes(): array
+    {
+        return [
+            self::PURPOSE_EARLY_TERMINATION_REPAYMENT_TOP_UP,
+            self::PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP,
+            self::PURPOSE_EARLY_TERMINATION_CONTRACT_TOP_UP,
+        ];
+    }
+
+    public function isSatisfied(): bool
+    {
+        return $this->status === self::STATUS_SUCCESS
+            || in_array($this->resolution_status, [
+                self::RESOLUTION_STATUS_NO_LONGER_REQUIRED,
+                self::RESOLUTION_STATUS_RESOLVED_MANUALLY,
+            ], true);
+    }
 
     /**
      * @return BelongsTo<CkpnJournal, $this>
@@ -95,6 +135,14 @@ class GlToGlTransaction extends Model
     }
 
     /**
+     * @return BelongsTo<User, $this>
+     */
+    public function resolver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'resolved_by');
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -104,7 +152,9 @@ class GlToGlTransaction extends Model
         return [
             'request_payload' => 'array',
             'response_payload' => 'array',
+            'resolution_payload' => 'array',
             'executed_at' => 'datetime',
+            'resolved_at' => 'datetime',
         ];
     }
 }

@@ -20,10 +20,12 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
     'response_description',
     'is_success',
     'error_message',
+    'duration_ms',
     'related_type',
     'related_id',
     'requested_by',
     'requested_at',
+    'completed_at',
 ])]
 class ApiIntegrationLog extends Model
 {
@@ -72,7 +74,9 @@ class ApiIntegrationLog extends Model
             'response_body' => 'array',
             'response_status' => 'integer',
             'is_success' => 'boolean',
+            'duration_ms' => 'integer',
             'requested_at' => 'datetime',
+            'completed_at' => 'datetime',
         ];
     }
 }

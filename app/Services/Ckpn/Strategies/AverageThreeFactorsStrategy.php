@@ -67,7 +67,7 @@ class AverageThreeFactorsStrategy implements CkpnCalculationStrategy
         );
         $claimStatusFactor = CkpnCalculationService::scale4($claimStatusTreatment->factor);
 
-        if ($formationDate->lte("2024-12-31")) {
+        if ($formationDate->lte('2024-12-31')) {
             $finalRate = BigDecimal::of('100');
             $explanation = 'Receivable formation date is on or before 31 December 2024, so CKPN rate is set to 100%.';
         } else {
