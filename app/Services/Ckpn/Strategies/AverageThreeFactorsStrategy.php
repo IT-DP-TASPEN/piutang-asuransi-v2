@@ -67,11 +67,16 @@ class AverageThreeFactorsStrategy implements CkpnCalculationStrategy
         );
         $claimStatusFactor = CkpnCalculationService::scale4($claimStatusTreatment->factor);
 
-        $finalRate = BigDecimal::of($insuranceCompanyWeight)
-            ->plus($ageWeight)
-            ->plus($claimStatusFactor)
-            ->dividedBy('3', 4, RoundingMode::HalfUp);
-        $explanation = 'Average of insurance company weight, age bucket weight, and derived claim status factor divided by 3.';
+        if ($formationDate->lte("2024-12-31")) {
+            $finalRate = BigDecimal::of('100');
+            $explanation = 'Receivable formation date is on or before 31 December 2024, so CKPN rate is set to 100%.';
+        } else {
+            $finalRate = BigDecimal::of($insuranceCompanyWeight)
+                ->plus($ageWeight)
+                ->plus($claimStatusFactor)
+                ->dividedBy('3', 4, RoundingMode::HalfUp);
+            $explanation = 'Average of insurance company weight, age bucket weight, and derived claim status factor divided by 3.';
+        }
 
         $ckpnAmount = BigDecimal::of($candidate->remainingReceivableAmount)
             ->multipliedBy($finalRate)
