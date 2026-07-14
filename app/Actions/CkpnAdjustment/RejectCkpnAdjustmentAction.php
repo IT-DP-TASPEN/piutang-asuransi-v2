@@ -17,6 +17,18 @@ class RejectCkpnAdjustmentAction
 
     public function handle(CkpnAdjustment $adjustment, User $user, ?string $notes = null): CkpnAdjustment
     {
+        if ($adjustment->status !== CkpnAdjustment::STATUS_SUBMITTED) {
+            throw ValidationException::withMessages([
+                'approval' => 'This approval request is no longer pending.',
+            ]);
+        }
+
+        if (! $user->can('reject', $adjustment)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only accounting approver can reject CKPN adjustments.',
+            ]);
+        }
+
         return DB::transaction(function () use ($adjustment, $user, $notes): CkpnAdjustment {
             $approvalRequest = $this->activeApprovalRequestFor($adjustment);
             $this->approvalService->rejectCurrentStep($approvalRequest, $user, $notes);

@@ -33,6 +33,8 @@ class RejectInsuranceReceivableApprovalAction
 
         return DB::transaction(function () use ($insuranceReceivable, $user, $notes): InsuranceReceivable {
             $request = $this->activeRequestFor($insuranceReceivable);
+            $this->assertCanReject($insuranceReceivable, $request, $user);
+
             $request = $this->approvalService->rejectCurrentStep($request, $user, $notes);
             $fromWorkflowStatus = $insuranceReceivable->workflow_status;
 
@@ -67,5 +69,26 @@ class RejectInsuranceReceivableApprovalAction
         }
 
         return $request;
+    }
+
+    private function assertCanReject(InsuranceReceivable $insuranceReceivable, ApprovalRequest $request, User $user): void
+    {
+        if (! $user->can('rejectApproval', $insuranceReceivable)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only authorized approvers can reject this receivable.',
+            ]);
+        }
+
+        $expectedStatus = match ($request->workflow_code) {
+            ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH => InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
+            ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION => InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
+            default => null,
+        };
+
+        if ($expectedStatus === null || $insuranceReceivable->workflow_status !== $expectedStatus) {
+            throw ValidationException::withMessages([
+                'approval' => 'This approval request is no longer pending.',
+            ]);
+        }
     }
 }

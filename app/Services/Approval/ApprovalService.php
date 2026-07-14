@@ -174,6 +174,20 @@ class ApprovalService
         return $step;
     }
 
+    public function canActOnCurrentStep(ApprovalRequest $request, User $actor): bool
+    {
+        if ($request->status !== ApprovalRequest::STATUS_SUBMITTED) {
+            return false;
+        }
+
+        $step = $request->steps()
+            ->where('status', ApprovalStep::STATUS_PENDING)
+            ->orderBy('step_order')
+            ->first();
+
+        return $step instanceof ApprovalStep && $this->canActOnStep($step, $actor);
+    }
+
     /**
      * @param  array<string, mixed>  $metadata
      */
@@ -241,7 +255,7 @@ class ApprovalService
 
     private function assertCanActOnStep(ApprovalStep $step, User $actor): void
     {
-        if ($actor->hasRole('super_admin')) {
+        if ($this->canActOnStep($step, $actor)) {
             return;
         }
 
@@ -256,5 +270,18 @@ class ApprovalService
                 'approval' => "Approval step requires role {$step->role_name}.",
             ]);
         }
+    }
+
+    private function canActOnStep(ApprovalStep $step, User $actor): bool
+    {
+        if ($actor->hasRole('super_admin')) {
+            return true;
+        }
+
+        if ($step->assigned_user_id !== null && $step->assigned_user_id !== $actor->id) {
+            return false;
+        }
+
+        return $step->role_name === null || $actor->hasRole($step->role_name);
     }
 }

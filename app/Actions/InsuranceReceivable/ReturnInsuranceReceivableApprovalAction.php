@@ -33,6 +33,8 @@ class ReturnInsuranceReceivableApprovalAction
 
         return DB::transaction(function () use ($insuranceReceivable, $user, $notes): InsuranceReceivable {
             $request = $this->activeRequestFor($insuranceReceivable);
+            $this->assertCanReturn($insuranceReceivable, $request, $user);
+
             $request = $this->approvalService->returnCurrentStep($request, $user, $notes);
             $fromWorkflowStatus = $insuranceReceivable->workflow_status;
             $toWorkflowStatus = match ($request->workflow_code) {
@@ -74,5 +76,26 @@ class ReturnInsuranceReceivableApprovalAction
         }
 
         return $request;
+    }
+
+    private function assertCanReturn(InsuranceReceivable $insuranceReceivable, ApprovalRequest $request, User $user): void
+    {
+        if (! $user->can('returnApproval', $insuranceReceivable)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only authorized approvers can return this receivable.',
+            ]);
+        }
+
+        $expectedStatus = match ($request->workflow_code) {
+            ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH => InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
+            ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION => InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
+            default => null,
+        };
+
+        if ($expectedStatus === null || $insuranceReceivable->workflow_status !== $expectedStatus) {
+            throw ValidationException::withMessages([
+                'approval' => 'This approval request is no longer pending.',
+            ]);
+        }
     }
 }

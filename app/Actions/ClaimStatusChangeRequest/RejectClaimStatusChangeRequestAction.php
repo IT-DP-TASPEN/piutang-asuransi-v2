@@ -19,6 +19,18 @@ class RejectClaimStatusChangeRequestAction
 
     public function handle(ClaimStatusChangeRequest $claimStatusChangeRequest, User $user, ?string $notes = null): ClaimStatusChangeRequest
     {
+        if ($claimStatusChangeRequest->status !== ClaimStatusChangeRequest::STATUS_SUBMITTED) {
+            throw ValidationException::withMessages([
+                'approval' => 'This approval request is no longer pending.',
+            ]);
+        }
+
+        if (! $user->can('reject', $claimStatusChangeRequest)) {
+            throw ValidationException::withMessages([
+                'permission' => 'Only authorized approvers can reject this claim status update.',
+            ]);
+        }
+
         if ($claimStatusChangeRequest->insuranceReceivable->isTerminal()) {
             throw ValidationException::withMessages([
                 'insurance_receivable_id' => 'Terminal receivables cannot update claim status.',

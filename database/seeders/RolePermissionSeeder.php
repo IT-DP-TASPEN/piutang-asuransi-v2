@@ -81,6 +81,7 @@ class RolePermissionSeeder extends Seeder
                 'ApproveApproval:InsuranceReceivable',
                 'RejectApproval:InsuranceReceivable',
                 'ReturnApproval:InsuranceReceivable',
+                'ViewAllPending:ApprovalRequest',
                 'ConfirmCollectabilityChange:InsuranceReceivable',
                 'SubmitAccountingValidation:InsuranceReceivable',
                 'RetryInstallmentRepayment:InsuranceReceivable',
@@ -152,7 +153,10 @@ class RolePermissionSeeder extends Seeder
                 || str_starts_with($permission, 'View:'),
         );
 
-        $roles->get('auditor')->syncPermissions($viewPermissions->values()->all());
+        $roles->get('auditor')->syncPermissions([
+            ...$viewPermissions->values()->all(),
+            'ViewAllPending:ApprovalRequest',
+        ]);
 
         $centralViewPermissions = [
             'ViewAny:InsuranceReceivable',

@@ -91,6 +91,12 @@ class ExecuteReceivablePaymentRequestAction
                 ]);
             }
 
+            if (! $user->can('approve', $locked)) {
+                throw ValidationException::withMessages([
+                    'permission' => 'Only accounting approver can approve receivable payment requests.',
+                ]);
+            }
+
             $approvalRequest = $this->pendingApprovalRequest($locked);
             $this->assertCanActOnApproval($approvalRequest, $user);
             $receivable = $locked->insuranceReceivable()
