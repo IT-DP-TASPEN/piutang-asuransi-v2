@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ApprovalQueues\Tables;
 
 use App\Filament\Resources\ApprovalQueues\ApprovalQueueResource;
+use App\Filament\Resources\ApprovalQueues\Schemas\ApprovalQueueDetailsSchema;
 use App\Models\ApprovalRequest;
 use App\Models\BranchOffice;
 use App\Models\User;
@@ -10,6 +11,7 @@ use App\Services\Approval\ApprovalQueueWorkflowRegistry;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Textarea;
+use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
@@ -131,12 +133,11 @@ class ApprovalQueueTable
             ->label('Details')
             ->icon(Heroicon::OutlinedDocumentMagnifyingGlass)
             ->modalHeading('Approval Request')
+            ->modal()
+            ->modalWidth(Width::FiveExtraLarge)
             ->modalSubmitAction(false)
             ->modalCancelActionLabel('Close')
-            ->modalContent(fn (ApprovalRequest $record) => view('filament.approval-queue.details', [
-                'record' => $record,
-                'adapter' => static::adapter($record),
-            ]));
+            ->infolist(fn (ApprovalRequest $record): array => ApprovalQueueDetailsSchema::make($record, static::adapter($record)));
     }
 
     private static function viewOriginalAction(): Action

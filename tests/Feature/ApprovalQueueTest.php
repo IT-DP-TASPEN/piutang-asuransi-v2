@@ -7,6 +7,8 @@ use App\Filament\Resources\ApprovalQueues\Pages\ListApprovalQueue;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\BranchOffice;
+use App\Models\ClaimStatus;
+use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
@@ -90,7 +92,15 @@ class ApprovalQueueTest extends TestCase
             ->assertSee('Fallback Customer')
             ->assertTableActionHidden('approve', $request)
             ->assertTableActionHidden('return', $request)
-            ->assertTableActionHidden('reject', $request);
+            ->assertTableActionHidden('reject', $request)
+            ->mountTableAction('details', (string) $request->getKey())
+            ->assertSet('mountedActions.0.name', 'details')
+            ->assertSchemaComponentStateSet('summary.workflow', 'unknown_workflow')
+            ->assertSchemaComponentStateSet('header.reference', 'Approval #'.$request->id)
+            ->assertSchemaComponentStateSet('header.summary', collect([
+                $receivable->customer_name,
+                $receivable->loan_account_number,
+            ])->filter()->join(' - '));
     }
 
     public function test_history_is_limited_for_normal_users(): void
@@ -142,7 +152,7 @@ class ApprovalQueueTest extends TestCase
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
         ]);
 
-        app(ApprovalService::class)->submit(
+        $request = app(ApprovalService::class)->submit(
             $receivable,
             ApprovalRequest::WORKFLOW_MANUAL_EARLY_TERMINATION_VERIFICATION,
             $maker,
@@ -152,9 +162,105 @@ class ApprovalQueueTest extends TestCase
 
         Livewire::actingAs($approver)
             ->test(ListApprovalQueue::class)
-            ->assertSee('Manual ET Customer');
+            ->assertSee('Manual ET Customer')
+            ->mountTableAction('details', (string) $request->getKey())
+            ->assertSet('mountedActions.0.name', 'details')
+            ->assertSchemaComponentStateSet('summary.workflow', 'Manual Early Termination Verification');
 
         Http::assertNothingSent();
+    }
+
+    public function test_details_modal_renders_claim_status_update_hierarchy(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('business_maker', '001');
+        $maker->forceFill(['name' => 'Business Maker'])->save();
+        $fromStatus = ClaimStatus::query()->where('code', ClaimStatus::ON_PROCESS_CODE)->firstOrFail();
+        $toStatus = ClaimStatus::query()->where('code', ClaimStatus::APPROVED_CODE)->firstOrFail();
+        $receivable = $this->receivableFor($maker, [
+            'customer_name' => 'I GUSTI NGURAH KOMANG BUDHI T',
+            'loan_account_number' => '3010010000000022',
+            'claim_status_id' => $fromStatus->id,
+            'receivable_amount' => '3544791.00',
+        ]);
+        $change = ClaimStatusChangeRequest::query()->create([
+            'insurance_receivable_id' => $receivable->id,
+            'from_claim_status_id' => $fromStatus->id,
+            'to_claim_status_id' => $toStatus->id,
+            'reason' => null,
+            'requested_by' => $maker->id,
+            'status' => ClaimStatusChangeRequest::STATUS_SUBMITTED,
+        ]);
+        $request = app(ApprovalService::class)->submit(
+            $change,
+            ApprovalRequest::WORKFLOW_CLAIM_STATUS_UPDATE,
+            $maker,
+            'submit status update',
+        )->load('logs');
+
+        Http::fake();
+
+        Livewire::actingAs($maker)
+            ->test(ListApprovalQueue::class)
+            ->set('activeTab', 'my_requests')
+            ->mountTableAction('details', (string) $request->getKey())
+            ->assertSet('mountedActions.0.name', 'details')
+            ->assertSchemaComponentStateSet('summary.workflow', 'Claim Status Update')
+            ->assertSchemaComponentStateSet('header.reference', 'Claim Status #'.$change->id)
+            ->assertSchemaComponentStateSet('summary.status', ApprovalRequest::STATUS_SUBMITTED)
+            ->assertSchemaComponentStateSet('snapshot.customer', 'I GUSTI NGURAH KOMANG BUDHI T')
+            ->assertSchemaComponentStateSet('snapshot.loan_account', '3010010000000022')
+            ->assertSchemaComponentStateSet('snapshot.branch', 'Kantor Pusat Operasional')
+            ->assertSchemaComponentStateSet('snapshot.from_status', 'ON PROSES')
+            ->assertSchemaComponentStateSet('snapshot.to_status', 'DISETUJUI ASURANSI')
+            ->assertSchemaComponentStateSet('snapshot.reason', null)
+            ->assertSchemaComponentStateSet('summary.amount', 'IDR 3.544.791')
+            ->assertSchemaComponentStateSet('approval_steps', [[
+                'step' => 'Step 1',
+                'role' => 'Business Approver',
+                'status' => ApprovalStep::STATUS_PENDING,
+                'actor' => null,
+                'at' => null,
+                'notes' => null,
+            ]])
+            ->assertSchemaComponentStateSet('timeline', [[
+                'action' => 'submitted',
+                'actor' => 'Business Maker',
+                'at' => $request->logs->first()->created_at,
+                'notes' => 'submit status update',
+            ]]);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_details_modal_handles_deleted_approvable_safely(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('branch_maker', '001');
+        $receivable = $this->receivableFor($maker, ['customer_name' => 'Deleted Customer']);
+        $request = app(ApprovalService::class)->submit(
+            $receivable,
+            ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH,
+            $maker,
+        );
+
+        $receivable->delete();
+
+        Livewire::actingAs($maker)
+            ->test(ListApprovalQueue::class)
+            ->set('activeTab', 'my_requests')
+            ->mountTableAction('details', (string) $request->refresh()->getKey())
+            ->assertSet('mountedActions.0.name', 'details')
+            ->assertSchemaComponentStateSet('summary.workflow', 'Insurance Receivable Branch Approval')
+            ->assertSchemaComponentStateSet('header.summary', 'Insurance receivable')
+            ->assertSchemaComponentStateSet('approval_steps', [[
+                'step' => 'Step 1',
+                'role' => 'Branch Approver',
+                'status' => ApprovalStep::STATUS_PENDING,
+                'actor' => null,
+                'at' => null,
+                'notes' => null,
+            ]]);
     }
 
     private function seedDependencies(): void
