@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'early_termination_balance_inquiry_id',
     'receivable_payment_request_id',
     'receivable_payment_id',
+    'attempt_no',
     'reference_number',
     'receipt_number',
     'idempotency_key',
@@ -23,6 +24,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'response_description',
     'status',
     'resolution_status',
+    'resolution_outcome',
     'resolution_reason',
     'resolution_payload',
     'resolution_notes',
@@ -55,7 +57,15 @@ class GlToGlTransaction extends Model
 
     public const RESOLUTION_STATUS_RECONCILIATION_REQUIRED = 'reconciliation_required';
 
+    public const RESOLUTION_STATUS_RESOLVED = 'resolved';
+
     public const RESOLUTION_STATUS_RESOLVED_MANUALLY = 'resolved_manually';
+
+    public const RESOLUTION_OUTCOME_POSTED = 'resolved_as_posted';
+
+    public const RESOLUTION_OUTCOME_NOT_POSTED = 'resolved_as_not_posted';
+
+    public const RESOLUTION_OUTCOME_STILL_UNKNOWN = 'still_unknown';
 
     /**
      * @return list<string>
@@ -74,8 +84,19 @@ class GlToGlTransaction extends Model
         return $this->status === self::STATUS_SUCCESS
             || in_array($this->resolution_status, [
                 self::RESOLUTION_STATUS_NO_LONGER_REQUIRED,
+                self::RESOLUTION_STATUS_RESOLVED,
                 self::RESOLUTION_STATUS_RESOLVED_MANUALLY,
             ], true);
+    }
+
+    public function canRetry(): bool
+    {
+        if ($this->status !== self::STATUS_FAILED) {
+            return false;
+        }
+
+        return $this->resolution_status === null
+            || $this->resolution_outcome === self::RESOLUTION_OUTCOME_NOT_POSTED;
     }
 
     /**

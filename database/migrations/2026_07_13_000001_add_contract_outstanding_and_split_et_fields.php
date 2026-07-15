@@ -30,9 +30,10 @@ return new class extends Migration
         });
 
         Schema::table('gl_to_gl_transactions', function (Blueprint $table) {
-            $table->string('idempotency_key')->nullable()->unique()->after('receipt_number');
+            $table->string('idempotency_key')->nullable()->after('receipt_number');
             $table->string('resolution_status')->nullable()->after('status');
-            $table->text('resolution_reason')->nullable()->after('resolution_status');
+            $table->string('resolution_outcome')->nullable()->after('resolution_status');
+            $table->text('resolution_reason')->nullable()->after('resolution_outcome');
             $table->json('resolution_payload')->nullable()->after('resolution_reason');
             $table->text('resolution_notes')->nullable()->after('resolution_payload');
             $table->foreignId('resolved_by')
@@ -43,6 +44,8 @@ return new class extends Migration
             $table->timestamp('resolved_at')->nullable()->after('resolved_by');
 
             $table->index(['insurance_receivable_id', 'purpose'], 'gl_to_gl_receivable_purpose_index');
+            $table->index('idempotency_key', 'gl_to_gl_idempotency_key_index');
+            $table->unique(['purpose', 'idempotency_key', 'attempt_no'], 'gl_to_gl_operation_attempt_unique');
             $table->index('resolution_status', 'gl_to_gl_resolution_status_index');
         });
 
@@ -75,11 +78,13 @@ return new class extends Migration
         Schema::table('gl_to_gl_transactions', function (Blueprint $table) {
             $table->dropIndex('gl_to_gl_receivable_purpose_index');
             $table->dropIndex('gl_to_gl_resolution_status_index');
-            $table->dropUnique(['idempotency_key']);
+            $table->dropIndex('gl_to_gl_idempotency_key_index');
+            $table->dropUnique('gl_to_gl_operation_attempt_unique');
             $table->dropConstrainedForeignId('resolved_by');
             $table->dropColumn([
                 'idempotency_key',
                 'resolution_status',
+                'resolution_outcome',
                 'resolution_reason',
                 'resolution_payload',
                 'resolution_notes',

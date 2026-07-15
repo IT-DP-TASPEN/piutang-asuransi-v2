@@ -3,6 +3,7 @@
 namespace App\Actions\InsuranceReceivable;
 
 use App\Jobs\ExecuteEarlyTerminationJob;
+use App\Models\EarlyTerminationTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
@@ -36,6 +37,16 @@ class QueueEarlyTerminationAction
             if ($locked->isTerminal() || ! in_array($locked->system_status, $allowedStatuses, true)) {
                 throw ValidationException::withMessages([
                     'system_status' => 'Early termination is not available for the current system status.',
+                ]);
+            }
+
+            $latestEtAttempt = $locked->earlyTerminationTransactions()->latest('id')->first();
+
+            if ($locked->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED
+                && $latestEtAttempt instanceof EarlyTerminationTransaction
+                && ! $latestEtAttempt->canRetry()) {
+                throw ValidationException::withMessages([
+                    'early_termination' => 'Early Termination requires reconciliation before retry.',
                 ]);
             }
 

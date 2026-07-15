@@ -30,6 +30,9 @@ return new class extends Migration
             $table->json('request_payload')->nullable();
             $table->json('response_payload')->nullable();
             $table->text('last_error_message')->nullable();
+            $table->string('resolution_outcome')->nullable();
+            $table->json('resolution_payload')->nullable();
+            $table->text('resolution_notes')->nullable();
             $table->foreignId('executed_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('executed_at')->nullable();
             $table->foreignId('resolved_by')->nullable()->constrained('users')->nullOnDelete();

@@ -20,6 +20,7 @@ use App\Models\ApprovalRequest;
 use App\Models\CkpnJournal;
 use App\Models\CkpnWorkpaper;
 use App\Models\GeneratedExport;
+use App\Models\GlToGlTransaction;
 use App\Models\User;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -474,11 +475,20 @@ class ViewCkpnWorkpaper extends ViewRecord
 
     private function latestFailedGlJournal(): ?CkpnJournal
     {
-        return $this->workpaper()
+        $journal = $this->workpaper()
             ->journals()
             ->where('status', CkpnJournal::STATUS_GL_TO_GL_FAILED)
             ->latest('id')
             ->first();
+
+        $latest = $journal?->glToGlTransactions()
+            ->where('purpose', GlToGlTransaction::PURPOSE_CKPN_JOURNAL)
+            ->latest('id')
+            ->first();
+
+        return (! $latest instanceof GlToGlTransaction || $latest->canRetry())
+            ? $journal
+            : null;
     }
 
     private function workpaper(): CkpnWorkpaper

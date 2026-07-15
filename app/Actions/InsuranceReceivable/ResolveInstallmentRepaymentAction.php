@@ -45,6 +45,15 @@ class ResolveInstallmentRepaymentAction
             /** @var ApprovalRequest $request */
             $request = $context['request'];
 
+            if (in_array($repayment->status, [
+                InsuranceReceivableInstallmentRepayment::STATUS_UNKNOWN_TIMEOUT,
+                InsuranceReceivableInstallmentRepayment::STATUS_RECONCILIATION_REQUIRED,
+            ], true) && trim((string) $notes) === '') {
+                throw ValidationException::withMessages([
+                    'installment_repayment' => 'Resolution notes are required for unknown installment repayment reconciliation.',
+                ]);
+            }
+
             $result = $this->coreBankingClient->inquireLoan(
                 accountNumber: $repayment->account_number,
                 related: $repayment,
@@ -104,6 +113,14 @@ class ResolveInstallmentRepaymentAction
                     'response_description' => $result['description'],
                     'response_payload' => $this->responsePayload($result),
                     'last_error_message' => null,
+                    'resolution_outcome' => InsuranceReceivableInstallmentRepayment::RESOLUTION_OUTCOME_POSTED,
+                    'resolution_payload' => [
+                        'verification' => 'loan_outstanding_decreased',
+                        'api_integration_log_id' => $result['log_id'],
+                        'loan_outstanding_before' => (string) $locked->loan_outstanding_before,
+                        'loan_outstanding_after' => (string) $afterOutstanding->toScale(2, RoundingMode::HalfUp),
+                    ],
+                    'resolution_notes' => $notes,
                     'resolved_by' => $user->id,
                     'resolved_at' => now(),
                 ])->save();

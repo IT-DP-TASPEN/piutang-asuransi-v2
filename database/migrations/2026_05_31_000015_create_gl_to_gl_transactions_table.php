@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('ckpn_journal_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('ckpn_workpaper_id')->nullable()->constrained()->nullOnDelete();
+            $table->unsignedInteger('attempt_no')->nullable();
             $table->string('reference_number')->nullable()->unique();
             $table->string('receipt_number')->nullable()->unique();
             $table->json('request_payload')->nullable();

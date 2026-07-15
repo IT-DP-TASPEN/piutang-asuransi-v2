@@ -43,6 +43,12 @@ class ResolveEarlyTerminationTopUpReconciliationAction
             ]);
         }
 
+        if (trim((string) $notes) === '') {
+            throw ValidationException::withMessages([
+                'reconciliation' => 'Reconciliation notes are required.',
+            ]);
+        }
+
         $lock = Cache::lock("insurance-receivable:{$receivable->getKey()}:et-top-up-reconciliation", 120);
 
         if (! $lock->get()) {
@@ -76,6 +82,7 @@ class ResolveEarlyTerminationTopUpReconciliationAction
 
                 $locked->forceFill([
                     'resolution_status' => GlToGlTransaction::RESOLUTION_STATUS_RESOLVED_MANUALLY,
+                    'resolution_outcome' => GlToGlTransaction::RESOLUTION_OUTCOME_POSTED,
                     'resolution_reason' => 'Component funding condition verified.',
                     'resolution_payload' => [
                         'purpose' => $purpose,

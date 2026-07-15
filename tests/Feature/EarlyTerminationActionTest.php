@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Actions\InsuranceReceivable\ExecuteEarlyTerminationAction;
 use App\Models\ApiIntegrationLog;
 use App\Models\BranchOffice;
+use App\Models\CoreTransactionReference;
 use App\Models\EarlyTerminationTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
@@ -29,7 +30,7 @@ class EarlyTerminationActionTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_early_termination_payload_signing_storage_and_retry_reuses_reference(): void
+    public function test_early_termination_payload_signing_storage_and_retry_uses_new_reference(): void
     {
         config([
             'core_banking.base_url' => 'http://core.test',
@@ -47,8 +48,8 @@ class EarlyTerminationActionTest extends TestCase
             'receivable_amount' => '230929055.00',
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
         ]);
-        $expectedRawBody = '{"trxReference":"PA-ET20260531102030","accountNumber":"3010010000000068","altNumber":"ALT-1","principalPaid":230929055,"interestPaid":0,"penaltyPaid":0,"principalWaive":0,"interestWaive":0,"description":"Pelunasan Debitur MD","branchCode":"001"}';
-        $expectedLogRequestBody = json_decode($expectedRawBody, true, flags: JSON_THROW_ON_ERROR);
+        $expectedFirstRawBody = '{"trxReference":"ETERM-1-001","accountNumber":"3010010000000068","altNumber":"ALT-1","principalPaid":230929055,"interestPaid":0,"penaltyPaid":0,"principalWaive":0,"interestWaive":0,"description":"Pelunasan Debitur MD","branchCode":"001"}';
+        $expectedSecondRawBody = '{"trxReference":"ETERM-1-002","accountNumber":"3010010000000068","altNumber":"ALT-1","principalPaid":230929055,"interestPaid":0,"penaltyPaid":0,"principalWaive":0,"interestWaive":0,"description":"Pelunasan Debitur MD","branchCode":"001"}';
 
         Http::fake([
             'http://core.test/loan/earlytermination/' => Http::sequence()
@@ -72,20 +73,21 @@ class EarlyTerminationActionTest extends TestCase
 
         $first = app(ExecuteEarlyTerminationAction::class)->handle($receivable, $user);
         $this->assertSame(EarlyTerminationTransaction::STATUS_FAILED, $first->status);
-        $this->assertSame('PA-ET20260531102030', $first->trx_reference);
+        $this->assertSame('ETERM-1-001', $first->trx_reference);
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED, $receivable->refresh()->workflow_status);
 
         $second = app(ExecuteEarlyTerminationAction::class)->handle($receivable->refresh(), $user);
 
-        $this->assertSame($first->id, $second->id);
-        $this->assertSame('PA-ET20260531102030', $second->trx_reference);
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame('ETERM-1-002', $second->trx_reference);
+        $this->assertSame(EarlyTerminationTransaction::STATUS_FAILED, $first->refresh()->status);
         $this->assertSame(EarlyTerminationTransaction::STATUS_SUCCESS, $second->status);
         $this->assertSame('TRX-1', $second->transaction_id);
         $this->assertSame('JRN-1', $second->journal_id);
         $this->assertSame('CORE-REF-1', $second->core_trx_reference);
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED, $receivable->refresh()->workflow_status);
         $this->assertSame([
-            'trxReference' => 'PA-ET20260531102030',
+            'trxReference' => 'ETERM-1-002',
             'accountNumber' => '3010010000000068',
             'altNumber' => 'ALT-1',
             'principalPaid' => 230929055,
@@ -98,18 +100,28 @@ class EarlyTerminationActionTest extends TestCase
         ], $second->request_payload);
 
         Http::assertSentCount(2);
-        Http::assertSent(function (Request $request) use ($expectedRawBody): bool {
+        Http::assertSent(function (Request $request) use ($expectedFirstRawBody): bool {
             return $request->url() === 'http://core.test/loan/earlytermination/'
-                && $request->body() === $expectedRawBody
-                && $request->header('Signature')[0] === hash_hmac('sha256', $expectedRawBody, 'secret-key');
+                && $request->body() === $expectedFirstRawBody
+                && $request->header('Signature')[0] === hash_hmac('sha256', $expectedFirstRawBody, 'secret-key');
+        });
+        Http::assertSent(function (Request $request) use ($expectedSecondRawBody): bool {
+            return $request->url() === 'http://core.test/loan/earlytermination/'
+                && $request->body() === $expectedSecondRawBody
+                && $request->header('Signature')[0] === hash_hmac('sha256', $expectedSecondRawBody, 'secret-key');
         });
 
         $this->assertSame(2, ApiIntegrationLog::query()->count());
-        ApiIntegrationLog::query()->each(function (ApiIntegrationLog $log) use ($expectedLogRequestBody): void {
+        $expectedBodies = [
+            json_decode($expectedFirstRawBody, true, flags: JSON_THROW_ON_ERROR),
+            json_decode($expectedSecondRawBody, true, flags: JSON_THROW_ON_ERROR),
+        ];
+        ApiIntegrationLog::query()->orderBy('id')->get()->each(function (ApiIntegrationLog $log, int $index) use ($expectedBodies): void {
             $this->assertSame('/loan/earlytermination/', $log->endpoint);
-            $this->assertSame($expectedLogRequestBody, $log->request_body);
+            $this->assertSame($expectedBodies[$index], $log->request_body);
             $this->assertSame('[masked]', $log->request_headers['Signature']);
         });
+        $this->assertSame(['ETERM-1-001', 'ETERM-1-002'], CoreTransactionReference::query()->orderBy('id')->pluck('reference')->all());
 
         $logs = ApiIntegrationLog::query()->orderBy('id')->get();
         $this->assertSame('99', $logs[0]->response_body['responseCode']);

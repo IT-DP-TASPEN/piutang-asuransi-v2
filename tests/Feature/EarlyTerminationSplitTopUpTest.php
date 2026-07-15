@@ -77,11 +77,11 @@ class EarlyTerminationSplitTopUpTest extends TestCase
             ->sole();
 
         $this->assertSame('ir:'.$receivable->id.':et:flat-spread', $lsa->idempotency_key);
-        $this->assertSame('ETLSA-'.$receivable->id, $lsa->reference_number);
+        $this->assertSame('ETLSA-'.$receivable->id.'-001', $lsa->reference_number);
         $this->assertSame('LSA01', $lsa->request_payload['trxType']);
         $this->assertSame('50.00', $lsa->request_payload['amount']);
         $this->assertSame('ir:'.$receivable->id.':et:contract', $piutang->idempotency_key);
-        $this->assertSame('ETPIU-'.$receivable->id, $piutang->reference_number);
+        $this->assertSame('ETPIU-'.$receivable->id.'-001', $piutang->reference_number);
         $this->assertSame('PiutangAsuransi', $piutang->request_payload['trxType']);
         $this->assertSame('900.00', $piutang->request_payload['amount']);
         $this->assertSame([

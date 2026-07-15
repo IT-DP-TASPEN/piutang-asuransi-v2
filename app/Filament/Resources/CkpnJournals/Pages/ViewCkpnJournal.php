@@ -9,6 +9,7 @@ use App\Actions\CkpnJournal\SubmitCkpnJournalAction;
 use App\Filament\Resources\CkpnJournals\CkpnJournalResource;
 use App\Jobs\ExecuteGlToGlJob;
 use App\Models\CkpnJournal;
+use App\Models\GlToGlTransaction;
 use App\Models\User;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -174,7 +175,14 @@ class ViewCkpnJournal extends ViewRecord
 
     private function canRetryGlToGl(): bool
     {
+        $latest = $this->journal()
+            ->glToGlTransactions()
+            ->where('purpose', GlToGlTransaction::PURPOSE_CKPN_JOURNAL)
+            ->latest('id')
+            ->first();
+
         return $this->journal()->status === CkpnJournal::STATUS_GL_TO_GL_FAILED
+            && (! $latest instanceof GlToGlTransaction || $latest->canRetry())
             && (auth()->user()?->can('executeGlToGl', $this->journal()) ?? false);
     }
 

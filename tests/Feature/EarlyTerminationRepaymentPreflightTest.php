@@ -369,7 +369,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertSame('400.00', $inquiry->available_balance);
         $this->assertSame('600.11', $inquiry->required_top_up_amount);
         $this->assertSame(3, ApiIntegrationLog::query()->where('endpoint', '/saving/inq/balance')->count());
-        $this->assertSame("ETPIU-{$receivable->id}", $transaction->reference_number);
+        $this->assertSame("ETPIU-{$receivable->id}-001", $transaction->reference_number);
         $this->assertSame($transaction->reference_number, $transaction->receipt_number);
         $this->assertSame('PiutangAsuransi', $transaction->request_payload['trxType']);
         $this->assertSame('', $transaction->request_payload['debitAccount']);
@@ -380,7 +380,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertSame(GlToGlTransaction::STATUS_SUCCESS, $transaction->status);
     }
 
-    public function test_failed_top_up_retry_reuses_reference_and_immutable_payload(): void
+    public function test_failed_top_up_retry_uses_new_reference_and_keeps_failed_attempt(): void
     {
         $receivable = $this->receivable(['loan_outstanding' => '1000.00']);
         $user = $this->accountingApprover();
@@ -415,7 +415,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $firstInquiryId = $first->early_termination_balance_inquiry_id;
 
         $result = app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class)->handle($receivable->refresh(), $user);
-        $retried = GlToGlTransaction::query()->sole();
+        $retried = GlToGlTransaction::query()->latest('id')->firstOrFail();
         $latestInquiry = EarlyTerminationBalanceInquiry::query()->latest('id')->firstOrFail();
 
         $this->assertSame(
@@ -423,12 +423,14 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             $result?->status,
             $receivable->refresh()->last_error_message ?? '',
         );
-        $this->assertSame($first->id, $retried->id);
-        $this->assertSame($firstReference, $retried->reference_number);
-        $this->assertSame($firstPayload, $retried->request_payload);
+        $this->assertNotSame($first->id, $retried->id);
+        $this->assertSame($firstReference, $first->refresh()->reference_number);
+        $this->assertSame("ETPIU-{$receivable->id}-002", $retried->reference_number);
+        $this->assertSame($firstPayload['amount'], $retried->request_payload['amount']);
         $this->assertSame('1000.00', $retried->request_payload['amount']);
         $this->assertSame($firstInquiry->id, $firstInquiryId);
-        $this->assertSame($firstInquiryId, $retried->early_termination_balance_inquiry_id);
+        $this->assertNotSame($firstInquiryId, $retried->early_termination_balance_inquiry_id);
+        $this->assertSame(GlToGlTransaction::STATUS_FAILED, $first->refresh()->status);
         $this->assertSame(5, EarlyTerminationBalanceInquiry::query()->count());
         $this->assertSame('0.00', $latestInquiry->required_top_up_amount);
         $this->assertSame(EarlyTerminationBalanceInquiry::CONTEXT_POST_TOP_UP_VERIFICATION, $latestInquiry->context);

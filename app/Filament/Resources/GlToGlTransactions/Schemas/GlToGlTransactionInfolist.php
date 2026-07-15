@@ -27,12 +27,17 @@ class GlToGlTransactionInfolist
                             ->label('Reference number')
                             ->fontFamily(FontFamily::Mono)
                             ->copyable(),
+                        TextEntry::make('attempt_no')
+                            ->label('Attempt no')
+                            ->badge()
+                            ->placeholder('-'),
                         TextEntry::make('receipt_number')
                             ->label('Receipt number')
                             ->fontFamily(FontFamily::Mono)
                             ->copyable(),
                         TextEntry::make('status')->badge(),
                         TextEntry::make('resolution_status')->label('Resolution status')->badge()->placeholder('-'),
+                        TextEntry::make('resolution_outcome')->label('Resolution outcome')->badge()->placeholder('-'),
                         TextEntry::make('resolution_reason')->label('Resolution reason')->placeholder('-'),
                         TextEntry::make('resolver.name')->label('Resolved by')->placeholder('-'),
                         TextEntry::make('resolved_at')->dateTime()->placeholder('-'),

@@ -53,15 +53,12 @@ return new class extends Migration
                 ->after('receivable_payment_request_id')
                 ->constrained()
                 ->nullOnDelete();
-
-            $table->unique('receivable_payment_request_id', 'gl_to_gl_receivable_payment_request_unique');
         });
     }
 
     public function down(): void
     {
         Schema::table('gl_to_gl_transactions', function (Blueprint $table) {
-            $table->dropUnique('gl_to_gl_receivable_payment_request_unique');
             $table->dropConstrainedForeignId('receivable_payment_id');
             $table->dropConstrainedForeignId('receivable_payment_request_id');
         });

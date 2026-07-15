@@ -15,6 +15,7 @@ class GlToGlTransactionsTable
         return $table
             ->columns([
                 TextColumn::make('purpose')->badge()->sortable(),
+                TextColumn::make('attempt_no')->label('Attempt')->sortable(),
                 TextColumn::make('reference_number')->searchable()->sortable(),
                 TextColumn::make('receipt_number')->searchable()->sortable(),
                 TextColumn::make('ckpnJournal.id')->label('Journal')->sortable(),
@@ -22,6 +23,7 @@ class GlToGlTransactionsTable
                 TextColumn::make('insuranceReceivable.loan_account_number')->label('Receivable loan account')->searchable(),
                 TextColumn::make('status')->badge()->sortable(),
                 TextColumn::make('resolution_status')->badge()->sortable(),
+                TextColumn::make('resolution_outcome')->badge()->sortable(),
                 TextColumn::make('response_code')->label('Response code')->sortable(),
                 TextColumn::make('executor.name')->label('Executed by')->sortable(),
                 TextColumn::make('executed_at')->dateTime()->sortable(),

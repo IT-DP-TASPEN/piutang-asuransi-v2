@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'insurance_receivable_id',
@@ -27,6 +28,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'request_payload',
     'response_payload',
     'last_error_message',
+    'resolution_outcome',
+    'resolution_payload',
+    'resolution_notes',
     'executed_by',
     'executed_at',
     'resolved_by',
@@ -44,11 +48,21 @@ class InsuranceReceivableInstallmentRepayment extends Model
 
     public const STATUS_UNKNOWN_TIMEOUT = 'unknown_timeout';
 
+    public const STATUS_RECONCILIATION_REQUIRED = 'reconciliation_required';
+
+    public const STATUS_NO_LONGER_REQUIRED = 'no_longer_required';
+
     public const STATUS_VERIFICATION_FAILED_AFTER_EXECUTION = 'verification_failed_after_execution';
 
     public const STATUS_EXECUTED = 'executed';
 
     public const STATUS_RESOLVED_MANUALLY = 'resolved_manually';
+
+    public const RESOLUTION_OUTCOME_POSTED = 'resolved_as_posted';
+
+    public const RESOLUTION_OUTCOME_NOT_POSTED = 'resolved_as_not_posted';
+
+    public const RESOLUTION_OUTCOME_STILL_UNKNOWN = 'still_unknown';
 
     public static function retryableStatuses(): array
     {
@@ -65,13 +79,15 @@ class InsuranceReceivableInstallmentRepayment extends Model
             self::STATUS_VALIDATION_FAILED,
             self::STATUS_FAILED,
             self::STATUS_UNKNOWN_TIMEOUT,
+            self::STATUS_RECONCILIATION_REQUIRED,
             self::STATUS_VERIFICATION_FAILED_AFTER_EXECUTION,
         ];
     }
 
     public function canRetry(): bool
     {
-        return in_array($this->status, self::retryableStatuses(), true);
+        return in_array($this->status, self::retryableStatuses(), true)
+            && $this->status !== self::STATUS_NO_LONGER_REQUIRED;
     }
 
     public function canResolve(): bool
@@ -127,6 +143,14 @@ class InsuranceReceivableInstallmentRepayment extends Model
         return $this->belongsTo(User::class, 'resolved_by');
     }
 
+    /**
+     * @return HasMany<InsuranceReceivableInstallmentRepaymentAttempt, $this>
+     */
+    public function attempts(): HasMany
+    {
+        return $this->hasMany(InsuranceReceivableInstallmentRepaymentAttempt::class);
+    }
+
     protected function casts(): array
     {
         return [
@@ -137,6 +161,7 @@ class InsuranceReceivableInstallmentRepayment extends Model
             'date_of_death' => 'date',
             'request_payload' => 'array',
             'response_payload' => 'array',
+            'resolution_payload' => 'array',
             'executed_at' => 'datetime',
             'resolved_at' => 'datetime',
         ];

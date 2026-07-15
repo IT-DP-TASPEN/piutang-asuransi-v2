@@ -7,8 +7,12 @@ use App\Models\ApprovalRequest;
 use App\Models\BranchOffice;
 use App\Models\InsuranceReceivable;
 use App\Models\InsuranceReceivableInstallmentRepayment;
+use App\Models\InsuranceReceivableInstallmentRepaymentAttempt;
 use App\Models\User;
 use App\Services\CoreBanking\CoreBankingClient;
+use App\Services\CoreBanking\CoreBusinessPayloadComparator;
+use App\Services\CoreBanking\CoreTransactionReferenceGenerator;
+use App\Services\CoreBanking\CoreTransactionReferenceRegistry;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -23,6 +27,9 @@ class ProcessAccountingValidationInstallmentRepaymentAction
     public function __construct(
         private readonly CoreBankingClient $coreBankingClient,
         private readonly InsuranceReceivableStageLogger $stageLogger,
+        private readonly CoreTransactionReferenceGenerator $referenceGenerator,
+        private readonly CoreTransactionReferenceRegistry $referenceRegistry,
+        private readonly CoreBusinessPayloadComparator $payloadComparator,
     ) {}
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, bool $retry = false): InsuranceReceivable
@@ -60,6 +67,8 @@ class ProcessAccountingValidationInstallmentRepaymentAction
             $nextDueDate = $this->dateValue($inquiry['data']['nextDueDate'] ?? null);
 
             if (! $this->repaymentRequired($receivable, $nextDueDate)) {
+                $this->markNoLongerRequiredIfExisting($receivable, $user);
+
                 return $receivable->refresh();
             }
 
@@ -78,35 +87,9 @@ class ProcessAccountingValidationInstallmentRepaymentAction
             }
 
             $this->validateBalance($repayment, $user);
-            $reference = 'IRREP'.now()->format('YmdHisv');
-            $payload = $this->repaymentPayload($repayment, $reference);
-
-            $repayment = DB::transaction(function () use ($repayment, $payload, $reference, $user): InsuranceReceivableInstallmentRepayment {
-                $locked = InsuranceReceivableInstallmentRepayment::query()
-                    ->whereKey($repayment->getKey())
-                    ->lockForUpdate()
-                    ->firstOrFail();
-
-                if (in_array($locked->status, [
-                    InsuranceReceivableInstallmentRepayment::STATUS_EXECUTED,
-                    InsuranceReceivableInstallmentRepayment::STATUS_RESOLVED_MANUALLY,
-                ], true)) {
-                    return $locked;
-                }
-
-                $locked->forceFill([
-                    'status' => InsuranceReceivableInstallmentRepayment::STATUS_PROCESSING,
-                    'reference_number' => $reference,
-                    'request_payload' => $payload,
-                    'response_payload' => null,
-                    'response_code' => null,
-                    'response_description' => null,
-                    'last_error_message' => null,
-                    'executed_by' => $user->id,
-                ])->save();
-
-                return $locked->refresh();
-            });
+            $attempt = $this->createRepaymentAttempt($repayment, $user);
+            $repayment = $attempt->repayment()->firstOrFail();
+            $payload = $attempt->request_payload;
 
             if (in_array($repayment->status, [
                 InsuranceReceivableInstallmentRepayment::STATUS_EXECUTED,
@@ -115,17 +98,17 @@ class ProcessAccountingValidationInstallmentRepaymentAction
                 return $receivable->refresh();
             }
 
-            $result = $this->coreBankingClient->repayLoan($payload, $repayment, $user);
+            $result = $this->coreBankingClient->repayLoan($payload, $attempt, $user);
 
             if (! $result['ok']) {
-                $this->markRepaymentPostFailed($repayment, $result, $user);
+                $this->markRepaymentPostFailed($repayment, $attempt, $result, $user);
 
                 throw ValidationException::withMessages([
                     'installment_repayment' => $this->resultMessage($result, 'Installment repayment failed.'),
                 ]);
             }
 
-            $this->markRepaymentPostSucceeded($repayment, $result, $user);
+            $this->markRepaymentPostSucceeded($repayment, $attempt, $result, $user);
 
             $postInquiry = $this->coreBankingClient->inquireLoan(
                 accountNumber: $repayment->account_number,
@@ -177,7 +160,46 @@ class ProcessAccountingValidationInstallmentRepaymentAction
             && in_array($repayment->status, [
                 InsuranceReceivableInstallmentRepayment::STATUS_EXECUTED,
                 InsuranceReceivableInstallmentRepayment::STATUS_RESOLVED_MANUALLY,
+                InsuranceReceivableInstallmentRepayment::STATUS_NO_LONGER_REQUIRED,
             ], true);
+    }
+
+    private function markNoLongerRequiredIfExisting(InsuranceReceivable $receivable, User $user): void
+    {
+        DB::transaction(function () use ($receivable, $user): void {
+            $repayment = InsuranceReceivableInstallmentRepayment::query()
+                ->where('insurance_receivable_id', $receivable->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $repayment instanceof InsuranceReceivableInstallmentRepayment) {
+                return;
+            }
+
+            if (in_array($repayment->status, [
+                InsuranceReceivableInstallmentRepayment::STATUS_EXECUTED,
+                InsuranceReceivableInstallmentRepayment::STATUS_RESOLVED_MANUALLY,
+                InsuranceReceivableInstallmentRepayment::STATUS_NO_LONGER_REQUIRED,
+            ], true)) {
+                return;
+            }
+
+            $repayment->forceFill([
+                'status' => InsuranceReceivableInstallmentRepayment::STATUS_NO_LONGER_REQUIRED,
+                'last_error_message' => null,
+                'resolution_outcome' => 'no_longer_required',
+                'resolution_payload' => ['verified_at' => now()->toISOString()],
+                'resolved_by' => $user->id,
+                'resolved_at' => now(),
+            ])->save();
+
+            $this->logRepaymentEvent(
+                repayment: $repayment->refresh(),
+                event: 'accounting_validation_installment_repayment_no_longer_required',
+                message: 'Fresh loan state shows installment repayment is no longer required.',
+                user: $user,
+            );
+        });
     }
 
     private function assertProcessable(InsuranceReceivable $insuranceReceivable, bool $retry): void
@@ -215,6 +237,7 @@ class ProcessAccountingValidationInstallmentRepaymentAction
         if (in_array($repayment->status, [
             InsuranceReceivableInstallmentRepayment::STATUS_EXECUTED,
             InsuranceReceivableInstallmentRepayment::STATUS_RESOLVED_MANUALLY,
+            InsuranceReceivableInstallmentRepayment::STATUS_NO_LONGER_REQUIRED,
         ], true)) {
             return;
         }
@@ -235,6 +258,7 @@ class ProcessAccountingValidationInstallmentRepaymentAction
             InsuranceReceivableInstallmentRepayment::STATUS_VALIDATION_FAILED,
             InsuranceReceivableInstallmentRepayment::STATUS_FAILED,
             InsuranceReceivableInstallmentRepayment::STATUS_UNKNOWN_TIMEOUT,
+            InsuranceReceivableInstallmentRepayment::STATUS_RECONCILIATION_REQUIRED,
             InsuranceReceivableInstallmentRepayment::STATUS_VERIFICATION_FAILED_AFTER_EXECUTION,
         ], true)) {
             throw ValidationException::withMessages([
@@ -272,6 +296,7 @@ class ProcessAccountingValidationInstallmentRepaymentAction
                 && in_array($locked->status, [
                     InsuranceReceivableInstallmentRepayment::STATUS_EXECUTED,
                     InsuranceReceivableInstallmentRepayment::STATUS_RESOLVED_MANUALLY,
+                    InsuranceReceivableInstallmentRepayment::STATUS_NO_LONGER_REQUIRED,
                 ], true)
             ) {
                 return $locked;
@@ -295,6 +320,23 @@ class ProcessAccountingValidationInstallmentRepaymentAction
             ];
 
             if ($locked instanceof InsuranceReceivableInstallmentRepayment) {
+                if ($locked->status === InsuranceReceivableInstallmentRepayment::STATUS_FAILED
+                    && ! BigDecimal::of((string) $locked->installment_amount)->toScale(2, RoundingMode::HalfUp)->isEqualTo($installment)) {
+                    $locked->forceFill([
+                        'status' => InsuranceReceivableInstallmentRepayment::STATUS_RECONCILIATION_REQUIRED,
+                        'last_error_message' => 'Current installment amount differs from failed Core attempt amount.',
+                        'resolution_outcome' => InsuranceReceivableInstallmentRepayment::RESOLUTION_OUTCOME_STILL_UNKNOWN,
+                        'resolution_payload' => [
+                            'previous_installment_amount' => (string) BigDecimal::of((string) $locked->installment_amount)->toScale(2, RoundingMode::HalfUp),
+                            'current_installment_amount' => (string) $installment->toScale(2, RoundingMode::HalfUp),
+                        ],
+                    ])->save();
+
+                    throw ValidationException::withMessages([
+                        'installment_repayment' => 'Current installment amount differs from failed Core attempt amount.',
+                    ]);
+                }
+
                 $locked->forceFill($attributes)->save();
 
                 return $locked->refresh();
@@ -409,14 +451,130 @@ class ProcessAccountingValidationInstallmentRepaymentAction
         $this->logRepaymentEvent($repayment, 'accounting_validation_installment_repayment_validation_failed', $message, $user, $result);
     }
 
-    private function markRepaymentPostFailed(InsuranceReceivableInstallmentRepayment $repayment, array $result, User $user): void
-    {
+    private function createRepaymentAttempt(
+        InsuranceReceivableInstallmentRepayment $repayment,
+        User $user,
+    ): InsuranceReceivableInstallmentRepaymentAttempt {
+        return DB::transaction(function () use ($repayment, $user): InsuranceReceivableInstallmentRepaymentAttempt {
+            $locked = InsuranceReceivableInstallmentRepayment::query()
+                ->whereKey($repayment->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (in_array($locked->status, [
+                InsuranceReceivableInstallmentRepayment::STATUS_EXECUTED,
+                InsuranceReceivableInstallmentRepayment::STATUS_RESOLVED_MANUALLY,
+                InsuranceReceivableInstallmentRepayment::STATUS_NO_LONGER_REQUIRED,
+            ], true)) {
+                throw ValidationException::withMessages([
+                    'installment_repayment' => 'Installment repayment is already satisfied.',
+                ]);
+            }
+
+            if (in_array($locked->status, [
+                InsuranceReceivableInstallmentRepayment::STATUS_UNKNOWN_TIMEOUT,
+                InsuranceReceivableInstallmentRepayment::STATUS_RECONCILIATION_REQUIRED,
+            ], true)) {
+                throw ValidationException::withMessages([
+                    'installment_repayment' => 'Installment repayment requires reconciliation before retry.',
+                ]);
+            }
+
+            $attempts = $locked->attempts()->lockForUpdate()->get();
+            $latest = $attempts->sortByDesc('id')->first();
+            $validationPayload = $this->repaymentPayload($locked, '__REFERENCE__');
+
+            if ($latest instanceof InsuranceReceivableInstallmentRepaymentAttempt
+                && $latest->status === InsuranceReceivableInstallmentRepaymentAttempt::STATUS_FAILED
+                && is_array($latest->request_payload)
+                && ! $this->payloadComparator->same($latest->request_payload, $validationPayload)) {
+                $locked->forceFill([
+                    'status' => InsuranceReceivableInstallmentRepayment::STATUS_RECONCILIATION_REQUIRED,
+                    'last_error_message' => 'Current installment repayment payload differs from failed attempt payload.',
+                    'resolution_outcome' => InsuranceReceivableInstallmentRepayment::RESOLUTION_OUTCOME_STILL_UNKNOWN,
+                    'resolution_payload' => [
+                        'latest_attempt_id' => $latest->id,
+                        'normalized_previous_payload' => $this->payloadComparator->normalized($latest->request_payload),
+                        'normalized_current_payload' => $this->payloadComparator->normalized($validationPayload),
+                    ],
+                ])->save();
+
+                throw ValidationException::withMessages([
+                    'installment_repayment' => 'Current installment repayment payload differs from failed attempt payload.',
+                ]);
+            }
+
+            $attemptNo = ((int) $attempts->max('attempt_no')) + 1;
+            $reference = $this->referenceGenerator->installmentRepayment(
+                $locked->insurance_receivable_id,
+                $locked->id,
+                $attemptNo,
+            );
+            $operationKey = "ir:{$locked->insurance_receivable_id}:installment-repayment";
+            $reservation = $this->referenceRegistry->reserve(
+                reference: $reference,
+                serviceAction: 'loan_repayment',
+                operationKey: $operationKey,
+                user: $user,
+            );
+            $payload = $this->repaymentPayload($locked, $reference);
+            $attempt = $locked->attempts()->create([
+                'attempt_no' => $attemptNo,
+                'reference_number' => $reference,
+                'request_payload' => $payload,
+                'status' => InsuranceReceivableInstallmentRepaymentAttempt::STATUS_PROCESSING,
+                'executed_by' => $user->id,
+            ]);
+            $this->referenceRegistry->link($reservation, $attempt);
+
+            $locked->forceFill([
+                'status' => InsuranceReceivableInstallmentRepayment::STATUS_PROCESSING,
+                'reference_number' => $reference,
+                'request_payload' => $payload,
+                'response_payload' => null,
+                'response_code' => null,
+                'response_description' => null,
+                'last_error_message' => null,
+                'resolution_outcome' => null,
+                'resolution_payload' => null,
+                'resolution_notes' => null,
+                'executed_by' => $user->id,
+            ])->save();
+
+            return $attempt->refresh();
+        });
+    }
+
+    private function markRepaymentPostFailed(
+        InsuranceReceivableInstallmentRepayment $repayment,
+        InsuranceReceivableInstallmentRepaymentAttempt $attempt,
+        array $result,
+        User $user,
+    ): void {
         $status = $this->isUnknownResult($result)
             ? InsuranceReceivableInstallmentRepayment::STATUS_UNKNOWN_TIMEOUT
             : InsuranceReceivableInstallmentRepayment::STATUS_FAILED;
+        $attemptStatus = $this->isUnknownResult($result)
+            ? InsuranceReceivableInstallmentRepaymentAttempt::STATUS_UNKNOWN_TIMEOUT
+            : InsuranceReceivableInstallmentRepaymentAttempt::STATUS_FAILED;
         $message = $this->resultMessage($result, 'Installment repayment failed.');
 
-        DB::transaction(function () use ($repayment, $result, $status, $message): void {
+        DB::transaction(function () use ($repayment, $attempt, $result, $status, $attemptStatus, $message): void {
+            InsuranceReceivableInstallmentRepaymentAttempt::query()
+                ->whereKey($attempt->getKey())
+                ->lockForUpdate()
+                ->firstOrFail()
+                ->forceFill([
+                    'api_integration_log_id' => $result['log_id'],
+                    'status' => $attemptStatus,
+                    'response_code' => $result['response_code'],
+                    'response_description' => $result['description'],
+                    'response_payload' => $this->responsePayload($result),
+                    'error_message' => $message,
+                    'executed_at' => now(),
+                ])
+                ->save();
+
             InsuranceReceivableInstallmentRepayment::query()
                 ->whereKey($repayment->getKey())
                 ->lockForUpdate()
@@ -428,6 +586,9 @@ class ProcessAccountingValidationInstallmentRepaymentAction
                     'response_description' => $result['description'],
                     'response_payload' => $this->responsePayload($result),
                     'last_error_message' => $message,
+                    'resolution_outcome' => $status === InsuranceReceivableInstallmentRepayment::STATUS_UNKNOWN_TIMEOUT
+                        ? InsuranceReceivableInstallmentRepayment::RESOLUTION_OUTCOME_STILL_UNKNOWN
+                        : null,
                     'executed_at' => null,
                 ])
                 ->save();
@@ -437,9 +598,28 @@ class ProcessAccountingValidationInstallmentRepaymentAction
         $this->logRepaymentEvent($repayment, 'accounting_validation_installment_repayment_post_failed', $message, $user, $result);
     }
 
-    private function markRepaymentPostSucceeded(InsuranceReceivableInstallmentRepayment $repayment, array $result, User $user): void
-    {
-        DB::transaction(function () use ($repayment, $result): void {
+    private function markRepaymentPostSucceeded(
+        InsuranceReceivableInstallmentRepayment $repayment,
+        InsuranceReceivableInstallmentRepaymentAttempt $attempt,
+        array $result,
+        User $user,
+    ): void {
+        DB::transaction(function () use ($repayment, $attempt, $result): void {
+            InsuranceReceivableInstallmentRepaymentAttempt::query()
+                ->whereKey($attempt->getKey())
+                ->lockForUpdate()
+                ->firstOrFail()
+                ->forceFill([
+                    'api_integration_log_id' => $result['log_id'],
+                    'status' => InsuranceReceivableInstallmentRepaymentAttempt::STATUS_SUCCESS,
+                    'response_code' => $result['response_code'],
+                    'response_description' => $result['description'],
+                    'response_payload' => $this->responsePayload($result),
+                    'error_message' => null,
+                    'executed_at' => now(),
+                ])
+                ->save();
+
             InsuranceReceivableInstallmentRepayment::query()
                 ->whereKey($repayment->getKey())
                 ->lockForUpdate()

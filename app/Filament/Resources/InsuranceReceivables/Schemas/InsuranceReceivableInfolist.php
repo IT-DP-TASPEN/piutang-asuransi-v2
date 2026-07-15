@@ -189,6 +189,11 @@ class InsuranceReceivableInfolist
                                     ->icon(Heroicon::OutlinedBanknotes)
                                     ->copyable()
                                     ->placeholder('-'),
+                                TextEntry::make('installment_repayment_attempts')
+                                    ->label('Attempt history')
+                                    ->state(fn (InsuranceReceivable $record): string => self::installmentAttemptHistory($record))
+                                    ->columnSpanFull()
+                                    ->placeholder('-'),
                                 TextEntry::make('installment_repayment_response')
                                     ->label('Response')
                                     ->state(fn (InsuranceReceivable $record): ?string => collect([
@@ -297,6 +302,11 @@ class InsuranceReceivableInfolist
                                     ->state(fn (InsuranceReceivable $record): ?string => self::latestFlatSpreadTopUp($record)?->response_description
                                         ?? self::latestFlatSpreadTopUp($record)?->resolution_reason)
                                     ->placeholder('-'),
+                                TextEntry::make('flat_spread_top_up_attempts')
+                                    ->label('LSA attempts')
+                                    ->state(fn (InsuranceReceivable $record): string => self::glAttemptHistory($record, GlToGlTransaction::PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP))
+                                    ->columnSpanFull()
+                                    ->placeholder('-'),
                                 TextEntry::make('contract_top_up_reference')
                                     ->label('Piutang reference')
                                     ->state(fn (InsuranceReceivable $record): ?string => self::latestContractOrLegacyTopUp($record)?->reference_number)
@@ -316,6 +326,11 @@ class InsuranceReceivableInfolist
                                     ->label('Piutang description')
                                     ->state(fn (InsuranceReceivable $record): ?string => self::latestContractOrLegacyTopUp($record)?->response_description
                                         ?? self::latestContractOrLegacyTopUp($record)?->resolution_reason)
+                                    ->placeholder('-'),
+                                TextEntry::make('contract_top_up_attempts')
+                                    ->label('Piutang attempts')
+                                    ->state(fn (InsuranceReceivable $record): string => self::glAttemptHistory($record, GlToGlTransaction::PURPOSE_EARLY_TERMINATION_CONTRACT_TOP_UP))
+                                    ->columnSpanFull()
                                     ->placeholder('-'),
                                 TextEntry::make('top_up_resolution')
                                     ->label('Resolution')
@@ -364,6 +379,48 @@ class InsuranceReceivableInfolist
         $repayment = $record->getRelation('installmentRepayment');
 
         return $repayment instanceof InsuranceReceivableInstallmentRepayment ? $repayment : null;
+    }
+
+    private static function installmentAttemptHistory(InsuranceReceivable $record): string
+    {
+        $repayment = self::installmentRepayment($record);
+
+        if (! $repayment instanceof InsuranceReceivableInstallmentRepayment) {
+            return '';
+        }
+
+        return $repayment->attempts()
+            ->oldest('attempt_no')
+            ->get()
+            ->map(fn ($attempt): string => collect([
+                '#'.str_pad((string) $attempt->attempt_no, 3, '0', STR_PAD_LEFT),
+                $attempt->reference_number,
+                $attempt->status,
+                $attempt->response_code,
+                $attempt->response_description,
+                $attempt->executed_at?->toDateTimeString(),
+            ])->filter()->join(' | '))
+            ->join("\n");
+    }
+
+    private static function glAttemptHistory(InsuranceReceivable $record, string $purpose): string
+    {
+        return $record->glToGlTransactions()
+            ->where('purpose', $purpose)
+            ->oldest('attempt_no')
+            ->oldest('id')
+            ->get()
+            ->map(fn (GlToGlTransaction $attempt): string => collect([
+                '#'.str_pad((string) $attempt->attempt_no, 3, '0', STR_PAD_LEFT),
+                $attempt->reference_number,
+                $attempt->status,
+                $attempt->resolution_status,
+                $attempt->resolution_outcome,
+                $attempt->response_code,
+                $attempt->response_description,
+                $attempt->executed_at?->toDateTimeString(),
+            ])->filter()->join(' | '))
+            ->join("\n");
     }
 
     private static function latestBalanceInquiry(InsuranceReceivable $record): ?EarlyTerminationBalanceInquiry

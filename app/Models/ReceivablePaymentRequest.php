@@ -43,6 +43,8 @@ class ReceivablePaymentRequest extends Model
 
     public const STATUS_GL_FAILED = 'gl_failed';
 
+    public const STATUS_RECONCILIATION_REQUIRED = 'reconciliation_required';
+
     public const STATUS_PAYMENT_RECORDED = 'payment_recorded';
 
     public const STATUS_REJECTED = 'rejected';
@@ -69,6 +71,7 @@ class ReceivablePaymentRequest extends Model
             self::STATUS_SUBMITTED => 'Submitted',
             self::STATUS_VALIDATION_FAILED => 'Validation failed',
             self::STATUS_GL_FAILED => 'GL failed',
+            self::STATUS_RECONCILIATION_REQUIRED => 'Reconciliation required',
             self::STATUS_PAYMENT_RECORDED => 'Payment recorded',
             self::STATUS_REJECTED => 'Rejected',
             self::STATUS_CANCELLED => 'Cancelled',

@@ -6,8 +6,12 @@ use App\Models\CkpnJournal;
 use App\Models\GlToGlTransaction;
 use App\Models\User;
 use App\Services\CoreBanking\CoreBankingClient;
+use App\Services\CoreBanking\CoreBusinessPayloadComparator;
+use App\Services\CoreBanking\CoreTransactionReferenceGenerator;
+use App\Services\CoreBanking\CoreTransactionReferenceRegistry;
 use App\Services\CoreBanking\PayloadBuilders\GlToGlPayloadBuilder;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -16,6 +20,9 @@ class ExecuteGlToGlTransferAction
     public function __construct(
         private readonly CoreBankingClient $coreBankingClient,
         private readonly GlToGlPayloadBuilder $payloadBuilder,
+        private readonly CoreTransactionReferenceGenerator $referenceGenerator,
+        private readonly CoreTransactionReferenceRegistry $referenceRegistry,
+        private readonly CoreBusinessPayloadComparator $payloadComparator,
     ) {}
 
     public function handle(CkpnJournal $journal, ?User $user = null): GlToGlTransaction
@@ -31,79 +38,178 @@ class ExecuteGlToGlTransferAction
             ]);
         }
 
-        $transaction = DB::transaction(fn (): GlToGlTransaction => $this->findOrCreateTransaction($journal, $user));
-        $payload = $transaction->request_payload ?: $this->payloadBuilder->build(
-            journal: $journal,
-            referenceNumber: $transaction->reference_number,
-            receiptNumber: $transaction->receipt_number,
-        );
+        $operationKey = "ckpn:{$journal->id}:gl";
+        $lock = Cache::lock("core-operation:{$operationKey}", 120);
 
-        if ($transaction->request_payload === null) {
-            $transaction->forceFill(['request_payload' => $payload])->save();
+        if (! $lock->get()) {
+            throw ValidationException::withMessages([
+                'gl_to_gl_transaction' => 'CKPN GL-to-GL operation is already being processed.',
+            ]);
         }
 
-        $result = $this->coreBankingClient->transferGlToGl($payload, $transaction, $user);
-        $isSuccess = $result['response_code'] === '00';
+        try {
+            $validationPayload = $this->payloadBuilder->build($journal, '__REFERENCE__', '__REFERENCE__');
+            $latest = $this->latestTransaction($journal, $operationKey);
 
-        return DB::transaction(function () use ($transaction, $result, $user, $isSuccess): GlToGlTransaction {
-            $transaction->forceFill([
-                'response_payload' => [
-                    'status' => $result['status'],
+            if ($latest instanceof GlToGlTransaction) {
+                if ($latest->status === GlToGlTransaction::STATUS_SUCCESS
+                    || $latest->resolution_outcome === GlToGlTransaction::RESOLUTION_OUTCOME_POSTED) {
+                    return $latest;
+                }
+
+                if ($latest->status === GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT
+                    || ($latest->resolution_status === GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED
+                        && $latest->resolution_outcome !== GlToGlTransaction::RESOLUTION_OUTCOME_NOT_POSTED)) {
+                    throw ValidationException::withMessages([
+                        'gl_to_gl_transaction' => 'Previous CKPN GL-to-GL attempt requires reconciliation before retry.',
+                    ]);
+                }
+
+                if ($latest->status === GlToGlTransaction::STATUS_FAILED
+                    && is_array($latest->request_payload)
+                    && ! $this->payloadComparator->same($latest->request_payload, $validationPayload)) {
+                    $this->markReconciliationRequired($latest, 'Current CKPN GL-to-GL payload differs from failed attempt payload.');
+
+                    throw ValidationException::withMessages([
+                        'gl_to_gl_transaction' => 'Current CKPN GL-to-GL payload differs from failed attempt payload.',
+                    ]);
+                }
+            }
+
+            $transaction = $this->createAttempt($journal, $operationKey, $user);
+            $payload = $transaction->request_payload ?: $this->payloadBuilder->build(
+                journal: $journal,
+                referenceNumber: $transaction->reference_number,
+                receiptNumber: $transaction->receipt_number,
+            );
+
+            if ($transaction->request_payload === null) {
+                $transaction->forceFill(['request_payload' => $payload])->save();
+            }
+
+            $result = $this->coreBankingClient->transferGlToGl($payload, $transaction, $user);
+            $isSuccess = $result['response_code'] === '00';
+            $isUnknown = $this->isUnknownResult($result);
+
+            return DB::transaction(function () use ($transaction, $result, $user, $isSuccess, $isUnknown): GlToGlTransaction {
+                $transaction->forceFill([
+                    'response_payload' => [
+                        'status' => $result['status'],
+                        'response_code' => $result['response_code'],
+                        'description' => $result['description'],
+                        'data' => $result['data'],
+                        'raw_body' => $result['raw_body'],
+                        'log_id' => $result['log_id'],
+                        'error_message' => $result['error_message'],
+                    ],
                     'response_code' => $result['response_code'],
-                    'description' => $result['description'],
-                    'data' => $result['data'],
-                    'raw_body' => $result['raw_body'],
-                    'log_id' => $result['log_id'],
-                ],
-                'response_code' => $result['response_code'],
-                'response_description' => $result['description'],
-                'status' => $isSuccess ? GlToGlTransaction::STATUS_SUCCESS : GlToGlTransaction::STATUS_FAILED,
-                'executed_by' => $user?->id,
-                'executed_at' => now(),
-            ])->save();
+                    'response_description' => $result['description'] ?: $result['error_message'],
+                    'status' => $isSuccess
+                        ? GlToGlTransaction::STATUS_SUCCESS
+                        : ($isUnknown ? GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT : GlToGlTransaction::STATUS_FAILED),
+                    'resolution_status' => $isUnknown ? GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED : null,
+                    'resolution_outcome' => $isUnknown ? GlToGlTransaction::RESOLUTION_OUTCOME_STILL_UNKNOWN : null,
+                    'resolution_reason' => $isUnknown ? ($result['description'] ?: $result['error_message']) : null,
+                    'executed_by' => $user?->id,
+                    'executed_at' => now(),
+                ])->save();
 
-            return $transaction->refresh();
-        });
+                return $transaction->refresh();
+            });
+        } finally {
+            $lock->release();
+        }
     }
 
-    private function findOrCreateTransaction(CkpnJournal $journal, ?User $user): GlToGlTransaction
+    private function createAttempt(CkpnJournal $journal, string $operationKey, ?User $user): GlToGlTransaction
     {
-        $existing = $journal->glToGlTransactions()
-            ->where('purpose', GlToGlTransaction::PURPOSE_CKPN_JOURNAL)
-            ->where(fn ($query) => $query
-                ->whereNull('status')
-                ->orWhere('status', '!=', GlToGlTransaction::STATUS_SUCCESS))
-            ->latest('id')
-            ->first();
+        try {
+            return DB::transaction(function () use ($journal, $operationKey, $user): GlToGlTransaction {
+                $attempts = $journal->glToGlTransactions()
+                    ->where('purpose', GlToGlTransaction::PURPOSE_CKPN_JOURNAL)
+                    ->where('idempotency_key', $operationKey)
+                    ->lockForUpdate()
+                    ->get();
 
-        if ($existing instanceof GlToGlTransaction) {
-            return $existing;
-        }
+                if ($attempts->contains(fn (GlToGlTransaction $attempt): bool => $attempt->isSatisfied())) {
+                    return $attempts->first(fn (GlToGlTransaction $attempt): bool => $attempt->isSatisfied())->refresh();
+                }
 
-        for ($seconds = 0; $seconds < 10; $seconds++) {
-            $timestamp = now()->copy()->addSeconds($seconds)->format('mdHis');
-            $referenceNumber = "{$timestamp}";
-            $receiptNumber = "{$timestamp}";
+                $latest = $attempts->sortByDesc('id')->first();
 
-            try {
-                return $journal->glToGlTransactions()->create([
+                if ($latest instanceof GlToGlTransaction
+                    && ($latest->status === GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT
+                        || ($latest->resolution_status === GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED
+                            && $latest->resolution_outcome !== GlToGlTransaction::RESOLUTION_OUTCOME_NOT_POSTED))) {
+                    throw ValidationException::withMessages([
+                        'gl_to_gl_transaction' => 'Previous CKPN GL-to-GL attempt requires reconciliation before retry.',
+                    ]);
+                }
+
+                $attemptNo = ((int) $attempts->max('attempt_no')) + 1;
+                $referenceNumber = $this->referenceGenerator->ckpnJournal($journal->id, $attemptNo);
+                $reservation = $this->referenceRegistry->reserve(
+                    reference: $referenceNumber,
+                    serviceAction: 'gl_to_gl:ckpn_journal',
+                    operationKey: $operationKey,
+                    user: $user,
+                );
+                $transaction = $journal->glToGlTransactions()->create([
                     'purpose' => GlToGlTransaction::PURPOSE_CKPN_JOURNAL,
                     'ckpn_workpaper_id' => $journal->ckpn_workpaper_id,
+                    'idempotency_key' => $operationKey,
+                    'attempt_no' => $attemptNo,
                     'reference_number' => $referenceNumber,
-                    'receipt_number' => $receiptNumber,
-                    'request_payload' => $this->payloadBuilder->build($journal, $referenceNumber, $receiptNumber),
+                    'receipt_number' => $referenceNumber,
+                    'request_payload' => $this->payloadBuilder->build($journal, $referenceNumber, $referenceNumber),
                     'status' => GlToGlTransaction::STATUS_PENDING,
                     'executed_by' => $user?->id,
                 ]);
-            } catch (QueryException $exception) {
-                if ($exception->getCode() !== '23000' && ! str_contains($exception->getMessage(), 'UNIQUE')) {
-                    throw $exception;
-                }
-            }
-        }
+                $this->referenceRegistry->link($reservation, $transaction);
 
-        throw ValidationException::withMessages([
-            'reference_number' => 'Unable to generate unique GL-to-GL references.',
-        ]);
+                return $transaction;
+            });
+        } catch (QueryException $exception) {
+            if (! $this->isUniqueConstraintViolation($exception)) {
+                throw $exception;
+            }
+
+            throw ValidationException::withMessages([
+                'reference_number' => 'Unable to generate unique GL-to-GL references.',
+            ]);
+        }
+    }
+
+    private function latestTransaction(CkpnJournal $journal, string $operationKey): ?GlToGlTransaction
+    {
+        return $journal->glToGlTransactions()
+            ->where('purpose', GlToGlTransaction::PURPOSE_CKPN_JOURNAL)
+            ->where(function ($query) use ($operationKey): void {
+                $query->where('idempotency_key', $operationKey)
+                    ->orWhereNull('idempotency_key');
+            })
+            ->latest('id')
+            ->first();
+    }
+
+    private function markReconciliationRequired(GlToGlTransaction $transaction, string $reason): void
+    {
+        $transaction->forceFill([
+            'resolution_status' => GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED,
+            'resolution_outcome' => GlToGlTransaction::RESOLUTION_OUTCOME_STILL_UNKNOWN,
+            'resolution_reason' => $reason,
+        ])->save();
+    }
+
+    private function isUnknownResult(array $result): bool
+    {
+        return $result['status'] === null || $result['error_message'] !== null;
+    }
+
+    private function isUniqueConstraintViolation(QueryException $exception): bool
+    {
+        return $exception->getCode() === '23000'
+            || $exception->getCode() === '23505'
+            || str_contains(strtoupper($exception->getMessage()), 'UNIQUE');
     }
 }

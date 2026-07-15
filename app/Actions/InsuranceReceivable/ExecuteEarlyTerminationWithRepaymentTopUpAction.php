@@ -546,6 +546,7 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
                 ->firstOrFail()
                 ->forceFill([
                     'resolution_status' => GlToGlTransaction::RESOLUTION_STATUS_NO_LONGER_REQUIRED,
+                    'resolution_outcome' => null,
                     'resolution_reason' => $reason,
                     'resolution_payload' => ['early_termination_balance_inquiry_id' => $inquiry->id],
                     'resolved_by' => $user?->id,
@@ -576,6 +577,7 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
                 ->firstOrFail()
                 ->forceFill([
                     'resolution_status' => GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED,
+                    'resolution_outcome' => GlToGlTransaction::RESOLUTION_OUTCOME_STILL_UNKNOWN,
                     'resolution_reason' => $reason,
                     'resolution_payload' => ['early_termination_balance_inquiry_id' => $inquiry->id],
                 ])

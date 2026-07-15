@@ -5,6 +5,7 @@ namespace App\Actions\InsuranceReceivable;
 use App\Models\ApiIntegrationLog;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
+use App\Models\EarlyTerminationTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\CoreBanking\CoreBankingClient;
@@ -53,6 +54,16 @@ class ResolveEarlyTerminationManuallyAction
             /** @var InsuranceReceivable $eligible */
             $eligible = $eligibility['receivable'];
             $manualApprovalRequestId = $eligibility['manual_approval_request_id'];
+            $latestAttempt = $eligible->earlyTerminationTransactions()->latest('id')->first();
+
+            if ($latestAttempt instanceof EarlyTerminationTransaction
+                && $latestAttempt->status === EarlyTerminationTransaction::STATUS_UNKNOWN_TIMEOUT
+                && trim((string) $notes) === '') {
+                throw ValidationException::withMessages([
+                    'notes' => 'Resolution notes are required for unknown Early Termination reconciliation.',
+                ]);
+            }
+
             $loanAccountNumber = trim((string) $eligible->loan_account_number);
             $result = $this->coreBankingClient->inquireLoan(
                 accountNumber: $loanAccountNumber,
@@ -123,6 +134,29 @@ class ResolveEarlyTerminationManuallyAction
                     'last_error_message' => null,
                     'early_termination_resolved_at' => now(),
                 ])->save();
+
+                $attempt = $locked->earlyTerminationTransactions()->latest('id')->first();
+
+                if ($attempt instanceof EarlyTerminationTransaction
+                    && in_array($attempt->status, [
+                        EarlyTerminationTransaction::STATUS_FAILED,
+                        EarlyTerminationTransaction::STATUS_UNKNOWN_TIMEOUT,
+                    ], true)) {
+                    $attempt->forceFill([
+                        'resolution_status' => EarlyTerminationTransaction::RESOLUTION_STATUS_RESOLVED,
+                        'resolution_outcome' => EarlyTerminationTransaction::RESOLUTION_OUTCOME_POSTED,
+                        'resolution_reason' => 'Loan closure verified by Core inquiry.',
+                        'resolution_payload' => [
+                            'verification_response_code' => $result['response_code'],
+                            'verification_response_description' => $result['description'],
+                            'api_integration_log_id' => $apiLog?->id,
+                            'loan_account_number' => $loanAccountNumber,
+                        ],
+                        'resolution_notes' => $notes,
+                        'resolved_by' => $user->id,
+                        'resolved_at' => now(),
+                    ])->save();
+                }
 
                 $this->stageLogger->log(
                     receivable: $locked,

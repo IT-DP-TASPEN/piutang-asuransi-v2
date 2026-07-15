@@ -22,6 +22,7 @@ use App\Filament\Resources\ApiIntegrationLogs\ApiIntegrationLogResource;
 use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
 use App\Models\ClaimStatus;
 use App\Models\ClaimStatusChangeRequest;
+use App\Models\EarlyTerminationTransaction;
 use App\Models\GlToGlTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
@@ -103,7 +104,7 @@ class ViewInsuranceReceivable extends ViewRecord
                     InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER,
                 ], true))
             ->form([
-                Textarea::make('notes')->maxLength(65535),
+                Textarea::make('notes')->required()->maxLength(65535),
             ])
             ->action(function (array $data): void {
                 $user = auth()->user();
@@ -235,6 +236,7 @@ class ViewInsuranceReceivable extends ViewRecord
             ->visible(fn (): bool => (auth()->user()?->can('executeEarlyTermination', $this->getRecord()) ?? false)
                 && ! $this->getRecord()->isTerminal()
                 && $this->getRecord()->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED
+                && $this->canRetryEarlyTerminationCore()
                 && ! in_array($this->getRecord()->workflow_status, [
                     InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING,
                     InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_SUBMITTED,
@@ -610,6 +612,7 @@ class ViewInsuranceReceivable extends ViewRecord
         $canRetryEarlyTermination = ($user?->can('executeEarlyTermination', $record) ?? false)
             && ! $record->isTerminal()
             && $record->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED
+            && $this->canRetryEarlyTerminationCore()
             && ! in_array($record->workflow_status, [
                 InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING,
                 InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_SUBMITTED,
@@ -657,6 +660,16 @@ class ViewInsuranceReceivable extends ViewRecord
                 && ! $record->isTerminal()
                 && $record->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING)
             || ($user?->can('ViewAny:ApiIntegrationLog') ?? false);
+    }
+
+    private function canRetryEarlyTerminationCore(): bool
+    {
+        $latest = $this->getRecord()
+            ->earlyTerminationTransactions()
+            ->latest('id')
+            ->first();
+
+        return ! $latest instanceof EarlyTerminationTransaction || $latest->canRetry();
     }
 
     private function hasVisibleClaimActions(): bool

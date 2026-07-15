@@ -314,7 +314,7 @@ class WorkflowQueueAutomationTest extends TestCase
         $this->assertTrue($receivable->stageLogs()->where('event', 'early_termination_confirmation_pending')->exists());
     }
 
-    public function test_early_termination_job_failure_then_retry_reuses_reference(): void
+    public function test_early_termination_job_failure_then_retry_uses_new_reference(): void
     {
         config(['core_banking.base_url' => 'http://core.test', 'core_banking.signature_secret' => 'secret-key']);
         Carbon::setTestNow('2026-05-31 10:20:30');
@@ -369,8 +369,11 @@ class WorkflowQueueAutomationTest extends TestCase
             app(InsuranceReceivableStageLogger::class),
         );
 
-        $second = EarlyTerminationTransaction::query()->sole();
-        $this->assertSame($first->trx_reference, $second->trx_reference);
+        $second = EarlyTerminationTransaction::query()->latest('id')->firstOrFail();
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame('ETERM-'.$receivable->id.'-001', $first->trx_reference);
+        $this->assertSame('ETERM-'.$receivable->id.'-002', $second->trx_reference);
+        $this->assertSame(EarlyTerminationTransaction::STATUS_FAILED, $first->refresh()->status);
         $this->assertSame(EarlyTerminationTransaction::STATUS_SUCCESS, $second->status);
         $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_EXECUTED, $receivable->refresh()->system_status);
     }
@@ -421,7 +424,7 @@ class WorkflowQueueAutomationTest extends TestCase
         $this->assertSame(CkpnJournal::STATUS_GL_TO_GL_QUEUED, $journal->status);
     }
 
-    public function test_gl_to_gl_job_failure_stores_raw_response_and_reuses_refs(): void
+    public function test_gl_to_gl_job_failure_stores_raw_response_and_uses_new_refs(): void
     {
         config(['core_banking.base_url' => 'http://core.test', 'core_banking.signature_secret' => 'secret-key']);
         Carbon::setTestNow('2026-05-31 10:20:30');
@@ -445,9 +448,12 @@ class WorkflowQueueAutomationTest extends TestCase
 
         (new ExecuteGlToGlJob($journal->id, $maker->id))->handle(app(ExecuteGlToGlTransferAction::class));
 
-        $second = GlToGlTransaction::query()->sole();
-        $this->assertSame($first->reference_number, $second->reference_number);
-        $this->assertSame($first->receipt_number, $second->receipt_number);
+        $second = GlToGlTransaction::query()->latest('id')->firstOrFail();
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame('CKPNJ-'.$journal->id.'-001', $first->reference_number);
+        $this->assertSame('CKPNJ-'.$journal->id.'-002', $second->reference_number);
+        $this->assertSame($second->reference_number, $second->receipt_number);
+        $this->assertSame(GlToGlTransaction::STATUS_FAILED, $first->refresh()->status);
         $this->assertSame(GlToGlTransaction::STATUS_SUCCESS, $second->status);
         $this->assertSame(CkpnJournal::STATUS_GL_TO_GL_EXECUTED, $journal->refresh()->status);
         $this->assertSame('V-1', $second->response_payload['data']['unexpected']['voucher']);

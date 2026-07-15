@@ -11,6 +11,7 @@ use App\Filament\Resources\RelationManagers\ReceivablePaymentsRelationManager;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\BranchOffice;
+use App\Models\CoreTransactionReference;
 use App\Models\GlToGlTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\ReceivablePayment;
@@ -170,7 +171,7 @@ class ReceivablePaymentTest extends TestCase
         Http::assertSentCount(2);
     }
 
-    public function test_gl_failure_keeps_pending_and_retry_reuses_reference_before_success(): void
+    public function test_gl_failure_keeps_pending_and_retry_uses_new_reference_before_success(): void
     {
         Http::fake([
             'http://core.test/trx/transfer/gl-to-gl' => Http::sequence()
@@ -184,22 +185,28 @@ class ReceivablePaymentTest extends TestCase
 
         $failed = app(ExecuteReceivablePaymentRequestAction::class)->handle($request, $approver);
         $firstGl = GlToGlTransaction::query()->sole();
-        $reference = $firstGl->reference_number;
 
         $this->assertSame(ReceivablePaymentRequest::STATUS_GL_FAILED, $failed->status);
         $this->assertSame('Core timeout', $failed->last_error_message);
         $this->assertSame(GlToGlTransaction::STATUS_FAILED, $firstGl->status);
+        $this->assertSame("RCPAY-{$request->id}-001", $firstGl->reference_number);
         $this->assertSame(ApprovalRequest::STATUS_SUBMITTED, $request->approvalRequest->refresh()->status);
         $this->assertDatabaseCount('receivable_payments', 0);
         $this->assertSame('10000.00', $receivable->refresh()->remaining_receivable_amount);
 
         $succeeded = app(ExecuteReceivablePaymentRequestAction::class)->handle($failed->refresh(), $approver);
-        $retriedGl = GlToGlTransaction::query()->sole();
+        $retriedGl = GlToGlTransaction::query()->latest('id')->firstOrFail();
 
         $this->assertSame(ReceivablePaymentRequest::STATUS_PAYMENT_RECORDED, $succeeded->status);
-        $this->assertSame($firstGl->id, $retriedGl->id);
-        $this->assertSame($reference, $retriedGl->reference_number);
+        $this->assertNotSame($firstGl->id, $retriedGl->id);
+        $this->assertSame("RCPAY-{$request->id}-002", $retriedGl->reference_number);
         $this->assertSame(GlToGlTransaction::STATUS_SUCCESS, $retriedGl->status);
+        $this->assertSame(GlToGlTransaction::STATUS_FAILED, $firstGl->refresh()->status);
+        $this->assertDatabaseCount('gl_to_gl_transactions', 2);
+        $this->assertSame(
+            ["RCPAY-{$request->id}-001", "RCPAY-{$request->id}-002"],
+            CoreTransactionReference::query()->orderBy('id')->pluck('reference')->all(),
+        );
         $this->assertDatabaseCount('receivable_payments', 1);
         $this->assertSame('7500.00', $receivable->refresh()->remaining_receivable_amount);
 

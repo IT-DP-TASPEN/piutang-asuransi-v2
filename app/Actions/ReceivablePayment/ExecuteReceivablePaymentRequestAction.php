@@ -11,6 +11,9 @@ use App\Models\ReceivablePaymentRequest;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
 use App\Services\CoreBanking\CoreBankingClient;
+use App\Services\CoreBanking\CoreBusinessPayloadComparator;
+use App\Services\CoreBanking\CoreTransactionReferenceGenerator;
+use App\Services\CoreBanking\CoreTransactionReferenceRegistry;
 use App\Services\CoreBanking\PayloadBuilders\ReceivablePaymentGlPayloadBuilder;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -26,6 +29,9 @@ class ExecuteReceivablePaymentRequestAction
         private readonly ReceivablePaymentGlPayloadBuilder $payloadBuilder,
         private readonly ValidateReceivablePaymentSavingAccountAction $savingAccountValidator,
         private readonly ApprovalService $approvalService,
+        private readonly CoreTransactionReferenceGenerator $referenceGenerator,
+        private readonly CoreTransactionReferenceRegistry $referenceRegistry,
+        private readonly CoreBusinessPayloadComparator $payloadComparator,
     ) {}
 
     public function handle(ReceivablePaymentRequest $request, User $user, ?string $notes = null): ReceivablePaymentRequest
@@ -146,19 +152,14 @@ class ExecuteReceivablePaymentRequestAction
 
     private function prepareGlTransaction(ReceivablePaymentRequest $request, User $user): GlToGlTransaction
     {
+        $operationKey = "receivable-payment:{$request->id}:gl";
+
         try {
-            return DB::transaction(function () use ($request, $user): GlToGlTransaction {
+            return DB::transaction(function () use ($request, $user, $operationKey): GlToGlTransaction {
                 $locked = ReceivablePaymentRequest::query()
                     ->whereKey($request->getKey())
                     ->lockForUpdate()
                     ->firstOrFail();
-
-                if ($locked->gl_to_gl_transaction_id !== null) {
-                    return GlToGlTransaction::query()
-                        ->whereKey($locked->gl_to_gl_transaction_id)
-                        ->lockForUpdate()
-                        ->firstOrFail();
-                }
 
                 $receivable = $locked->insuranceReceivable()
                     ->withTrashed()
@@ -167,19 +168,66 @@ class ExecuteReceivablePaymentRequestAction
                 $this->validateReceivable($receivable);
                 $this->validateRemaining($receivable, (string) $locked->amount);
 
+                $attempts = GlToGlTransaction::query()
+                    ->where('purpose', GlToGlTransaction::PURPOSE_RECEIVABLE_PAYMENT)
+                    ->where('receivable_payment_request_id', $locked->id)
+                    ->lockForUpdate()
+                    ->get();
+
+                $success = $attempts->first(fn (GlToGlTransaction $attempt): bool => $attempt->isSatisfied());
+
+                if ($success instanceof GlToGlTransaction) {
+                    $locked->forceFill(['gl_to_gl_transaction_id' => $success->id])->save();
+
+                    return $success->refresh();
+                }
+
+                $latest = $attempts->sortByDesc('id')->first();
+                $validationPayload = $this->payloadBuilder->build($locked, '__REFERENCE__', '__REFERENCE__');
+
+                if ($latest instanceof GlToGlTransaction) {
+                    if ($latest->status === GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT
+                        || ($latest->resolution_status === GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED
+                            && $latest->resolution_outcome !== GlToGlTransaction::RESOLUTION_OUTCOME_NOT_POSTED)) {
+                        throw ValidationException::withMessages([
+                            'gl_to_gl_transaction' => 'Receivable payment GL-to-GL requires reconciliation before retry.',
+                        ]);
+                    }
+
+                    if ($latest->status === GlToGlTransaction::STATUS_FAILED
+                        && is_array($latest->request_payload)
+                        && ! $this->payloadComparator->same($latest->request_payload, $validationPayload)) {
+                        $this->markGlReconciliationRequired($latest, 'Current receivable payment GL payload differs from failed attempt payload.');
+
+                        throw ValidationException::withMessages([
+                            'gl_to_gl_transaction' => 'Current receivable payment GL payload differs from failed attempt payload.',
+                        ]);
+                    }
+                }
+
+                $attemptNo = ((int) $attempts->max('attempt_no')) + 1;
+                $referenceNumber = $this->referenceGenerator->receivablePayment($locked->id, $attemptNo);
+                $reservation = $this->referenceRegistry->reserve(
+                    reference: $referenceNumber,
+                    serviceAction: 'gl_to_gl:receivable_payment',
+                    operationKey: $operationKey,
+                    user: $user,
+                );
                 $transaction = GlToGlTransaction::query()->create([
                     'purpose' => GlToGlTransaction::PURPOSE_RECEIVABLE_PAYMENT,
                     'insurance_receivable_id' => $locked->insurance_receivable_id,
                     'receivable_payment_request_id' => $locked->id,
+                    'idempotency_key' => $operationKey,
+                    'attempt_no' => $attemptNo,
                     'status' => GlToGlTransaction::STATUS_PENDING,
                     'executed_by' => $user->id,
                 ]);
-                $referenceNumber = "IRPAY{$transaction->id}";
                 $transaction->forceFill([
                     'reference_number' => $referenceNumber,
                     'receipt_number' => $referenceNumber,
                     'request_payload' => $this->payloadBuilder->build($locked, $referenceNumber, $referenceNumber),
                 ])->save();
+                $this->referenceRegistry->link($reservation, $transaction);
 
                 $locked->forceFill(['gl_to_gl_transaction_id' => $transaction->id])->save();
 
@@ -192,6 +240,7 @@ class ExecuteReceivablePaymentRequestAction
 
             return GlToGlTransaction::query()
                 ->where('receivable_payment_request_id', $request->id)
+                ->latest('id')
                 ->firstOrFail();
         }
     }
@@ -212,14 +261,23 @@ class ExecuteReceivablePaymentRequestAction
                 ->whereKey($transaction->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
-            $transaction->forceFill($this->glResultAttributes($result, $description, $user, GlToGlTransaction::STATUS_FAILED))->save();
+            $isUnknown = $this->isUnknownResult($result);
+            $transaction->forceFill($this->glResultAttributes(
+                result: $result,
+                description: $description,
+                user: $user,
+                status: $isUnknown ? GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT : GlToGlTransaction::STATUS_FAILED,
+                unknown: $isUnknown,
+            ))->save();
 
             $locked = ReceivablePaymentRequest::query()
                 ->whereKey($request->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
             $locked->forceFill([
-                'status' => ReceivablePaymentRequest::STATUS_GL_FAILED,
+                'status' => $isUnknown
+                    ? ReceivablePaymentRequest::STATUS_RECONCILIATION_REQUIRED
+                    : ReceivablePaymentRequest::STATUS_GL_FAILED,
                 'approver_notes' => $notes,
                 'last_error_message' => $description,
                 'gl_executed_at' => $transaction->executed_at,
@@ -279,6 +337,21 @@ class ExecuteReceivablePaymentRequestAction
 
             $this->validateReceivable($receivable);
             $remaining = $this->validateRemaining($receivable, (string) $locked->amount);
+            $existingPayment = ReceivablePayment::query()
+                ->where('receivable_payment_request_id', $locked->id)
+                ->first();
+
+            if ($existingPayment instanceof ReceivablePayment) {
+                $locked->forceFill([
+                    'status' => ReceivablePaymentRequest::STATUS_PAYMENT_RECORDED,
+                    'receivable_payment_id' => $existingPayment->id,
+                    'gl_to_gl_transaction_id' => $gl->id,
+                    'last_error_message' => null,
+                ])->save();
+
+                return $locked->refresh();
+            }
+
             $payment = ReceivablePayment::query()->create([
                 'insurance_receivable_id' => $receivable->id,
                 'receivable_payment_request_id' => $locked->id,
@@ -299,6 +372,7 @@ class ExecuteReceivablePaymentRequestAction
                 'approved_at' => now(),
                 'gl_executed_at' => $gl->executed_at ?? now(),
                 'receivable_payment_id' => $payment->id,
+                'gl_to_gl_transaction_id' => $gl->id,
                 'approver_notes' => $notes,
                 'last_error_message' => null,
             ])->save();
@@ -417,7 +491,7 @@ class ExecuteReceivablePaymentRequestAction
      * @param  array<string, mixed>  $result
      * @return array<string, mixed>
      */
-    private function glResultAttributes(array $result, string $description, User $user, string $status): array
+    private function glResultAttributes(array $result, string $description, User $user, string $status, bool $unknown = false): array
     {
         return [
             'response_payload' => [
@@ -432,9 +506,26 @@ class ExecuteReceivablePaymentRequestAction
             'response_code' => $result['response_code'],
             'response_description' => $description,
             'status' => $status,
+            'resolution_status' => $unknown ? GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED : null,
+            'resolution_outcome' => $unknown ? GlToGlTransaction::RESOLUTION_OUTCOME_STILL_UNKNOWN : null,
+            'resolution_reason' => $unknown ? $description : null,
             'executed_by' => $user->id,
             'executed_at' => now(),
         ];
+    }
+
+    private function markGlReconciliationRequired(GlToGlTransaction $transaction, string $reason): void
+    {
+        $transaction->forceFill([
+            'resolution_status' => GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED,
+            'resolution_outcome' => GlToGlTransaction::RESOLUTION_OUTCOME_STILL_UNKNOWN,
+            'resolution_reason' => $reason,
+        ])->save();
+    }
+
+    private function isUnknownResult(array $result): bool
+    {
+        return $result['status'] === null || $result['error_message'] !== null;
     }
 
     private function validationMessage(ValidationException $exception): string
