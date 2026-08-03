@@ -17,7 +17,7 @@ class CkpnAgeBucketSeeder extends Seeder
                 'name' => '1 - 6 bulan',
                 'min_days' => 0,
                 'max_days' => 180,
-                'ckpn_weight' => '0.5',
+                'ckpn_weight' => '0.1',
             ],
             [
                 'name' => '7 - 12 bulan',
