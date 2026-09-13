@@ -57,7 +57,6 @@ class InsuranceReceivableObserver
 
         if (! in_array($insuranceReceivable->workflow_status, [
             InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
-            InsuranceReceivable::WORKFLOW_STATUS_RETURNED,
             InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
         ], true)) {
             return;
@@ -66,6 +65,7 @@ class InsuranceReceivableObserver
         if (! in_array($insuranceReceivable->system_status, [
             null,
             InsuranceReceivable::SYSTEM_STATUS_INQUIRY_FAILED,
+            InsuranceReceivable::SYSTEM_STATUS_REINQUIRY_REQUIRED,
             InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
         ], true)) {
             return;

@@ -7,6 +7,7 @@ use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
+use App\Services\InsuranceReceivable\OperRepaymentAccount;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -15,6 +16,7 @@ class SubmitInsuranceReceivableForApprovalAction
     public function __construct(
         private readonly ApprovalService $approvalService,
         private readonly InsuranceReceivableStageLogger $stageLogger,
+        private readonly OperRepaymentAccount $operAccount,
     ) {}
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, ?string $notes = null): InsuranceReceivable
@@ -27,7 +29,7 @@ class SubmitInsuranceReceivableForApprovalAction
 
         if (! $user->can('submitForApproval', $insuranceReceivable)) {
             throw ValidationException::withMessages([
-                'permission' => 'Manual BM approval submission is not available.',
+                'permission' => 'Manual initial approval submission is not available.',
             ]);
         }
 
@@ -39,7 +41,6 @@ class SubmitInsuranceReceivableForApprovalAction
 
         if (! in_array($insuranceReceivable->workflow_status, [
             InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
-            InsuranceReceivable::WORKFLOW_STATUS_RETURNED,
             InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
         ], true)) {
             throw ValidationException::withMessages([
@@ -53,6 +54,8 @@ class SubmitInsuranceReceivableForApprovalAction
             ]);
         }
 
+        $this->operAccount->assertMatches($insuranceReceivable);
+
         return DB::transaction(function () use ($insuranceReceivable, $user, $notes): InsuranceReceivable {
             $activeRequest = $this->approvalService->latestActiveRequest(
                 $insuranceReceivable,
@@ -61,7 +64,7 @@ class SubmitInsuranceReceivableForApprovalAction
 
             if ($activeRequest instanceof ApprovalRequest) {
                 throw ValidationException::withMessages([
-                    'approval' => 'Active BM approval request already exists.',
+                    'approval' => 'Active initial formation approval request already exists.',
                 ]);
             }
 
@@ -81,10 +84,10 @@ class SubmitInsuranceReceivableForApprovalAction
 
             $this->stageLogger->log(
                 receivable: $insuranceReceivable,
-                event: 'submitted_for_branch_approval',
+                event: 'submitted_for_initial_approval',
                 fromStatus: $fromWorkflowStatus,
                 toStatus: InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
-                description: 'Submitted for BM approval.',
+                description: 'Submitted for BM, Manager Asuransi, and Manager Bisnis approval.',
                 actor: $user,
                 approvalRequest: $approvalRequest,
             );

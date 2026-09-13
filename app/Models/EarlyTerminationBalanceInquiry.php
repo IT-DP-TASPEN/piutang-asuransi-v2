@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'required_top_up_amount',
     'contract_outstanding_amount',
     'spread_amount',
-    'total_shortage_amount',
+    'total_funding_amount',
     'lsa_top_up_amount',
     'piutang_top_up_amount',
     'response_code',
@@ -41,8 +41,6 @@ class EarlyTerminationBalanceInquiry extends Model
     public const CONTEXT_PRE_TOP_UP = 'pre_top_up';
 
     public const CONTEXT_RETRY_PRE_TOP_UP = 'retry_pre_top_up';
-
-    public const CONTEXT_PRE_CONTRACT_TOP_UP = 'pre_contract_top_up';
 
     public const CONTEXT_POST_TOP_UP_VERIFICATION = 'post_top_up_verification';
 
@@ -91,7 +89,7 @@ class EarlyTerminationBalanceInquiry extends Model
             'required_top_up_amount' => 'decimal:2',
             'contract_outstanding_amount' => 'decimal:2',
             'spread_amount' => 'decimal:2',
-            'total_shortage_amount' => 'decimal:2',
+            'total_funding_amount' => 'decimal:2',
             'lsa_top_up_amount' => 'decimal:2',
             'piutang_top_up_amount' => 'decimal:2',
             'requested_at' => 'datetime',

@@ -3,6 +3,7 @@
 namespace App\Services\Approval;
 
 use App\Actions\CkpnAdjustment\ApplyApprovedCkpnAdjustmentAction;
+use App\Actions\InsuranceReceivable\QueueEarlyTerminationAction;
 use App\Jobs\ExecuteGlToGlJob;
 use App\Models\ApprovalRequest;
 use App\Models\CkpnAdjustment;
@@ -11,6 +12,7 @@ use App\Models\ClaimStatusChangeRequest;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
+use App\Services\InsuranceReceivable\OperRepaymentAccount;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +23,8 @@ class ApprovalFinalizationService
     public function __construct(
         private readonly InsuranceReceivableStageLogger $stageLogger,
         private readonly ApplyApprovedCkpnAdjustmentAction $applyApprovedCkpnAdjustmentAction,
+        private readonly QueueEarlyTerminationAction $queueEarlyTerminationAction,
+        private readonly OperRepaymentAccount $operAccount,
     ) {}
 
     public function finalize(ApprovalRequest $approvalRequest, User $actor, ?string $notes = null): void
@@ -52,10 +56,10 @@ class ApprovalFinalizationService
 
         $this->stageLogger->log(
             receivable: $receivable,
-            event: 'branch_approval_approved',
+            event: 'initial_approval_chain_completed',
             fromStatus: $fromStatus,
             toStatus: InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
-            description: $notes ?: 'BM approval completed. Awaiting collectability change confirmation by IT.',
+            description: 'Initial formation approval chain completed. Awaiting collectability change confirmation by IT.',
             actor: $actor,
             approvalRequest: $approvalRequest,
         );
@@ -76,14 +80,23 @@ class ApprovalFinalizationService
                 ->whereKey($receivable->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
+            $this->operAccount->assertMatches($locked);
+
+            if (trim((string) $locked->collectability) !== '5') {
+                throw ValidationException::withMessages([
+                    'collectability' => 'Fresh collectability must remain 5 for receivable formation; actual: '.($locked->collectability ?: '(empty)').'.',
+                ]);
+            }
+
             $amount = $this->finalReceivableAmount($locked);
 
             $locked->forceFill([
+                'saving_account_for_loan_repayment' => $this->operAccount->expected($locked),
                 'receivable_formation_date' => now()->toDateString(),
                 'receivable_amount' => $amount,
                 'remaining_receivable_amount' => $amount,
                 'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
-                'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
+                'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PENDING,
                 'last_error_message' => null,
                 'approved_at' => now(),
             ])->save();
@@ -99,17 +112,9 @@ class ApprovalFinalizationService
                 approvalRequest: $approvalRequest,
             );
 
-            $this->stageLogger->log(
-                receivable: $locked,
-                event: 'early_termination_confirmation_pending',
-                fromStatus: null,
-                toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
-                description: 'Awaiting Accounting confirmation to execute early termination.',
-                actor: $actor,
-                approvalRequest: $approvalRequest,
-            );
         });
 
+        $this->queueEarlyTerminationAction->handle($receivable->refresh(), $actor);
     }
 
     private function finalReceivableAmount(InsuranceReceivable $receivable): string

@@ -141,14 +141,6 @@ class InsuranceReceivablePolicy
             && ! $insuranceReceivable->isTerminal();
     }
 
-    public function submitAccountingValidation(User $user, InsuranceReceivable $insuranceReceivable): bool
-    {
-        return $this->can($user, 'SubmitAccountingValidation')
-            && $this->canAccessRecord($user, $insuranceReceivable)
-            && $insuranceReceivable->isWorkflowOrigin()
-            && ! $insuranceReceivable->isTerminal();
-    }
-
     public function executeEarlyTermination(User $user, InsuranceReceivable $insuranceReceivable): bool
     {
         return $this->can($user, 'ExecuteEarlyTermination')

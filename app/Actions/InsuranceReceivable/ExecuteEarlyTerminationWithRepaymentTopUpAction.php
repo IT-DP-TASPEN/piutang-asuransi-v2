@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\CoreBanking\CoreBankingClient;
 use App\Services\InsuranceReceivable\CalculateEarlyTerminationSplitTopUp;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
+use App\Services\InsuranceReceivable\OperRepaymentAccount;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Support\Facades\Cache;
@@ -27,6 +28,7 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
         private readonly ExecuteEarlyTerminationAction $earlyTerminationAction,
         private readonly CalculateEarlyTerminationSplitTopUp $splitCalculator,
         private readonly InsuranceReceivableStageLogger $stageLogger,
+        private readonly OperRepaymentAccount $operAccount,
     ) {}
 
     public function handle(
@@ -47,35 +49,41 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
             ]);
         }
 
-        try {
-            $account = trim((string) $insuranceReceivable->saving_account_for_loan_repayment);
+        $operLock = null;
 
-            if ($account === '') {
-                $this->stopForManualExecution(
-                    $insuranceReceivable,
-                    $user,
-                    'Manual Early Termination execution required because repayment saving account is empty.',
-                    'empty_repayment_account',
-                );
+        try {
+            try {
+                $account = $this->operAccount->expected($insuranceReceivable);
+                $this->operAccount->assertMatches($insuranceReceivable);
+            } catch (ValidationException $exception) {
+                $this->stopForTopUpFailure($insuranceReceivable, $user, $this->validationMessage($exception));
 
                 return null;
             }
 
-            if (str_contains(strtoupper($account), 'OPER')) {
-                $this->stopForManualExecution(
-                    $insuranceReceivable,
-                    $user,
-                    'Manual Early Termination execution required for OPER account.',
-                    'oper_account',
-                );
+            $operLock = Cache::lock("insurance-receivable:oper:{$account}:early-termination", 300);
 
-                return null;
+            if (! $operLock->get()) {
+                throw ValidationException::withMessages([
+                    'early_termination' => "Early Termination is already processing OPER account {$account}.",
+                ]);
             }
 
             $loan = $this->freshLoanInquiry($insuranceReceivable, $user);
             $fincloudOutstanding = $this->moneyDecimal($loan['data']['loanOutStanding'] ?? null, 'Fresh Fincloud outstanding');
             $receivable = $this->storeEtLoanSnapshot($insuranceReceivable, $loan['data']);
-            $account = trim((string) $receivable->saving_account_for_loan_repayment);
+
+            if (! $this->operAccount->matches($receivable)) {
+                $this->stopForTopUpFailure(
+                    $receivable,
+                    $user,
+                    "Fresh repayment account must remain branch OPER {$account}; actual: ".($this->operAccount->actual($receivable) ?: '(empty)').'.',
+                );
+
+                return null;
+            }
+
+            $receivable->forceFill(['saving_account_for_loan_repayment' => $account])->save();
             $contractOutstanding = $this->contractOutstanding($receivable, $fincloudOutstanding);
             $preTopUpContext = $this->hasTopUpComponent($receivable)
                 ? EarlyTerminationBalanceInquiry::CONTEXT_RETRY_PRE_TOP_UP
@@ -106,33 +114,12 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
                 return null;
             }
 
-            $preContract = $this->successfulBalanceInquiry(
-                receivable: $receivable->refresh(),
-                account: $account,
-                user: $user,
-                fincloudOutstanding: $fincloudOutstanding,
-                context: EarlyTerminationBalanceInquiry::CONTEXT_PRE_CONTRACT_TOP_UP,
-            );
-
-            if (! $preContract instanceof EarlyTerminationBalanceInquiry) {
-                return null;
-            }
-
-            $splitAfterLsa = $this->splitFromInquiry($receivable->refresh(), $preContract, $fincloudOutstanding, $contractOutstanding);
-            $this->logSplit($receivable, $splitAfterLsa, $preContract, $user);
-
-            if ($splitAfterLsa->lsaTopUpAmount->isGreaterThan('0')) {
-                $this->markFlatSpreadStillRequired($receivable, $preContract, $user);
-
-                return null;
-            }
-
             if (! $this->processComponent(
                 receivable: $receivable->refresh(),
                 purpose: GlToGlTransaction::PURPOSE_EARLY_TERMINATION_CONTRACT_TOP_UP,
-                amount: $splitAfterLsa->piutangTopUpAmount,
+                amount: $split->piutangTopUpAmount,
                 user: $user,
-                inquiry: $preContract,
+                inquiry: $preTopUp,
             )) {
                 return null;
             }
@@ -149,27 +136,43 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
                 return null;
             }
 
-            $finalLoan = $this->freshLoanInquiry($receivable->refresh(), $user);
-            $finalFincloudOutstanding = $this->moneyDecimal($finalLoan['data']['loanOutStanding'] ?? null, 'Final Fincloud outstanding');
-
-            if (! $finalFincloudOutstanding->isEqualTo($fincloudOutstanding)) {
-                $this->stopForTopUpFailure(
-                    $receivable->refresh(),
-                    $user,
-                    'Fresh loan outstanding changed before Early Termination. Reconciliation is required.',
-                    balanceInquiry: $postVerification,
-                );
-
-                return null;
-            }
-
             $available = $this->moneyDecimal($postVerification->available_balance, 'Post top up available balance');
 
             if ($available->isLessThan($fincloudOutstanding)) {
                 $this->stopForTopUpFailure(
                     $receivable->refresh(),
                     $user,
-                    'Post top up verification balance is insufficient for Early Termination.',
+                    'Post top up OPER balance '.$available->toScale(2, RoundingMode::HalfUp)
+                        .' is below funded Fincloud outstanding '.$fincloudOutstanding->toScale(2, RoundingMode::HalfUp).'.',
+                    balanceInquiry: $postVerification,
+                );
+
+                return null;
+            }
+
+            $finalLoan = $this->freshLoanInquiry($receivable->refresh(), $user);
+            $finalFincloudOutstanding = $this->moneyDecimal($finalLoan['data']['loanOutStanding'] ?? null, 'Final Fincloud outstanding');
+
+            if ($this->operAccount->normalize($finalLoan['data']['saForLoanRepayment'] ?? null) !== $account) {
+                $finalAccount = $this->operAccount->normalize($finalLoan['data']['saForLoanRepayment'] ?? null);
+                $this->stopForTopUpFailure(
+                    $receivable->refresh(),
+                    $user,
+                    "Fresh repayment account changed before Early Termination; expected {$account}, actual ".($finalAccount ?: '(empty)').'. Reconciliation is required.',
+                    balanceInquiry: $postVerification,
+                );
+
+                return null;
+            }
+
+            if (! $finalFincloudOutstanding->isEqualTo($fincloudOutstanding)) {
+                $this->stopForTopUpFailure(
+                    $receivable->refresh(),
+                    $user,
+                    'Fresh loan outstanding changed before Early Termination; funded for '
+                        .$fincloudOutstanding->toScale(2, RoundingMode::HalfUp)
+                        .', final fresh outstanding '.$finalFincloudOutstanding->toScale(2, RoundingMode::HalfUp)
+                        .'. Reconciliation is required.',
                     balanceInquiry: $postVerification,
                 );
 
@@ -195,6 +198,7 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
                     'early_termination_balance_inquiry_id' => $postVerification->id,
                     'available_balance' => (string) $available->toScale(2, RoundingMode::HalfUp),
                     'fincloud_outstanding' => (string) $fincloudOutstanding->toScale(2, RoundingMode::HalfUp),
+                    'final_fresh_outstanding' => (string) $finalFincloudOutstanding->toScale(2, RoundingMode::HalfUp),
                 ],
                 actor: $user,
                 triggeredByType: 'job',
@@ -202,6 +206,7 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
 
             return $this->earlyTerminationAction->handle($receivable->refresh(), $user);
         } finally {
+            $operLock?->release();
             $lock->release();
         }
     }
@@ -215,10 +220,53 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
     ): bool {
         $amount = $amount->toScale(2, RoundingMode::HalfUp);
         $existing = $this->componentTransaction($receivable, $purpose);
+        $blocking = $this->blockingComponentTransaction($receivable, $purpose);
+
+        if ($blocking instanceof GlToGlTransaction) {
+            $this->stopForTopUpFailure(
+                $receivable,
+                $user,
+                'Early Termination top up component is pending, unknown, or requires reconciliation.',
+                transaction: $blocking,
+                balanceInquiry: $inquiry,
+            );
+
+            return false;
+        }
+
+        $satisfied = $this->fundedComponentTransaction($receivable, $purpose);
+
+        if ($satisfied instanceof GlToGlTransaction) {
+            $storedAmount = $this->storedPayloadAmount($satisfied);
+
+            if (! $storedAmount instanceof BigDecimal || ! $storedAmount->isEqualTo($amount)) {
+                $this->markReconciliationRequired($satisfied, $user, $inquiry, 'Current required amount differs from immutable satisfied GL payload amount.');
+                $this->stopForTopUpFailure($receivable, $user, 'Early Termination top up component requires reconciliation.', transaction: $satisfied, balanceInquiry: $inquiry);
+
+                return false;
+            }
+
+            $this->markSupersededFailedAttempts($receivable, $purpose, $satisfied, $user, $inquiry);
+
+            $this->stageLogger->log(
+                receivable: $receivable,
+                event: $purpose.'_already_satisfied',
+                description: 'Early Termination top up component already satisfied with the required immutable amount.',
+                metadata: [
+                    'gl_to_gl_transaction_id' => $satisfied->id,
+                    'amount' => (string) $amount,
+                ],
+                actor: $user,
+                triggeredByType: 'job',
+            );
+
+            return true;
+        }
 
         if ($amount->isLessThanOrEqualTo('0')) {
-            if ($existing instanceof GlToGlTransaction && ! $existing->isSatisfied()) {
-                $this->markNoLongerRequired($existing, $user, $inquiry, 'Current recalculation no longer requires this top up component.');
+            if ($existing instanceof GlToGlTransaction
+                && $existing->resolution_status !== GlToGlTransaction::RESOLUTION_STATUS_NO_LONGER_REQUIRED) {
+                $this->markNoLongerRequired($existing, $user, $inquiry, 'Current funding allocation no longer requires this top up component.');
             }
 
             $this->stageLogger->log(
@@ -236,15 +284,9 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
             return true;
         }
 
-        if ($existing instanceof GlToGlTransaction && $existing->isSatisfied()) {
-            $this->markReconciliationRequired($existing, $user, $inquiry, 'Component was previously satisfied but current recalculation requires more funding.');
-            $this->stopForTopUpFailure($receivable, $user, 'Early Termination top up component requires reconciliation.', balanceInquiry: $inquiry);
-
-            return false;
-        }
-
         if ($existing instanceof GlToGlTransaction) {
-            if ($existing->resolution_status === GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED) {
+            if ($existing->resolution_status === GlToGlTransaction::RESOLUTION_STATUS_NO_LONGER_REQUIRED) {
+                $this->markReconciliationRequired($existing, $user, $inquiry, 'A previously unnecessary component is now required by a changed funding allocation.');
                 $this->stopForTopUpFailure(
                     $receivable,
                     $user,
@@ -310,6 +352,8 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
             return false;
         }
 
+        $this->markSupersededFailedAttempts($receivable, $purpose, $transaction, $user, $inquiry);
+
         $this->stageLogger->log(
             receivable: $receivable,
             event: $purpose.'_succeeded',
@@ -354,7 +398,8 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
             $locked->forceFill([
                 'loan_outstanding' => (string) $this->moneyDecimal($data['loanOutStanding'] ?? null, 'Fresh Fincloud outstanding')->toScale(2, RoundingMode::HalfUp),
                 'alt_number' => $this->stringValue($data['altNumber'] ?? null) ?? $locked->alt_number,
-                'saving_account_for_loan_repayment' => $this->stringValue($data['saForLoanRepayment'] ?? null) ?? $locked->saving_account_for_loan_repayment,
+                'saving_account_for_loan_repayment' => $this->stringValue($data['saForLoanRepayment'] ?? null),
+                'collectability' => $this->stringValue($data['collectability'] ?? null),
                 'inquiry_completed_at' => now(),
             ])->save();
 
@@ -444,13 +489,12 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
         $split = $this->splitCalculator->handle(
             fincloudOutstanding: $fincloudOutstanding,
             contractOutstanding: $contractOutstanding,
-            availableBalance: $inquiry->available_balance,
         );
 
         $inquiry->forceFill([
             'contract_outstanding_amount' => (string) $split->contractOutstanding->toScale(2, RoundingMode::HalfUp),
             'spread_amount' => (string) $split->spread->toScale(2, RoundingMode::HalfUp),
-            'total_shortage_amount' => (string) $split->totalShortage->toScale(2, RoundingMode::HalfUp),
+            'total_funding_amount' => (string) $split->totalFundingAmount->toScale(2, RoundingMode::HalfUp),
             'lsa_top_up_amount' => (string) $split->lsaTopUpAmount->toScale(2, RoundingMode::HalfUp),
             'piutang_top_up_amount' => (string) $split->piutangTopUpAmount->toScale(2, RoundingMode::HalfUp),
         ])->save();
@@ -519,6 +563,57 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
             ->where('purpose', $purpose)
             ->latest('id')
             ->first();
+    }
+
+    private function blockingComponentTransaction(InsuranceReceivable $receivable, string $purpose): ?GlToGlTransaction
+    {
+        return $receivable->glToGlTransactions()
+            ->where('purpose', $purpose)
+            ->where(function ($query): void {
+                $query->where('resolution_status', GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED)
+                    ->orWhereIn('status', [
+                        GlToGlTransaction::STATUS_PENDING,
+                        GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT,
+                    ]);
+            })
+            ->latest('id')
+            ->first();
+    }
+
+    private function fundedComponentTransaction(InsuranceReceivable $receivable, string $purpose): ?GlToGlTransaction
+    {
+        return $receivable->glToGlTransactions()
+            ->where('purpose', $purpose)
+            ->where(function ($query): void {
+                $query->where('status', GlToGlTransaction::STATUS_SUCCESS)
+                    ->orWhere('resolution_outcome', GlToGlTransaction::RESOLUTION_OUTCOME_POSTED);
+            })
+            ->latest('id')
+            ->first();
+    }
+
+    private function markSupersededFailedAttempts(
+        InsuranceReceivable $receivable,
+        string $purpose,
+        GlToGlTransaction $satisfied,
+        ?User $user,
+        EarlyTerminationBalanceInquiry $inquiry,
+    ): void {
+        $receivable->glToGlTransactions()
+            ->where('purpose', $purpose)
+            ->whereKeyNot($satisfied->getKey())
+            ->where('status', GlToGlTransaction::STATUS_FAILED)
+            ->where(function ($query): void {
+                $query->whereNull('resolution_status')
+                    ->orWhere('resolution_outcome', GlToGlTransaction::RESOLUTION_OUTCOME_NOT_POSTED);
+            })
+            ->get()
+            ->each(fn (GlToGlTransaction $attempt) => $this->markNoLongerRequired(
+                $attempt,
+                $user,
+                $inquiry,
+                'Definitively failed GL attempt superseded by a successful retry for the same immutable amount.',
+            ));
     }
 
     private function storedPayloadAmount(GlToGlTransaction $transaction): ?BigDecimal
@@ -597,23 +692,6 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
         );
     }
 
-    private function markFlatSpreadStillRequired(InsuranceReceivable $receivable, EarlyTerminationBalanceInquiry $inquiry, ?User $user): void
-    {
-        $transaction = $this->componentTransaction($receivable, GlToGlTransaction::PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP);
-
-        if ($transaction instanceof GlToGlTransaction) {
-            $this->markReconciliationRequired($transaction, $user, $inquiry, 'Flat spread top up is still required after LSA step.');
-        }
-
-        $this->stopForTopUpFailure(
-            $receivable,
-            $user,
-            'Flat spread top up is still required after LSA step. Piutang top up was not created.',
-            transaction: $transaction,
-            balanceInquiry: $inquiry,
-        );
-    }
-
     private function hasBlockingComponent(InsuranceReceivable $receivable): bool
     {
         return $receivable->glToGlTransactions()
@@ -645,39 +723,6 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
                 GlToGlTransaction::PURPOSE_EARLY_TERMINATION_CONTRACT_TOP_UP,
             ])
             ->exists();
-    }
-
-    private function stopForManualExecution(
-        InsuranceReceivable $insuranceReceivable,
-        ?User $user,
-        string $message,
-        string $reason,
-    ): void {
-        $fromWorkflowStatus = $insuranceReceivable->workflow_status;
-        $fromSystemStatus = $insuranceReceivable->system_status;
-        $account = trim((string) $insuranceReceivable->saving_account_for_loan_repayment);
-
-        $insuranceReceivable->forceFill([
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING,
-            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
-            'last_error_message' => $message,
-        ])->saveQuietly();
-
-        $this->stageLogger->log(
-            receivable: $insuranceReceivable,
-            event: 'early_termination_manual_execution_required',
-            fromStatus: $fromSystemStatus,
-            toStatus: InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
-            description: $message,
-            metadata: [
-                'repayment_saving_account' => $account,
-                'reason' => $reason,
-                'previous_workflow_status' => $fromWorkflowStatus,
-                'previous_system_status' => $fromSystemStatus,
-            ],
-            actor: $user,
-            triggeredByType: 'job',
-        );
     }
 
     private function stopForTopUpFailure(
@@ -724,9 +769,8 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
                 'early_termination_balance_inquiry_id' => $inquiry->id,
                 'fincloud_outstanding' => (string) $split->fincloudOutstanding,
                 'contract_outstanding' => (string) $split->contractOutstanding,
-                'available_balance' => (string) $split->availableBalance,
                 'spread' => (string) $split->spread,
-                'total_shortage' => (string) $split->totalShortage,
+                'total_funding' => (string) $split->totalFundingAmount,
                 'lsa_top_up_amount' => (string) $split->lsaTopUpAmount,
                 'piutang_top_up_amount' => (string) $split->piutangTopUpAmount,
             ],
@@ -775,5 +819,10 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
         }
 
         return trim((string) $value);
+    }
+
+    private function validationMessage(ValidationException $exception): string
+    {
+        return collect($exception->errors())->flatten()->first() ?: $exception->getMessage();
     }
 }

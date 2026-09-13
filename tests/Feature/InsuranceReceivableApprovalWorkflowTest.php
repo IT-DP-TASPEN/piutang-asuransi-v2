@@ -3,402 +3,339 @@
 namespace Tests\Feature;
 
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
-use App\Actions\InsuranceReceivable\AutoSubmitInsuranceReceivableForBranchApprovalAction;
+use App\Actions\InsuranceReceivable\AutoSubmitInsuranceReceivableForInitialApprovalAction;
 use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
 use App\Actions\InsuranceReceivable\RejectInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
-use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
-use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
-use App\Filament\Resources\InsuranceReceivables\Pages\ViewInsuranceReceivable;
-use App\Models\ApprovalLog;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\BranchOffice;
-use App\Models\ClaimDocumentType;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
+use App\Services\Approval\ApprovalService;
+use App\Services\InsuranceReceivable\OperRepaymentAccount;
 use Database\Seeders\BranchOfficeSeeder;
-use Database\Seeders\ClaimDocumentSeeder;
 use Database\Seeders\ClaimStatusSeeder;
 use Database\Seeders\InsuranceCompanySeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 class InsuranceReceivableApprovalWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_branch_submission_creates_approval_request_step_log_and_updates_receivable(): void
+    protected function setUp(): void
     {
-        $this->seedDependencies();
-        $maker = $this->userWithRole('branch_maker', '001');
-        $receivable = $this->receivableFor($maker);
+        parent::setUp();
 
-        $result = app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
-
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED, $result->workflow_status);
-
-        $request = ApprovalRequest::query()->sole();
-        $this->assertSame(ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH, $request->workflow_code);
-        $this->assertSame(ApprovalRequest::STATUS_SUBMITTED, $request->status);
-        $this->assertSame($maker->id, $request->submitted_by);
-
-        $step = ApprovalStep::query()->sole();
-        $this->assertSame('branch_approver', $step->role_name);
-        $this->assertSame(ApprovalStep::STATUS_PENDING, $step->status);
-
-        $this->assertSame('submitted', ApprovalLog::query()->sole()->action);
-    }
-
-    public function test_branch_and_accounting_approval_flow_finalizes_receivable_formation(): void
-    {
-        $this->seedDependencies();
-        $maker = $this->userWithRole('branch_maker', '001');
-        $branchApprover = $this->userWithRole('branch_approver', '001');
-        $accountingMaker = $this->userWithRole('accounting_maker', '000');
-        $accountingApprover = $this->userWithRole('accounting_approver', '000');
-        $receivable = $this->receivableFor($maker, [
-            'date_of_death' => '2026-05-31',
-            'loan_outstanding' => '230929055.00',
-        ]);
         config([
             'core_banking.base_url' => 'http://core.test',
-            'services.contract_outstanding.base_url' => 'http://contract.test',
-            'services.contract_outstanding.endpoint' => '/api/slik/inquiry',
-            'services.contract_outstanding.token' => 'test-token',
-            'services.contract_outstanding.retry_times' => 0,
+            'core_banking.signature_secret' => 'secret-key',
         ]);
-
-        app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
-        $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $branchApprover);
-
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING, $receivable->workflow_status);
-
-        $receivable = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $this->userWithRole('it_user', '000'));
-
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING, $receivable->workflow_status);
-
-        $receivable = app(SubmitReceivableFormationValidationAction::class)->handle($receivable, $accountingMaker, [
-            'notes' => 'Accounting maker notes',
-        ]);
-
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION, $receivable->workflow_status);
-        $approvalRequest = ApprovalRequest::query()
-            ->where('workflow_code', ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION)
-            ->sole();
-
-        $this->assertFalse(Schema::hasTable('receivable_formation_journals'));
-        $this->assertNull(ApprovalLog::query()
-            ->where('approval_request_id', $approvalRequest->id)
-            ->where('action', 'submitted')
-            ->firstOrFail()
-            ->metadata);
-
-        Livewire::actingAs($accountingApprover)
-            ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
-            ->assertSee('Accounting validation')
-            ->assertDontSee('Debit account')
-            ->assertDontSee('Credit account');
-
-        Http::fake([
-            'http://core.test/inquiry/detail/loan' => Http::response([
-                'responseCode' => '00',
-                'description' => 'SUCCESS',
-                'data' => $this->loanInquiryData([
-                    'accountNumber' => $receivable->loan_account_number,
-                    'loanOutStanding' => '230929000.00',
-                    'nextDueDate' => '20260531',
-                ]),
-            ]),
-            'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('230929000', $receivable->loan_account_number)),
-        ]);
-
-        $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $accountingApprover);
-
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED, $receivable->workflow_status);
-        $this->assertSame('230929000.00', $receivable->receivable_amount);
-        $this->assertSame('230929000.00', $receivable->remaining_receivable_amount);
-        $this->assertTrue($receivable->stageLogs()->where('event', 'accounting_validation_approved')->exists());
-        $this->assertSame(2, ApprovalRequest::query()->count());
-        Http::assertSent(fn (Request $request): bool => $request->url() === 'http://core.test/inquiry/detail/loan');
-    }
-
-    public function test_auto_submit_refuses_terminal_or_already_submitted_records_without_duplicate_active_request(): void
-    {
-        $this->seedDependencies();
-        $maker = $this->userWithRole('branch_maker', '001');
-        $receivable = $this->receivableFor($maker);
-
-        app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
-        $this->assertSame(1, $receivable->approvalRequests()
-            ->where('workflow_code', ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH)
-            ->where('status', ApprovalRequest::STATUS_SUBMITTED)
-            ->count());
-
-        try {
-            app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable->refresh(), $maker);
-            $this->fail('Already submitted receivable should not be auto-submitted again.');
-        } catch (ValidationException) {
-        }
-
-        $this->assertSame(1, $receivable->approvalRequests()
-            ->where('workflow_code', ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH)
-            ->where('status', ApprovalRequest::STATUS_SUBMITTED)
-            ->count());
-
-        $cancelled = $this->receivableFor($maker, [
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_CANCELLED,
-        ]);
-
-        $this->expectException(ValidationException::class);
-        app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($cancelled, $maker);
-    }
-
-    public function test_reject_and_return_update_approval_and_receivable_status(): void
-    {
-        $this->seedDependencies();
-        $maker = $this->userWithRole('branch_maker', '001');
-        $approver = $this->userWithRole('branch_approver', '001');
-
-        $returned = $this->receivableFor($maker);
-        app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($returned, $maker);
-        $returned = app(ReturnInsuranceReceivableApprovalAction::class)->handle($returned->refresh(), $approver, 'revise');
-
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER, $returned->workflow_status);
-        $this->assertSame(ApprovalRequest::STATUS_RETURNED, ApprovalRequest::query()->firstOrFail()->status);
-
-        $rejected = $this->receivableFor($maker);
-        app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($rejected, $maker);
-        $rejected = app(RejectInsuranceReceivableApprovalAction::class)->handle($rejected->refresh(), $approver, 'reject');
-
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_REJECTED, $rejected->workflow_status);
-        $this->assertSame(ApprovalRequest::STATUS_REJECTED, ApprovalRequest::query()->latest('id')->firstOrFail()->status);
-    }
-
-    public function test_accounting_return_goes_back_to_accounting_maker_only(): void
-    {
-        $this->seedDependencies();
-        $maker = $this->userWithRole('branch_maker', '001');
-        $branchApprover = $this->userWithRole('branch_approver', '001');
-        $accountingMaker = $this->userWithRole('accounting_maker', '000');
-        $accountingApprover = $this->userWithRole('accounting_approver', '000');
-        $receivable = $this->receivableFor($maker, ['loan_outstanding' => '1000.00']);
-
-        app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
-        $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $branchApprover);
-        $receivable = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $this->userWithRole('it_user', '000'));
-        $receivable = app(SubmitReceivableFormationValidationAction::class)->handle($receivable, $accountingMaker);
-
-        $returned = app(ReturnInsuranceReceivableApprovalAction::class)->handle($receivable, $accountingApprover, 'revise');
-
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER, $returned->workflow_status);
-        $this->assertSame(ApprovalRequest::STATUS_RETURNED, ApprovalRequest::query()
-            ->where('workflow_code', ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION)
-            ->sole()
-            ->status);
-    }
-
-    public function test_accounting_validation_submit_creates_approval_only(): void
-    {
-        $this->seedDependencies();
-        $maker = $this->userWithRole('branch_maker', '001');
-        $branchApprover = $this->userWithRole('branch_approver', '001');
-        $accountingMaker = $this->userWithRole('accounting_maker', '000');
-        $receivable = $this->receivableFor($maker, ['loan_outstanding' => '1000.00']);
-
-        app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
-        $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $branchApprover);
-        $receivable = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $this->userWithRole('it_user', '000'));
-        $receivable = app(SubmitReceivableFormationValidationAction::class)->handle($receivable, $accountingMaker, [
-            'notes' => 'reviewed',
-        ]);
-
-        $request = ApprovalRequest::query()
-            ->where('workflow_code', ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION)
-            ->sole();
-
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION, $receivable->workflow_status);
-        $this->assertSame(ApprovalRequest::STATUS_SUBMITTED, $request->status);
-        $this->assertFalse(Schema::hasTable('receivable_formation_journals'));
-        $this->assertSame('reviewed', $request->logs()->where('action', 'submitted')->sole()->notes);
-    }
-
-    public function test_accounting_validation_resubmit_after_return_creates_new_approval_request(): void
-    {
-        $this->seedDependencies();
-        $maker = $this->userWithRole('branch_maker', '001');
-        $branchApprover = $this->userWithRole('branch_approver', '001');
-        $accountingMaker = $this->userWithRole('accounting_maker', '000');
-        $accountingApprover = $this->userWithRole('accounting_approver', '000');
-        $receivable = $this->receivableFor($maker, ['loan_outstanding' => '1000.00']);
-
-        app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
-        $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $branchApprover);
-        $receivable = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $this->userWithRole('it_user', '000'));
-        $receivable = app(SubmitReceivableFormationValidationAction::class)->handle($receivable, $accountingMaker);
-        $receivable = app(ReturnInsuranceReceivableApprovalAction::class)->handle($receivable, $accountingApprover, 'revise');
-
-        app(SubmitReceivableFormationValidationAction::class)->handle($receivable, $accountingMaker, [
-            'notes' => 'second',
-        ]);
-
-        $requests = ApprovalRequest::query()
-            ->where('workflow_code', ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION)
-            ->orderBy('id')
-            ->get();
-
-        $this->assertCount(2, $requests);
-        $this->assertSame(ApprovalRequest::STATUS_RETURNED, $requests[0]->status);
-        $this->assertSame(ApprovalRequest::STATUS_SUBMITTED, $requests[1]->status);
-        $this->assertSame('second', $requests[1]->logs()->where('action', 'submitted')->sole()->notes);
-    }
-
-    public function test_submitted_receivable_is_not_editable(): void
-    {
-        $this->seedDependencies();
-        $maker = $this->userWithRole('branch_maker', '001');
-        $receivable = $this->receivableFor($maker);
-
-        $submitted = app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
-
-        $this->assertFalse($maker->can('update', $submitted));
-    }
-
-    public function test_branch_maker_can_edit_only_branch_safe_states_and_not_documents_after_accounting_stage(): void
-    {
-        $this->seedDependencies();
-        $maker = $this->userWithRole('branch_maker', '001');
-        $draft = $this->receivableFor($maker, [
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
-        ]);
-        $returnedToBranch = $this->receivableFor($maker, [
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
-        ]);
-        $accountingStage = $this->receivableFor($maker, [
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING,
-        ]);
-        $returnedToAccounting = $this->receivableFor($maker, [
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER,
-        ]);
-
-        $this->assertTrue($maker->can('update', $draft));
-        $this->assertTrue($maker->can('update', $returnedToBranch));
-        $this->assertFalse($maker->can('update', $accountingStage));
-        $this->assertFalse($maker->can('update', $returnedToAccounting));
-        $this->actingAs($maker)
-            ->get(InsuranceReceivableResource::getUrl('edit', ['record' => $accountingStage]))
-            ->assertForbidden();
-        $document = $accountingStage->documents()->create([
-            'claim_document_type_id' => ClaimDocumentType::query()->firstOrFail()->id,
-            'file_path' => 'testing/document.pdf',
-            'original_file_name' => 'document.pdf',
-            'mime_type' => 'application/pdf',
-            'uploaded_by' => $maker->id,
-            'uploaded_at' => now(),
-        ]);
-        $this->assertTrue($maker->can('update', $document));
-        $this->assertTrue($maker->can('delete', $document));
-    }
-
-    public function test_it_collectability_confirmation_does_not_change_collectability_and_writes_stage_log(): void
-    {
-        $this->seedDependencies();
-        $itUser = $this->userWithRole('it_user', '000');
-        $receivable = InsuranceReceivable::factory()->create([
-            'collectability' => '1',
-            'saving_account_for_loan_repayment' => '1000010000000691',
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
-        ]);
-
-        $result = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $itUser);
-
-        $this->assertSame('1', $result->collectability);
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING, $result->workflow_status);
-        $this->assertTrue($result->stageLogs()->where('event', 'collectability_change_confirmed')->exists());
-    }
-
-    private function seedDependencies(): void
-    {
         $this->seed([
             BranchOfficeSeeder::class,
             InsuranceCompanySeeder::class,
             ClaimStatusSeeder::class,
-            ClaimDocumentSeeder::class,
             RolePermissionSeeder::class,
         ]);
     }
 
-    /**
-     * @param  array<string, mixed>  $attributes
-     */
+    public function test_oper_account_is_derived_from_any_valid_branch_code_and_normalized(): void
+    {
+        $service = app(OperRepaymentAccount::class);
+
+        foreach ([
+            ['000', '000000OPER'],
+            ['001', '001000OPER'],
+            ['123', '123000OPER'],
+        ] as [$branchCode, $account]) {
+            $receivable = InsuranceReceivable::factory()->make([
+                'branch_code' => $branchCode,
+                'saving_account_for_loan_repayment' => '  '.strtolower($account).'  ',
+            ]);
+
+            $this->assertSame($account, $service->expected($receivable));
+            $this->assertTrue($service->matches($receivable));
+        }
+
+        foreach (['001999OPER', '002000OPER', '1000010000000691', ''] as $account) {
+            $receivable = InsuranceReceivable::factory()->make([
+                'branch_code' => '001',
+                'saving_account_for_loan_repayment' => $account,
+            ]);
+
+            $this->assertFalse($service->matches($receivable));
+        }
+
+        $this->expectException(ValidationException::class);
+        $service->expected(InsuranceReceivable::factory()->make(['branch_code' => null]));
+    }
+
+    public function test_valid_oper_creates_full_ordered_initial_approval_chain(): void
+    {
+        $maker = $this->userWithRole('branch_maker', '001');
+        $result = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
+            ->handle($this->receivableFor($maker), $maker);
+        $request = $result->approvalRequests()->sole();
+
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED, $result->workflow_status);
+        $this->assertSame([
+            'branch_approver',
+            'insurance_approver',
+            'business_approver',
+        ], $request->steps()->orderBy('step_order')->pluck('role_name')->all());
+    }
+
+    public function test_invalid_oper_returns_without_approval_and_can_retry(): void
+    {
+        $maker = $this->userWithRole('branch_maker', '001');
+        $receivable = $this->receivableFor($maker, ['saving_account_for_loan_repayment' => '002000OPER']);
+
+        $returned = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)->handle($receivable, $maker);
+
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER, $returned->workflow_status);
+        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_REINQUIRY_REQUIRED, $returned->system_status);
+        $this->assertStringContainsString('001000OPER', $returned->last_error_message);
+        $this->assertStringContainsString('002000OPER', $returned->last_error_message);
+        $this->assertFalse($returned->approvalRequests()->exists());
+
+        $returned->forceFill([
+            'saving_account_for_loan_repayment' => '001000OPER',
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
+        ])->saveQuietly();
+        $resubmitted = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)->handle($returned, $maker);
+
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED, $resubmitted->workflow_status);
+        $this->assertCount(3, $resubmitted->approvalRequests()->sole()->steps);
+    }
+
+    public function test_only_current_initial_approver_can_act_and_it_waits_for_all_three(): void
+    {
+        $maker = $this->userWithRole('branch_maker', '001');
+        $bm = $this->userWithRole('branch_approver', '001');
+        $insurance = $this->userWithRole('insurance_approver', '000');
+        $business = $this->userWithRole('business_approver', '000');
+        $receivable = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
+            ->handle($this->receivableFor($maker), $maker);
+
+        try {
+            app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $insurance);
+            $this->fail('Manager Asuransi must not act before BM.');
+        } catch (ValidationException) {
+        }
+
+        $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $bm);
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED, $receivable->workflow_status);
+        $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $insurance);
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED, $receivable->workflow_status);
+        $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $business);
+
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING, $receivable->workflow_status);
+        $this->assertTrue($receivable->stageLogs()->where('event', 'initial_approval_chain_completed')->exists());
+    }
+
+    public function test_return_at_each_initial_step_restarts_a_fresh_full_chain(): void
+    {
+        $maker = $this->userWithRole('branch_maker', '001');
+        $approvers = [
+            $this->userWithRole('branch_approver', '001'),
+            $this->userWithRole('insurance_approver', '000'),
+            $this->userWithRole('business_approver', '000'),
+        ];
+
+        foreach ($approvers as $index => $currentApprover) {
+            $receivable = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
+                ->handle($this->receivableFor($maker), $maker);
+
+            for ($step = 0; $step < $index; $step++) {
+                $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $approvers[$step]);
+            }
+
+            $returned = app(ReturnInsuranceReceivableApprovalAction::class)->handle($receivable, $currentApprover, 'revise');
+            $oldRequest = $returned->approvalRequests()->latest('id')->firstOrFail();
+            $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER, $returned->workflow_status);
+
+            $returned->forceFill([
+                'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
+                'saving_account_for_loan_repayment' => '001000OPER',
+            ])->saveQuietly();
+            $resubmitted = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)->handle($returned, $maker);
+            $newRequest = $resubmitted->approvalRequests()->latest('id')->firstOrFail();
+
+            $this->assertNotSame($oldRequest->id, $newRequest->id);
+            $this->assertSame([
+                ApprovalStep::STATUS_PENDING,
+                ApprovalStep::STATUS_PENDING,
+                ApprovalStep::STATUS_PENDING,
+            ], $newRequest->steps()->orderBy('step_order')->pluck('status')->all());
+        }
+    }
+
+    public function test_reject_at_any_initial_step_is_terminal(): void
+    {
+        $maker = $this->userWithRole('branch_maker', '001');
+        $approvers = [
+            $this->userWithRole('branch_approver', '001'),
+            $this->userWithRole('insurance_approver', '000'),
+            $this->userWithRole('business_approver', '000'),
+        ];
+
+        foreach ($approvers as $index => $currentApprover) {
+            $receivable = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
+                ->handle($this->receivableFor($maker), $maker);
+            for ($step = 0; $step < $index; $step++) {
+                $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $approvers[$step]);
+            }
+
+            $rejected = app(RejectInsuranceReceivableApprovalAction::class)->handle($receivable, $currentApprover, 'terminal');
+            $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_REJECTED, $rejected->workflow_status);
+        }
+    }
+
+    public function test_it_uses_fresh_collectability_and_stays_at_it_when_not_five(): void
+    {
+        $it = $this->userWithRole('it_user', '000');
+        $receivable = $this->itReceivable(['collectability' => '5']);
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse('4'))]);
+
+        try {
+            app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $it);
+            $this->fail('Fresh collectability 4 must block confirmation.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('actual: 4', $exception->errors()['collectability'][0]);
+        }
+
+        $receivable->refresh();
+        $this->assertSame('4', $receivable->collectability);
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING, $receivable->workflow_status);
+        $this->assertFalse($receivable->approvalRequests()
+            ->where('workflow_code', ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION)->exists());
+    }
+
+    public function test_it_returns_fresh_wrong_oper_to_branch_maker(): void
+    {
+        $it = $this->userWithRole('it_user', '000');
+        $receivable = $this->itReceivable();
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse('5', '002000OPER'))]);
+
+        $result = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $it);
+
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER, $result->workflow_status);
+        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_REINQUIRY_REQUIRED, $result->system_status);
+        $this->assertFalse($result->approvalRequests()
+            ->where('workflow_code', ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION)->exists());
+    }
+
+    public function test_it_valid_fresh_data_goes_directly_to_accounting_approver(): void
+    {
+        $it = $this->userWithRole('it_user', '000');
+        $receivable = $this->itReceivable(['collectability' => '1']);
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse('5'))]);
+
+        $result = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $it);
+        $request = $result->approvalRequests()
+            ->where('workflow_code', ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION)->sole();
+
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION, $result->workflow_status);
+        $this->assertSame('5', $result->collectability);
+        $this->assertSame(['accounting_approver'], $request->steps()->pluck('role_name')->all());
+        $this->assertSame($it->id, $request->submitted_by);
+        $this->assertDatabaseMissing('permissions', [
+            'name' => 'SubmitAccountingValidation:InsuranceReceivable',
+        ]);
+    }
+
+    public function test_accounting_return_goes_to_branch_maker_and_reject_is_terminal(): void
+    {
+        $approver = $this->userWithRole('accounting_approver', '000');
+
+        $returned = app(ReturnInsuranceReceivableApprovalAction::class)
+            ->handle($this->accountingReceivable(), $approver, 'revise');
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER, $returned->workflow_status);
+        $returned->forceFill(['system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED])->saveQuietly();
+        $resubmitted = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
+            ->handle($returned, $returned->creator);
+        $this->assertSame([
+            'branch_approver',
+            'insurance_approver',
+            'business_approver',
+        ], $resubmitted->approvalRequests()->latest('id')->firstOrFail()->steps()->orderBy('step_order')->pluck('role_name')->all());
+
+        $rejected = app(RejectInsuranceReceivableApprovalAction::class)
+            ->handle($this->accountingReceivable(), $approver, 'reject');
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_REJECTED, $rejected->workflow_status);
+    }
+
     private function receivableFor(User $user, array $attributes = []): InsuranceReceivable
     {
-        $receivable = InsuranceReceivable::factory()->create([
+        return InsuranceReceivable::factory()->create([
             'branch_office_id' => $user->branch_office_id,
             'branch_code' => $user->branchOffice->branch_code,
             'created_by' => $user->id,
-            'saving_account_for_loan_repayment' => '1000010000000691',
-            ...$attributes,
-        ]);
-
-        $receivable->forceFill([
+            'saving_account_for_loan_repayment' => '001000OPER',
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
             'inquiry_completed_at' => now(),
-        ])->saveQuietly();
+            ...$attributes,
+        ]);
+    }
+
+    private function itReceivable(array $attributes = []): InsuranceReceivable
+    {
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+
+        return InsuranceReceivable::factory()->create([
+            'branch_office_id' => $branch->id,
+            'branch_code' => '001',
+            'saving_account_for_loan_repayment' => '001000OPER',
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
+            ...$attributes,
+        ]);
+    }
+
+    private function accountingReceivable(): InsuranceReceivable
+    {
+        $maker = $this->userWithRole('branch_maker', '001');
+        $receivable = $this->itReceivable([
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
+            'collectability' => '5',
+            'created_by' => $maker->id,
+        ]);
+        app(ApprovalService::class)->submit(
+            $receivable,
+            ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION,
+            $this->userWithRole('it_user', '000'),
+        );
 
         return $receivable->refresh();
     }
 
     private function userWithRole(string $role, string $branchCode): User
     {
-        $branchOffice = BranchOffice::query()->where('branch_code', $branchCode)->firstOrFail();
-        $user = User::factory()->create(['branch_office_id' => $branchOffice->id]);
+        $branch = BranchOffice::query()->where('branch_code', $branchCode)->firstOrFail();
+        $user = User::factory()->create(['branch_office_id' => $branch->id]);
         $user->assignRole($role);
 
         return $user;
     }
 
-    private function loanInquiryData(array $overrides = []): array
+    private function loanResponse(string $collectability, string $account = '001000OPER'): array
     {
         return [
-            'accountNumber' => '3010000000000001',
-            'altNumber' => 'ALT-1',
-            'branchCode' => '001',
-            'cifNo' => 'CIF-1',
-            'cifNoAlt' => 'CIFA-1',
-            'customerName' => 'Customer',
-            'collectability' => '1',
-            'dpd' => 0,
-            'productID' => 'P1',
-            'productName' => 'Loan',
-            'saForLoanRepayment' => '1000010000000691',
-            'startPeriod' => '20250101',
-            'endPeriod' => '20270101',
-            'creditLimit' => '250000000.00',
-            'loanOutStanding' => '230929000.00',
-            'installmentAmount' => '1000.00',
-            'nextDueDate' => '20260531',
-            ...$overrides,
-        ];
-    }
-
-    private function contractResponse(string $bakiDebet, string $accountNumber): array
-    {
-        return [
-            'result' => [
-                'AccountNumber' => $accountNumber,
-                'AsOf' => '2026-06-30T00:00:00Z',
-                'BakiDebet' => $bakiDebet,
-            ],
-            'loan' => [
-                'AccountNumber' => $accountNumber,
-                'Product' => '301 - Kredit Pegawai Aktif',
+            'responseCode' => '00',
+            'description' => 'SUCCESS',
+            'data' => [
+                'accountNumber' => '3010000000000001',
+                'altNumber' => 'ALT-1',
+                'branchCode' => '001',
+                'collectability' => $collectability,
+                'saForLoanRepayment' => $account,
+                'loanOutStanding' => '10000.00',
+                'installmentAmount' => '1000.00',
+                'nextDueDate' => '20270101',
             ],
         ];
     }

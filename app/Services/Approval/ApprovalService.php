@@ -21,6 +21,8 @@ class ApprovalService
     private const WORKFLOW_STEPS = [
         ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH => [
             ['role_name' => 'branch_approver'],
+            ['role_name' => 'insurance_approver'],
+            ['role_name' => 'business_approver'],
         ],
         ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION => [
             ['role_name' => 'accounting_approver'],
@@ -103,6 +105,7 @@ class ApprovalService
             $this->writeLog($request, $actor, 'approved_step', $notes, [
                 'step_id' => $step->id,
                 'step_order' => $step->step_order,
+                'role_name' => $step->role_name,
             ]);
 
             if (! $request->steps()->where('status', ApprovalStep::STATUS_PENDING)->exists()) {
@@ -231,6 +234,7 @@ class ApprovalService
             $this->writeLog($request, $actor, $action, $notes, [
                 'step_id' => $step->id,
                 'step_order' => $step->step_order,
+                'role_name' => $step->role_name,
             ]);
 
             return $request->refresh();

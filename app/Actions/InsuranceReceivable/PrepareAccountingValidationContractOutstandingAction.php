@@ -3,7 +3,6 @@
 namespace App\Actions\InsuranceReceivable;
 
 use App\Models\ApiIntegrationLog;
-use App\Models\BranchOffice;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\ContractOutstanding\ContractOutstandingClient;
@@ -183,18 +182,19 @@ class PrepareAccountingValidationContractOutstandingAction
                 ->firstOrFail();
 
             $branchCode = $this->stringValue($data['branchCode'] ?? null);
-            $branchOfficeId = $branchCode === null
-                ? $locked->branch_office_id
-                : BranchOffice::query()->where('branch_code', $branchCode)->value('id');
+
+            if ($branchCode !== null && $branchCode !== trim((string) $locked->branch_code)) {
+                throw ValidationException::withMessages([
+                    'loan_account_number' => "Loan branch {$branchCode} does not match receivable branch {$locked->branch_code}.",
+                ]);
+            }
 
             $locked->forceFill([
-                'branch_office_id' => $branchOfficeId ?? $locked->branch_office_id,
-                'branch_code' => $branchCode ?? $locked->branch_code,
                 'loan_account_number' => $this->stringValue($data['accountNumber'] ?? null) ?? $locked->loan_account_number,
                 'alt_number' => $this->stringValue($data['altNumber'] ?? null) ?? $locked->alt_number,
                 'collectability' => $this->stringValue($data['collectability'] ?? null),
                 'dpd' => $this->integerValue($data['dpd'] ?? null),
-                'saving_account_for_loan_repayment' => $this->stringValue($data['saForLoanRepayment'] ?? null) ?? $locked->saving_account_for_loan_repayment,
+                'saving_account_for_loan_repayment' => $this->stringValue($data['saForLoanRepayment'] ?? null),
                 'loan_outstanding' => (string) $this->moneyDecimal($data['loanOutStanding'] ?? null, 'Fresh Fincloud outstanding')->toScale(2, RoundingMode::HalfUp),
                 'inquiry_completed_at' => now(),
             ])->save();

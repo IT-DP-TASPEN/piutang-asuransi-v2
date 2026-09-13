@@ -16,6 +16,7 @@ class RoleScope
         'it_user',
         'accounting_maker',
         'accounting_approver',
+        'insurance_approver',
         'business_maker',
         'business_approver',
         'auditor',

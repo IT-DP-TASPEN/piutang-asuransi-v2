@@ -45,9 +45,15 @@ class PerformLoanInquiryAction
             ]);
         }
 
-        if (! $user->hasRole('super_admin') && $user->branchOffice?->branch_code !== $branchCode) {
+        $isInitialInquiry = $insuranceReceivable->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_DRAFT;
+        $expectedBranchCode = $isInitialInquiry
+            ? trim((string) $user->branchOffice?->branch_code)
+            : trim((string) $insuranceReceivable->branch_code);
+
+        if ((! $isInitialInquiry || ! $user->hasRole('super_admin'))
+            && ($expectedBranchCode === '' || $expectedBranchCode !== $branchCode)) {
             throw ValidationException::withMessages([
-                'loan_account_number' => "Loan branch {$branchCode} does not match your branch {$user->branchOffice?->branch_code}.",
+                'loan_account_number' => "Loan branch {$branchCode} does not match ".($isInitialInquiry ? 'your' : 'receivable').' branch '.($expectedBranchCode ?: '(empty)').'.',
             ]);
         }
 
@@ -64,8 +70,8 @@ class PerformLoanInquiryAction
         $loanOutstanding = $this->moneyValue($data['loanOutStanding'] ?? null);
 
         $insuranceReceivable->forceFill([
-            'branch_office_id' => $branchOffice->id,
-            'branch_code' => $branchCode,
+            'branch_office_id' => $isInitialInquiry ? $branchOffice->id : $insuranceReceivable->branch_office_id,
+            'branch_code' => $isInitialInquiry ? $branchCode : $expectedBranchCode,
             'loan_account_number' => $this->stringValue($data['accountNumber'] ?? null) ?? $insuranceReceivable->loan_account_number,
             'alt_number' => $this->stringValue($data['altNumber'] ?? null),
             'cif_no' => $this->stringValue($data['cifNo'] ?? null),
@@ -92,7 +98,7 @@ class PerformLoanInquiryAction
             return null;
         }
 
-        return (string) $value;
+        return trim((string) $value);
     }
 
     private function integerValue(mixed $value): ?int

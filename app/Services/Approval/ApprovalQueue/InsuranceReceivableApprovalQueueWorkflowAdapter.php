@@ -16,7 +16,7 @@ class InsuranceReceivableApprovalQueueWorkflowAdapter extends BaseApprovalQueueW
     {
         return $request->workflow_code === ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION
             ? 'Accounting Validation'
-            : 'Insurance Receivable Branch Approval';
+            : 'Insurance Receivable Initial Approval';
     }
 
     public function summary(ApprovalRequest $request): string

@@ -5,7 +5,6 @@ namespace App\Actions\InsuranceReceivable;
 use App\Models\ApiIntegrationLog;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
-use App\Models\BranchOffice;
 use App\Models\InsuranceReceivable;
 use App\Models\InsuranceReceivableInstallmentRepayment;
 use App\Models\User;
@@ -267,13 +266,14 @@ class ResolveInstallmentRepaymentAction
     private function forceFillLoanSnapshot(InsuranceReceivable $receivable, array $data): void
     {
         $branchCode = $this->stringValue($data['branchCode'] ?? null);
-        $branchOfficeId = $branchCode === null
-            ? $receivable->branch_office_id
-            : BranchOffice::query()->where('branch_code', $branchCode)->value('id');
+
+        if ($branchCode !== null && $branchCode !== trim((string) $receivable->branch_code)) {
+            throw ValidationException::withMessages([
+                'loan_account_number' => "Loan branch {$branchCode} does not match receivable branch {$receivable->branch_code}.",
+            ]);
+        }
 
         $receivable->forceFill([
-            'branch_office_id' => $branchOfficeId ?? $receivable->branch_office_id,
-            'branch_code' => $branchCode ?? $receivable->branch_code,
             'loan_account_number' => $this->stringValue($data['accountNumber'] ?? null) ?? $receivable->loan_account_number,
             'alt_number' => $this->stringValue($data['altNumber'] ?? null),
             'collectability' => $this->stringValue($data['collectability'] ?? null),

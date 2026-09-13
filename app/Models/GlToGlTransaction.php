@@ -82,11 +82,12 @@ class GlToGlTransaction extends Model
     public function isSatisfied(): bool
     {
         return $this->status === self::STATUS_SUCCESS
-            || in_array($this->resolution_status, [
-                self::RESOLUTION_STATUS_NO_LONGER_REQUIRED,
-                self::RESOLUTION_STATUS_RESOLVED,
-                self::RESOLUTION_STATUS_RESOLVED_MANUALLY,
-            ], true);
+            || $this->resolution_status === self::RESOLUTION_STATUS_NO_LONGER_REQUIRED
+            || ($this->resolution_outcome === self::RESOLUTION_OUTCOME_POSTED
+                && in_array($this->resolution_status, [
+                    self::RESOLUTION_STATUS_RESOLVED,
+                    self::RESOLUTION_STATUS_RESOLVED_MANUALLY,
+                ], true));
     }
 
     public function canRetry(): bool

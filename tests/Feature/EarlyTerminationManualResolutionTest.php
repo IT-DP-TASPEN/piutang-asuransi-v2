@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
 use App\Actions\InsuranceReceivable\PerformLoanInquiryAction;
 use App\Actions\InsuranceReceivable\ResolveEarlyTerminationManuallyAction;
 use App\Actions\InsuranceReceivable\SubmitManualEarlyTerminationConfirmationAction;
@@ -21,7 +20,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -44,44 +42,6 @@ class EarlyTerminationManualResolutionTest extends TestCase
             ClaimStatusSeeder::class,
             RolePermissionSeeder::class,
         ]);
-    }
-
-    public function test_it_confirm_detects_empty_and_oper_accounts_without_dispatching_automatic_flow(): void
-    {
-        Queue::fake();
-        Http::fake();
-        $itUser = $this->userWithRole('it_user', '000');
-        $empty = InsuranceReceivable::factory()->create([
-            'saving_account_for_loan_repayment' => '   ',
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
-        ]);
-        $oper = InsuranceReceivable::factory()->create([
-            'saving_account_for_loan_repayment' => ' xx-oPeR-01 ',
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
-        ]);
-
-        $empty = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($empty, $itUser);
-        $oper = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($oper, $itUser);
-
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING, $empty->workflow_status);
-        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED, $empty->system_status);
-        $this->assertSame(
-            'Manual Early Termination execution required because repayment saving account is empty.',
-            $empty->last_error_message,
-        );
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING, $oper->workflow_status);
-        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED, $oper->system_status);
-        $this->assertSame('Manual Early Termination execution required for OPER account.', $oper->last_error_message);
-        $this->assertSame('oper_account', $oper->stageLogs()
-            ->where('event', 'early_termination_manual_execution_required')
-            ->sole()
-            ->metadata['reason']);
-        $this->assertDatabaseCount('approval_requests', 0);
-        $this->assertDatabaseCount('api_integration_logs', 0);
-        $this->assertDatabaseCount('gl_to_gl_transactions', 0);
-        $this->assertDatabaseCount('early_termination_transactions', 0);
-        Http::assertNothingSent();
-        Queue::assertNothingPushed();
     }
 
     public function test_accounting_maker_confirmation_is_idempotent_and_creates_single_approval_request(): void
@@ -266,7 +226,7 @@ class EarlyTerminationManualResolutionTest extends TestCase
         $receivable = $this->manualSubmittedReceivable();
         Http::fake(function () use ($receivable) {
             $receivable->forceFill([
-                'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
+                'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PENDING,
             ])->saveQuietly();
 
             return Http::response([
@@ -285,7 +245,7 @@ class EarlyTerminationManualResolutionTest extends TestCase
         }
 
         $this->assertSame(
-            InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
+            InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PENDING,
             $receivable->refresh()->system_status,
         );
         $this->assertDatabaseCount('api_integration_logs', 1);
@@ -320,6 +280,12 @@ class EarlyTerminationManualResolutionTest extends TestCase
         $failed = $this->receivable([
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED,
+            'saving_account_for_loan_repayment' => '001000OPER',
+        ]);
+        $topUpFailed = $this->receivable([
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED,
+            'saving_account_for_loan_repayment' => '001000OPER',
         ]);
         $accounting = $this->userWithRole('accounting_approver', '000');
         $maker = $this->userWithRole('accounting_maker', '000');
@@ -327,14 +293,12 @@ class EarlyTerminationManualResolutionTest extends TestCase
         Livewire::actingAs($maker)
             ->test(ViewInsuranceReceivable::class, ['record' => $manualPending->id])
             ->assertActionVisible('submitManualEarlyTerminationConfirmation')
-            ->assertActionHidden('executeEarlyTermination')
             ->assertActionHidden('resolveEarlyTermination');
 
         Livewire::actingAs($accounting)
             ->test(ViewInsuranceReceivable::class, ['record' => $manualSubmitted->id])
             ->assertActionVisible('resolveEarlyTermination')
             ->assertActionHidden('retryEarlyTermination')
-            ->assertActionHidden('executeEarlyTermination')
             ->assertActionHidden('submitManualEarlyTerminationConfirmation')
             ->assertActionDoesNotExist('confirmManualTopUpAndExecuteEarlyTermination')
             ->assertActionHasLabel('resolveEarlyTermination', 'Verify & Resolve Early Termination');
@@ -344,6 +308,10 @@ class EarlyTerminationManualResolutionTest extends TestCase
             ->assertActionVisible('resolveEarlyTermination')
             ->assertActionVisible('retryEarlyTermination')
             ->assertActionHasLabel('retryEarlyTermination', 'Retry Early Termination');
+
+        Livewire::actingAs($accounting)
+            ->test(ViewInsuranceReceivable::class, ['record' => $topUpFailed->id])
+            ->assertActionVisible('retryEarlyTermination');
 
         Livewire::actingAs($this->userWithRole('branch_maker', '001'))
             ->test(ViewInsuranceReceivable::class, ['record' => $manualSubmitted->id])
@@ -361,12 +329,12 @@ class EarlyTerminationManualResolutionTest extends TestCase
             'branch_office_id' => $branch->id,
             'branch_code' => $branch->branch_code,
             'loan_account_number' => '3010010000000068',
-            'saving_account_for_loan_repayment' => 'OPER-01',
+            'saving_account_for_loan_repayment' => 'MANUAL-ACCOUNT-01',
             'loan_outstanding' => '1000.00',
             'receivable_amount' => '1000.00',
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_PENDING,
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED,
-            'last_error_message' => 'Manual Early Termination execution required for OPER account.',
+            'last_error_message' => 'Manual Early Termination execution recorded.',
             ...$attributes,
         ]);
     }

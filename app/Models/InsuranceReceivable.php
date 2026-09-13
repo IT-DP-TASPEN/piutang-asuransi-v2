@@ -68,17 +68,9 @@ class InsuranceReceivable extends Model
 
     public const WORKFLOW_STATUS_SUBMITTED = 'submitted';
 
-    public const WORKFLOW_STATUS_BRANCH_APPROVED = 'branch_approved';
-
     public const WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING = 'collectability_confirmation_pending';
 
-    public const WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING = 'accounting_validation_pending';
-
-    public const WORKFLOW_STATUS_RETURNED = 'returned';
-
     public const WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER = 'returned_to_branch_maker';
-
-    public const WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER = 'returned_to_accounting_maker';
 
     public const WORKFLOW_STATUS_REJECTED = 'rejected';
 
@@ -104,11 +96,13 @@ class InsuranceReceivable extends Model
 
     public const SYSTEM_STATUS_INQUIRY_FAILED = 'inquiry_failed';
 
+    public const SYSTEM_STATUS_REINQUIRY_REQUIRED = 'reinquiry_required';
+
     public const SYSTEM_STATUS_BRANCH_VALIDATION_FAILED = 'branch_validation_failed';
 
     public const SYSTEM_STATUS_EARLY_TERMINATION_QUEUED = 'early_termination_queued';
 
-    public const SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING = 'early_termination_confirmation_pending';
+    public const SYSTEM_STATUS_EARLY_TERMINATION_PENDING = 'early_termination_pending';
 
     public const SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED = 'early_termination_manual_execution_required';
 
@@ -160,12 +154,8 @@ class InsuranceReceivable extends Model
         return [
             self::WORKFLOW_STATUS_DRAFT => 'Draft',
             self::WORKFLOW_STATUS_SUBMITTED => 'Submitted',
-            self::WORKFLOW_STATUS_BRANCH_APPROVED => 'Branch approved',
             self::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING => 'Collectability confirmation pending',
-            self::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING => 'Accounting validation pending',
-            self::WORKFLOW_STATUS_RETURNED => 'Returned',
             self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER => 'Returned to branch maker',
-            self::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER => 'Returned to accounting maker',
             self::WORKFLOW_STATUS_REJECTED => 'Rejected',
             self::WORKFLOW_STATUS_CANCELLED => 'Cancelled',
             self::WORKFLOW_STATUS_ACCOUNTING_VALIDATION => 'Accounting validation',
@@ -198,9 +188,10 @@ class InsuranceReceivable extends Model
             self::SYSTEM_STATUS_INQUIRY_PROCESSING => 'Inquiry processing',
             self::SYSTEM_STATUS_INQUIRY_COMPLETED => 'Inquiry completed',
             self::SYSTEM_STATUS_INQUIRY_FAILED => 'Inquiry failed',
+            self::SYSTEM_STATUS_REINQUIRY_REQUIRED => 'Re-inquiry required',
             self::SYSTEM_STATUS_BRANCH_VALIDATION_FAILED => 'Branch validation failed',
             self::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED => 'Early termination queued',
-            self::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING => 'Early termination confirmation pending',
+            self::SYSTEM_STATUS_EARLY_TERMINATION_PENDING => 'Early termination pending',
             self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED => 'Manual Early Termination Required',
             self::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED => 'Early termination top up failed',
             self::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_EXECUTED => 'Early termination top up executed',
@@ -240,7 +231,6 @@ class InsuranceReceivable extends Model
         return $this->isWorkflowOrigin()
             && in_array($this->workflow_status, [
                 self::WORKFLOW_STATUS_DRAFT,
-                self::WORKFLOW_STATUS_RETURNED,
                 self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
             ], true) && ! $this->isTerminal();
     }
@@ -251,10 +241,12 @@ class InsuranceReceivable extends Model
             && ! $this->isTerminal()
             && in_array($this->workflow_status, [
                 self::WORKFLOW_STATUS_DRAFT,
-                self::WORKFLOW_STATUS_RETURNED,
                 self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
             ], true)
-            && $this->system_status === self::SYSTEM_STATUS_INQUIRY_FAILED;
+            && in_array($this->system_status, [
+                self::SYSTEM_STATUS_INQUIRY_FAILED,
+                self::SYSTEM_STATUS_REINQUIRY_REQUIRED,
+            ], true);
     }
 
     public function canCancelFailedInquiry(): bool
@@ -263,10 +255,12 @@ class InsuranceReceivable extends Model
             && ! $this->isTerminal()
             && in_array($this->workflow_status, [
                 self::WORKFLOW_STATUS_DRAFT,
-                self::WORKFLOW_STATUS_RETURNED,
                 self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
             ], true)
-            && $this->system_status === self::SYSTEM_STATUS_INQUIRY_FAILED;
+            && in_array($this->system_status, [
+                self::SYSTEM_STATUS_INQUIRY_FAILED,
+                self::SYSTEM_STATUS_REINQUIRY_REQUIRED,
+            ], true);
     }
 
     public function canResolveEarlyTermination(): bool
@@ -348,36 +342,6 @@ class InsuranceReceivable extends Model
             && ! $this->isTerminal()
             && $this->workflow_status === self::WORKFLOW_STATUS_MANUAL_EARLY_TERMINATION_SUBMITTED
             && $this->system_status === self::SYSTEM_STATUS_EARLY_TERMINATION_MANUAL_EXECUTION_REQUIRED;
-    }
-
-    /**
-     * @return array{reason: string, message: string, repayment_account: string}|null
-     */
-    public function manualEarlyTerminationRequirement(): ?array
-    {
-        if ($this->isLegacyOrigin()) {
-            return null;
-        }
-
-        $account = trim((string) $this->saving_account_for_loan_repayment);
-
-        if ($account === '') {
-            return [
-                'reason' => 'empty_repayment_account',
-                'message' => 'Manual Early Termination execution required because repayment saving account is empty.',
-                'repayment_account' => $account,
-            ];
-        }
-
-        if (str_contains(strtoupper($account), 'OPER')) {
-            return [
-                'reason' => 'oper_account',
-                'message' => 'Manual Early Termination execution required for OPER account.',
-                'repayment_account' => $account,
-            ];
-        }
-
-        return null;
     }
 
     /**
@@ -495,18 +459,6 @@ class InsuranceReceivable extends Model
     /**
      * @return HasOne<EarlyTerminationBalanceInquiry, $this>
      */
-    public function latestPreContractTopUpInquiry(): HasOne
-    {
-        return $this->hasOne(EarlyTerminationBalanceInquiry::class)
-            ->ofMany(['id' => 'max'], fn ($query) => $query->where(
-                'context',
-                EarlyTerminationBalanceInquiry::CONTEXT_PRE_CONTRACT_TOP_UP,
-            ));
-    }
-
-    /**
-     * @return HasOne<EarlyTerminationBalanceInquiry, $this>
-     */
     public function latestPostTopUpVerificationInquiry(): HasOne
     {
         return $this->hasOne(EarlyTerminationBalanceInquiry::class)
@@ -522,7 +474,7 @@ class InsuranceReceivable extends Model
     public function latestCalculationInquiry(): HasOne
     {
         return $this->hasOne(EarlyTerminationBalanceInquiry::class)
-            ->ofMany(['id' => 'max'], fn ($query) => $query->whereNotNull('total_shortage_amount'));
+            ->ofMany(['id' => 'max'], fn ($query) => $query->whereNotNull('total_funding_amount'));
     }
 
     /**

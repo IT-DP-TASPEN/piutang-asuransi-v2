@@ -304,7 +304,7 @@ class ReceivablePaymentTest extends TestCase
     {
         return InsuranceReceivable::factory()->create([
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
-            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PENDING,
             'receivable_formation_date' => '2026-01-01',
             'receivable_amount' => '10000.00',
             'remaining_receivable_amount' => '10000.00',

@@ -71,6 +71,37 @@ class ApprovalQueueTest extends TestCase
             ->assertTableActionVisible('reject', $ownBranch);
     }
 
+    public function test_initial_approval_inbox_exposes_only_the_current_ordered_step(): void
+    {
+        $this->seedDependencies();
+        $maker = $this->userWithRole('branch_maker', '001');
+        $bm = $this->userWithRole('branch_approver', '001');
+        $insurance = $this->userWithRole('insurance_approver', '000');
+        $business = $this->userWithRole('business_approver', '000');
+        $request = $this->submittedBranchRequest($maker, 'Ordered Customer');
+
+        Livewire::actingAs($insurance)
+            ->test(ListApprovalQueue::class)
+            ->assertDontSee('Ordered Customer');
+
+        $this->actingAs($bm);
+        $this->assertTrue(ApprovalQueueResource::runQueueAction($request, 'approve'));
+
+        Livewire::actingAs($insurance)
+            ->test(ListApprovalQueue::class)
+            ->assertSee('Ordered Customer');
+        Livewire::actingAs($business)
+            ->test(ListApprovalQueue::class)
+            ->assertDontSee('Ordered Customer');
+
+        $this->actingAs($insurance);
+        $this->assertTrue(ApprovalQueueResource::runQueueAction($request->refresh(), 'approve'));
+
+        Livewire::actingAs($business)
+            ->test(ListApprovalQueue::class)
+            ->assertSee('Ordered Customer');
+    }
+
     public function test_my_requests_and_unknown_workflow_fallback_are_read_only(): void
     {
         $this->seedDependencies();
@@ -217,7 +248,7 @@ class ApprovalQueueTest extends TestCase
             ->assertSchemaComponentStateSet('summary.amount', 'IDR 3.544.791')
             ->assertSchemaComponentStateSet('approval_steps', [[
                 'step' => 'Step 1',
-                'role' => 'Business Approver',
+                'role' => 'Manager Bisnis',
                 'status' => ApprovalStep::STATUS_PENDING,
                 'actor' => null,
                 'at' => null,
@@ -251,16 +282,34 @@ class ApprovalQueueTest extends TestCase
             ->set('activeTab', 'my_requests')
             ->mountTableAction('details', (string) $request->refresh()->getKey())
             ->assertSet('mountedActions.0.name', 'details')
-            ->assertSchemaComponentStateSet('summary.workflow', 'Insurance Receivable Branch Approval')
+            ->assertSchemaComponentStateSet('summary.workflow', 'Insurance Receivable Initial Approval')
             ->assertSchemaComponentStateSet('header.summary', 'Insurance receivable')
-            ->assertSchemaComponentStateSet('approval_steps', [[
-                'step' => 'Step 1',
-                'role' => 'Branch Approver',
-                'status' => ApprovalStep::STATUS_PENDING,
-                'actor' => null,
-                'at' => null,
-                'notes' => null,
-            ]]);
+            ->assertSchemaComponentStateSet('approval_steps', [
+                [
+                    'step' => 'Step 1',
+                    'role' => 'BM / Branch Approver',
+                    'status' => ApprovalStep::STATUS_PENDING,
+                    'actor' => null,
+                    'at' => null,
+                    'notes' => null,
+                ],
+                [
+                    'step' => 'Step 2',
+                    'role' => 'Manager Asuransi',
+                    'status' => ApprovalStep::STATUS_PENDING,
+                    'actor' => null,
+                    'at' => null,
+                    'notes' => null,
+                ],
+                [
+                    'step' => 'Step 3',
+                    'role' => 'Manager Bisnis',
+                    'status' => ApprovalStep::STATUS_PENDING,
+                    'actor' => null,
+                    'at' => null,
+                    'notes' => null,
+                ],
+            ]);
     }
 
     private function seedDependencies(): void
@@ -308,7 +357,7 @@ class ApprovalQueueTest extends TestCase
             'branch_office_id' => $user->branch_office_id,
             'branch_code' => $user->branchOffice->branch_code,
             'created_by' => $user->id,
-            'saving_account_for_loan_repayment' => '1000010000000691',
+            'saving_account_for_loan_repayment' => $user->branchOffice->branch_code.'000OPER',
             ...$attributes,
         ]);
     }

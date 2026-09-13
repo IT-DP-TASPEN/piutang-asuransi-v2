@@ -164,7 +164,13 @@ class ApprovalQueueDetailsSchema
             ->values()
             ->map(fn (ApprovalStep $step): array => [
                 'step' => 'Step '.$step->step_order,
-                'role' => $step->role_name ? self::human($step->role_name) : 'Unassigned role',
+                'role' => match ($step->role_name) {
+                    'branch_approver' => 'BM / Branch Approver',
+                    'insurance_approver' => 'Manager Asuransi',
+                    'business_approver' => 'Manager Bisnis',
+                    null => 'Unassigned role',
+                    default => self::human($step->role_name),
+                },
                 'status' => $step->status,
                 'actor' => $step->actor?->name,
                 'at' => $step->acted_at,

@@ -4,7 +4,6 @@ namespace App\Actions\InsuranceReceivable;
 
 use App\Models\ApiIntegrationLog;
 use App\Models\ApprovalRequest;
-use App\Models\BranchOffice;
 use App\Models\InsuranceReceivable;
 use App\Models\InsuranceReceivableInstallmentRepayment;
 use App\Models\InsuranceReceivableInstallmentRepaymentAttempt;
@@ -14,6 +13,7 @@ use App\Services\CoreBanking\CoreBusinessPayloadComparator;
 use App\Services\CoreBanking\CoreTransactionReferenceGenerator;
 use App\Services\CoreBanking\CoreTransactionReferenceRegistry;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
+use App\Services\InsuranceReceivable\OperRepaymentAccount;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
@@ -30,6 +30,7 @@ class ProcessAccountingValidationInstallmentRepaymentAction
         private readonly CoreTransactionReferenceGenerator $referenceGenerator,
         private readonly CoreTransactionReferenceRegistry $referenceRegistry,
         private readonly CoreBusinessPayloadComparator $payloadComparator,
+        private readonly OperRepaymentAccount $operAccount,
     ) {}
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, bool $retry = false): InsuranceReceivable
@@ -64,6 +65,17 @@ class ProcessAccountingValidationInstallmentRepaymentAction
             }
 
             $receivable = $this->updateReceivableLoanSnapshot($insuranceReceivable, $inquiry['data']);
+            $this->operAccount->assertMatches($receivable);
+
+            if (trim((string) $receivable->collectability) !== '5') {
+                throw ValidationException::withMessages([
+                    'collectability' => 'Fresh collectability must remain 5 for receivable formation; actual: '.($receivable->collectability ?: '(empty)').'.',
+                ]);
+            }
+
+            $receivable->forceFill([
+                'saving_account_for_loan_repayment' => $this->operAccount->expected($receivable),
+            ])->save();
             $nextDueDate = $this->dateValue($inquiry['data']['nextDueDate'] ?? null);
 
             if (! $this->repaymentRequired($receivable, $nextDueDate)) {
@@ -725,13 +737,14 @@ class ProcessAccountingValidationInstallmentRepaymentAction
     private function forceFillLoanSnapshot(InsuranceReceivable $receivable, array $data): void
     {
         $branchCode = $this->stringValue($data['branchCode'] ?? null);
-        $branchOfficeId = $branchCode === null
-            ? $receivable->branch_office_id
-            : BranchOffice::query()->where('branch_code', $branchCode)->value('id');
+
+        if ($branchCode !== null && $branchCode !== trim((string) $receivable->branch_code)) {
+            throw ValidationException::withMessages([
+                'loan_account_number' => "Loan branch {$branchCode} does not match receivable branch {$receivable->branch_code}.",
+            ]);
+        }
 
         $receivable->forceFill([
-            'branch_office_id' => $branchOfficeId ?? $receivable->branch_office_id,
-            'branch_code' => $branchCode ?? $receivable->branch_code,
             'loan_account_number' => $this->stringValue($data['accountNumber'] ?? null) ?? $receivable->loan_account_number,
             'alt_number' => $this->stringValue($data['altNumber'] ?? null),
             'cif_no' => $this->stringValue($data['cifNo'] ?? null) ?? $receivable->cif_no,

@@ -121,7 +121,6 @@ class ApprovalQueueResource extends Resource
             'ApproveApproval:InsuranceReceivable',
             'RejectApproval:InsuranceReceivable',
             'ReturnApproval:InsuranceReceivable',
-            'SubmitAccountingValidation:InsuranceReceivable',
             'ResolveEarlyTermination:InsuranceReceivable',
             'ViewAny:ClaimStatusChangeRequest',
             'Submit:ClaimStatusChangeRequest',
@@ -156,7 +155,7 @@ class ApprovalQueueResource extends Resource
     public static function workflowOptions(): array
     {
         return [
-            ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH => 'Insurance Receivable Branch Approval',
+            ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH => 'Insurance Receivable Initial Approval',
             ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION => 'Accounting Validation',
             ApprovalRequest::WORKFLOW_MANUAL_EARLY_TERMINATION_VERIFICATION => 'Manual Early Termination Verification',
             ApprovalRequest::WORKFLOW_CLAIM_STATUS_UPDATE => 'Claim Status Update',
@@ -393,6 +392,13 @@ class ApprovalQueueResource extends Resource
         return $query->whereHas('steps', function (Builder $query) use ($roleNames, $user): void {
             $query
                 ->where('status', ApprovalStep::STATUS_PENDING)
+                ->whereNotExists(function ($query): void {
+                    $query->selectRaw('1')
+                        ->from('approval_steps as earlier_steps')
+                        ->whereColumn('earlier_steps.approval_request_id', 'approval_steps.approval_request_id')
+                        ->where('earlier_steps.status', ApprovalStep::STATUS_PENDING)
+                        ->whereColumn('earlier_steps.step_order', '<', 'approval_steps.step_order');
+                })
                 ->where(function (Builder $query) use ($roleNames, $user): void {
                     $query
                         ->where(function (Builder $query) use ($roleNames, $user): void {

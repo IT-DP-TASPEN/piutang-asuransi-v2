@@ -8,7 +8,7 @@ use App\Actions\CkpnJournal\SubmitCkpnJournalAction;
 use App\Actions\ClaimStatusChangeRequest\ApproveClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\CreateAndSubmitClaimStatusChangeFromReceivableAction;
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
-use App\Actions\InsuranceReceivable\AutoSubmitInsuranceReceivableForBranchApprovalAction;
+use App\Actions\InsuranceReceivable\AutoSubmitInsuranceReceivableForInitialApprovalAction;
 use App\Actions\InsuranceReceivable\CancelInsuranceReceivableAction;
 use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
 use App\Actions\InsuranceReceivable\CreateInsuranceReceivableAction;
@@ -16,7 +16,6 @@ use App\Actions\InsuranceReceivable\ExecuteEarlyTerminationWithRepaymentTopUpAct
 use App\Actions\InsuranceReceivable\PerformLoanInquiryAction;
 use App\Actions\InsuranceReceivable\ResolveEarlyTerminationManuallyAction;
 use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
-use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
 use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
 use App\Filament\Resources\InsuranceReceivables\Pages\EditInsuranceReceivable;
 use App\Filament\Resources\InsuranceReceivables\Pages\ViewInsuranceReceivable;
@@ -111,6 +110,7 @@ class WorkflowQueueAutomationTest extends TestCase
                     'altNumber' => 'ALT-1',
                     'cifNo' => 'CIF-1',
                     'customerName' => 'Jane Customer',
+                    'saForLoanRepayment' => '001000OPER',
                 ],
             ]),
         ]);
@@ -160,6 +160,33 @@ class WorkflowQueueAutomationTest extends TestCase
             ->assertActionHidden('cancelReceivable');
     }
 
+    public function test_inquiry_with_wrong_oper_returns_to_branch_maker_without_approval(): void
+    {
+        config(['core_banking.base_url' => 'http://core.test', 'core_banking.signature_secret' => 'secret-key']);
+        $this->seedDependencies();
+        $maker = $this->userWithRole('branch_maker', '001');
+        $receivable = $this->receivableFor($maker);
+        Http::fake([
+            'http://core.test/inquiry/detail/loan' => Http::response([
+                'responseCode' => '00',
+                'description' => 'Success',
+                'data' => [
+                    'branchCode' => '001',
+                    'accountNumber' => $receivable->loan_account_number,
+                    'loanOutStanding' => '1000.00',
+                    'saForLoanRepayment' => '002000OPER',
+                ],
+            ]),
+        ]);
+
+        $this->runInquiryJob($receivable);
+
+        $receivable->refresh();
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER, $receivable->workflow_status);
+        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_REINQUIRY_REQUIRED, $receivable->system_status);
+        $this->assertFalse($receivable->approvalRequests()->exists());
+    }
+
     public function test_branch_returned_receivable_save_queues_reinquiry(): void
     {
         $this->seedDependencies();
@@ -167,7 +194,7 @@ class WorkflowQueueAutomationTest extends TestCase
         $approver = $this->userWithRole('branch_approver', '001');
         $receivable = $this->receivableReadyForSubmit($maker);
 
-        app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
+        app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)->handle($receivable, $maker);
         $returned = app(ReturnInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $approver, 'revise');
 
         Queue::fake();
@@ -191,7 +218,7 @@ class WorkflowQueueAutomationTest extends TestCase
         $approver = $this->userWithRole('branch_approver', '001');
         $receivable = $this->receivableReadyForSubmit($maker);
 
-        $submitted = app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
+        $submitted = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)->handle($receivable, $maker);
         $originalRequest = $submitted->approvalRequests()
             ->where('workflow_code', ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH)
             ->sole();
@@ -216,6 +243,7 @@ class WorkflowQueueAutomationTest extends TestCase
                     'altNumber' => 'ALT-1',
                     'cifNo' => 'CIF-REVISED',
                     'customerName' => 'Jane Customer',
+                    'saForLoanRepayment' => '001000OPER',
                 ],
             ]),
         ]);
@@ -260,7 +288,7 @@ class WorkflowQueueAutomationTest extends TestCase
             ->assertActionHidden('returnApproval');
     }
 
-    public function test_accounting_approval_waits_for_early_termination_confirmation(): void
+    public function test_accounting_approval_automatically_queues_early_termination(): void
     {
         config([
             'core_banking.base_url' => 'http://core.test',
@@ -273,19 +301,13 @@ class WorkflowQueueAutomationTest extends TestCase
         $this->seedDependencies();
         $maker = $this->userWithRole('branch_maker', '001');
         $branchApprover = $this->userWithRole('branch_approver', '001');
-        $accountingMaker = $this->userWithRole('accounting_maker', '000');
+        $insuranceApprover = $this->userWithRole('insurance_approver', '000');
+        $businessApprover = $this->userWithRole('business_approver', '000');
+        $it = $this->userWithRole('it_user', '000');
         $accountingApprover = $this->userWithRole('accounting_approver', '000');
         $receivable = $this->receivableReadyForSubmit($maker, [
             'date_of_death' => '2026-05-01',
             'loan_outstanding' => '230929055.00',
-        ]);
-
-        app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class)->handle($receivable, $maker);
-        $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $branchApprover);
-        $receivable = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $this->userWithRole('it_user', '000'));
-        app(SubmitReceivableFormationValidationAction::class)->handle($receivable, $accountingMaker, [
-            'journal_date' => '2026-05-31',
-            'amount' => '230929055.00',
         ]);
 
         Queue::fake();
@@ -297,9 +319,9 @@ class WorkflowQueueAutomationTest extends TestCase
                     'accountNumber' => $receivable->loan_account_number,
                     'altNumber' => 'ALT-1',
                     'branchCode' => '001',
-                    'collectability' => '1',
+                    'collectability' => '5',
                     'dpd' => 0,
-                    'saForLoanRepayment' => '1000010000000691',
+                    'saForLoanRepayment' => '001000OPER',
                     'loanOutStanding' => '230929055.00',
                     'installmentAmount' => '1000.00',
                     'nextDueDate' => '20260501',
@@ -307,11 +329,18 @@ class WorkflowQueueAutomationTest extends TestCase
             ]),
             'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('230929055', $receivable->loan_account_number)),
         ]);
+
+        app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)->handle($receivable, $maker);
+        $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $branchApprover);
+        $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $insuranceApprover);
+        $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $businessApprover);
+        $receivable = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $it);
         $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $accountingApprover);
 
-        Queue::assertNotPushed(ExecuteEarlyTerminationJob::class);
-        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING, $receivable->system_status);
-        $this->assertTrue($receivable->stageLogs()->where('event', 'early_termination_confirmation_pending')->exists());
+        Queue::assertPushed(ExecuteEarlyTerminationJob::class);
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED, $receivable->workflow_status);
+        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED, $receivable->system_status);
+        $this->assertTrue($receivable->stageLogs()->where('event', 'early_termination_queued')->exists());
     }
 
     public function test_early_termination_job_failure_then_retry_uses_new_reference(): void
@@ -328,7 +357,7 @@ class WorkflowQueueAutomationTest extends TestCase
             'contract_outstanding_product_code' => '301',
             'contract_outstanding_trx_type' => 'LSA01',
             'alt_number' => 'ALT-1',
-            'saving_account_for_loan_repayment' => '1000010000000691',
+            'saving_account_for_loan_repayment' => '001000OPER',
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED,
         ]);
@@ -341,7 +370,7 @@ class WorkflowQueueAutomationTest extends TestCase
                     'accountNumber' => $receivable->loan_account_number,
                     'altNumber' => 'ALT-1',
                     'branchCode' => '001',
-                    'saForLoanRepayment' => '1000010000000691',
+                    'saForLoanRepayment' => '001000OPER',
                     'loanOutStanding' => '230929055.00',
                 ],
             ]),
@@ -349,6 +378,11 @@ class WorkflowQueueAutomationTest extends TestCase
                 'responseCode' => '00',
                 'description' => 'Success',
                 'data' => ['availableBalance' => '230929055.00'],
+            ]),
+            'http://core.test/trx/transfer/gl-to-gl' => Http::response([
+                'responseCode' => '00',
+                'description' => 'Success',
+                'data' => [],
             ]),
             'http://core.test/loan/earlytermination/' => Http::sequence()
                 ->push(['responseCode' => '99', 'description' => 'Temporary failure', 'data' => []])
@@ -371,8 +405,8 @@ class WorkflowQueueAutomationTest extends TestCase
 
         $second = EarlyTerminationTransaction::query()->latest('id')->firstOrFail();
         $this->assertNotSame($first->id, $second->id);
-        $this->assertSame('ETERM-'.$receivable->id.'-001', $first->trx_reference);
-        $this->assertSame('ETERM-'.$receivable->id.'-002', $second->trx_reference);
+        $this->assertSame('ETERM'.$receivable->id.'001', $first->trx_reference);
+        $this->assertSame('ETERM'.$receivable->id.'002', $second->trx_reference);
         $this->assertSame(EarlyTerminationTransaction::STATUS_FAILED, $first->refresh()->status);
         $this->assertSame(EarlyTerminationTransaction::STATUS_SUCCESS, $second->status);
         $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_EXECUTED, $receivable->refresh()->system_status);
@@ -450,8 +484,8 @@ class WorkflowQueueAutomationTest extends TestCase
 
         $second = GlToGlTransaction::query()->latest('id')->firstOrFail();
         $this->assertNotSame($first->id, $second->id);
-        $this->assertSame('CKPNJ-'.$journal->id.'-001', $first->reference_number);
-        $this->assertSame('CKPNJ-'.$journal->id.'-002', $second->reference_number);
+        $this->assertSame('CKPNJ'.$journal->id.'001', $first->reference_number);
+        $this->assertSame('CKPNJ'.$journal->id.'002', $second->reference_number);
         $this->assertSame($second->reference_number, $second->receipt_number);
         $this->assertSame(GlToGlTransaction::STATUS_FAILED, $first->refresh()->status);
         $this->assertSame(GlToGlTransaction::STATUS_SUCCESS, $second->status);
@@ -490,10 +524,9 @@ class WorkflowQueueAutomationTest extends TestCase
     {
         $this->seedDependencies();
         $superAdmin = $this->userWithRole('super_admin', '000');
-        $receivable = $this->receivableReadyForSubmit($this->userWithRole('branch_maker', '001'));
-        $receivable->forceFill([
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
-        ])->save();
+        $maker = $this->userWithRole('branch_maker', '001');
+        $receivable = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
+            ->handle($this->receivableReadyForSubmit($maker), $maker);
 
         Livewire::actingAs($superAdmin)
             ->test(ViewInsuranceReceivable::class, ['record' => $receivable->id])
@@ -540,7 +573,7 @@ class WorkflowQueueAutomationTest extends TestCase
     {
         (new RunLoanInquiryJob($receivable->id))->handle(
             app(PerformLoanInquiryAction::class),
-            app(AutoSubmitInsuranceReceivableForBranchApprovalAction::class),
+            app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class),
             app(InsuranceReceivableStageLogger::class),
         );
     }
@@ -565,7 +598,7 @@ class WorkflowQueueAutomationTest extends TestCase
             'branch_code' => $user->branchOffice->branch_code,
             'loan_account_number' => '3010001000054745',
             'death_document_condition' => InsuranceReceivable::DEATH_DOCUMENT_CONDITION_HOSPITAL,
-            'saving_account_for_loan_repayment' => '1000010000000691',
+            'saving_account_for_loan_repayment' => '001000OPER',
             'created_by' => $user->id,
             ...$attributes,
         ]);

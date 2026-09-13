@@ -37,16 +37,21 @@ class ReturnInsuranceReceivableApprovalAction
 
             $request = $this->approvalService->returnCurrentStep($request, $user, $notes);
             $fromWorkflowStatus = $insuranceReceivable->workflow_status;
-            $toWorkflowStatus = match ($request->workflow_code) {
-                ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION => InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_ACCOUNTING_MAKER,
-                ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH => InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
-                default => throw ValidationException::withMessages([
+            if (! in_array($request->workflow_code, [
+                ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION,
+                ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH,
+            ], true)) {
+                throw ValidationException::withMessages([
                     'approval' => 'Unsupported receivable approval workflow return.',
-                ]),
-            };
+                ]);
+            }
+
+            $toWorkflowStatus = InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER;
 
             $insuranceReceivable->forceFill([
                 'workflow_status' => $toWorkflowStatus,
+                'system_status' => InsuranceReceivable::SYSTEM_STATUS_REINQUIRY_REQUIRED,
+                'last_error_message' => $notes ?: 'Approval returned. Fresh loan inquiry is required.',
             ])->save();
 
             $this->stageLogger->log(

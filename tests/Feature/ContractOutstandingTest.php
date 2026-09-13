@@ -3,12 +3,12 @@
 namespace Tests\Feature;
 
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
-use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
 use App\Models\ApiIntegrationLog;
 use App\Models\ApprovalRequest;
 use App\Models\BranchOffice;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
+use App\Services\Approval\ApprovalService;
 use App\Services\ContractOutstanding\ContractOutstandingClient;
 use App\Services\InsuranceReceivable\CalculateEarlyTerminationSplitTopUp;
 use App\Services\InsuranceReceivable\ResolveLoanProductLsaTransactionType;
@@ -129,13 +129,13 @@ class ContractOutstandingTest extends TestCase
 
         $this->assertNull($resolver->resolve('999 - Unknown'));
 
-        $split = app(CalculateEarlyTerminationSplitTopUp::class)->handle('1000.00', '900.00', '50.00');
+        $split = app(CalculateEarlyTerminationSplitTopUp::class)->handle('100.00', '93.00');
 
-        $this->assertSame('100.00', (string) $split->spread);
-        $this->assertSame('950.00', (string) $split->totalShortage);
-        $this->assertSame('50.00', (string) $split->lsaTopUpAmount);
-        $this->assertSame('900.00', (string) $split->piutangTopUpAmount);
-        $this->assertTrue($split->lsaTopUpAmount->plus($split->piutangTopUpAmount)->isEqualTo($split->totalShortage));
+        $this->assertSame('7.00', (string) $split->spread);
+        $this->assertSame('100.00', (string) $split->totalFundingAmount);
+        $this->assertSame('7.00', (string) $split->lsaTopUpAmount);
+        $this->assertSame('93.00', (string) $split->piutangTopUpAmount);
+        $this->assertTrue($split->lsaTopUpAmount->plus($split->piutangTopUpAmount)->isEqualTo($split->totalFundingAmount));
     }
 
     public function test_accounting_validation_forms_receivable_from_contract_and_reuses_snapshot(): void
@@ -190,22 +190,72 @@ class ContractOutstandingTest extends TestCase
         Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'contract.test'));
     }
 
+    public function test_accounting_approval_blocks_when_fresh_collectability_is_no_longer_five(): void
+    {
+        [$receivable, $approver] = $this->accountingValidationReceivable(['loan_outstanding' => '10000.00']);
+        $loan = $this->loanResponse('10000.00');
+        $loan['data']['collectability'] = '4';
+        Http::fake([
+            'http://core.test/inquiry/detail/loan' => Http::response($loan),
+            'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('9000')),
+        ]);
+
+        try {
+            app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $approver);
+            $this->fail('Fresh collectability 4 must block Accounting approval.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('actual: 4', $exception->errors()['collectability'][0]);
+        }
+
+        $this->assertSame(ApprovalRequest::STATUS_SUBMITTED, $receivable->approvalRequests()->sole()->status);
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION, $receivable->refresh()->workflow_status);
+    }
+
+    public function test_accounting_approval_blocks_when_fresh_repayment_account_is_not_branch_oper(): void
+    {
+        [$receivable, $approver] = $this->accountingValidationReceivable(['loan_outstanding' => '10000.00']);
+        $loan = $this->loanResponse('10000.00');
+        $loan['data']['saForLoanRepayment'] = '002000OPER';
+        Http::fake([
+            'http://core.test/inquiry/detail/loan' => Http::response($loan),
+            'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('9000')),
+        ]);
+
+        try {
+            app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $approver);
+            $this->fail('Fresh wrong-branch OPER must block Accounting approval.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('001000OPER', $exception->errors()['saving_account_for_loan_repayment'][0]);
+        }
+
+        $this->assertSame(ApprovalRequest::STATUS_SUBMITTED, $receivable->approvalRequests()->sole()->status);
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION, $receivable->refresh()->workflow_status);
+    }
+
     private function accountingValidationReceivable(array $attributes = []): array
     {
-        $maker = $this->userWithRole('accounting_maker', '000');
         $approver = $this->userWithRole('accounting_approver', '000');
+        $it = $this->userWithRole('it_user', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $receivable = InsuranceReceivable::factory()->create([
             'branch_office_id' => $branch->id,
             'branch_code' => $branch->branch_code,
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING,
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
             'loan_account_number' => '3000010000000113',
+            'saving_account_for_loan_repayment' => '001000OPER',
+            'collectability' => '5',
             'date_of_death' => '2026-06-30',
             ...$attributes,
         ]);
 
-        return [app(SubmitReceivableFormationValidationAction::class)->handle($receivable, $maker), $approver];
+        app(ApprovalService::class)->submit(
+            $receivable,
+            ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION,
+            $it,
+        );
+
+        return [$receivable->refresh(), $approver];
     }
 
     private function userWithRole(string $role, string $branchCode): User
@@ -226,10 +276,11 @@ class ContractOutstandingTest extends TestCase
                 'accountNumber' => '3000010000000113',
                 'altNumber' => 'ALT-1',
                 'branchCode' => '001',
+                'collectability' => '5',
                 'loanOutStanding' => $outstanding,
                 'installmentAmount' => '1000.00',
                 'nextDueDate' => '20260630',
-                'saForLoanRepayment' => '1000010000000691',
+                'saForLoanRepayment' => '001000OPER',
             ],
         ];
     }

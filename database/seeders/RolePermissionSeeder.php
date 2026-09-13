@@ -83,7 +83,6 @@ class RolePermissionSeeder extends Seeder
                 'ReturnApproval:InsuranceReceivable',
                 'ViewAllPending:ApprovalRequest',
                 'ConfirmCollectabilityChange:InsuranceReceivable',
-                'SubmitAccountingValidation:InsuranceReceivable',
                 'RetryInstallmentRepayment:InsuranceReceivable',
                 'ResolveInstallmentRepayment:InsuranceReceivable',
                 'SubmitManualEarlyTerminationConfirmation:InsuranceReceivable',
@@ -133,6 +132,7 @@ class RolePermissionSeeder extends Seeder
             'it_user',
             'accounting_maker',
             'accounting_approver',
+            'insurance_approver',
             'business_maker',
             'business_approver',
             'auditor',
@@ -204,7 +204,6 @@ class RolePermissionSeeder extends Seeder
 
         $roles->get('accounting_maker')->syncPermissions([
             ...$centralViewPermissions,
-            'SubmitAccountingValidation:InsuranceReceivable',
             'SubmitManualEarlyTerminationConfirmation:InsuranceReceivable',
             'Create:ReceivablePaymentRequest',
             'Submit:ReceivablePaymentRequest',
@@ -254,9 +253,19 @@ class RolePermissionSeeder extends Seeder
 
         $roles->get('business_approver')->syncPermissions([
             ...$centralViewPermissions,
+            'ApproveApproval:InsuranceReceivable',
+            'RejectApproval:InsuranceReceivable',
+            'ReturnApproval:InsuranceReceivable',
             'Approve:ClaimStatusChangeRequest',
             'Reject:ClaimStatusChangeRequest',
             'Return:ClaimStatusChangeRequest',
+        ]);
+
+        $roles->get('insurance_approver')->syncPermissions([
+            ...$centralViewPermissions,
+            'ApproveApproval:InsuranceReceivable',
+            'RejectApproval:InsuranceReceivable',
+            'ReturnApproval:InsuranceReceivable',
         ]);
 
         $roles->get('accounting_approver')->givePermissionTo([

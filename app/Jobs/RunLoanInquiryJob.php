@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Actions\InsuranceReceivable\AutoSubmitInsuranceReceivableForBranchApprovalAction;
+use App\Actions\InsuranceReceivable\AutoSubmitInsuranceReceivableForInitialApprovalAction;
 use App\Actions\InsuranceReceivable\PerformLoanInquiryAction;
 use App\Models\ApiIntegrationLog;
 use App\Models\InsuranceReceivable;
@@ -33,7 +33,7 @@ class RunLoanInquiryJob implements ShouldQueue
 
     public function handle(
         PerformLoanInquiryAction $action,
-        AutoSubmitInsuranceReceivableForBranchApprovalAction $autoSubmitAction,
+        AutoSubmitInsuranceReceivableForInitialApprovalAction $autoSubmitAction,
         InsuranceReceivableStageLogger $logger,
     ): void {
         $receivable = InsuranceReceivable::query()->findOrFail($this->insuranceReceivableId);
@@ -42,7 +42,6 @@ class RunLoanInquiryJob implements ShouldQueue
 
         if ($receivable->isTerminal() || ! in_array($receivable->workflow_status, [
             InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
-            InsuranceReceivable::WORKFLOW_STATUS_RETURNED,
             InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
         ], true)) {
             return;
@@ -103,7 +102,7 @@ class RunLoanInquiryJob implements ShouldQueue
             } catch (ValidationException $exception) {
                 $logger->log(
                     receivable: $receivable,
-                    event: 'auto_branch_submission_skipped',
+                    event: 'auto_initial_approval_submission_skipped',
                     fromStatus: $receivable->workflow_status,
                     toStatus: $receivable->workflow_status,
                     description: $this->validationMessage($exception),
@@ -194,6 +193,9 @@ class RunLoanInquiryJob implements ShouldQueue
 
     private function isBranchMismatch(ValidationException $exception): bool
     {
-        return str_contains($this->validationMessage($exception), 'does not match your branch');
+        $message = $this->validationMessage($exception);
+
+        return str_contains($message, 'does not match receivable branch')
+            || str_contains($message, 'does not match your branch');
     }
 }

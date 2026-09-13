@@ -7,6 +7,7 @@ use App\Models\EarlyTerminationTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
+use App\Services\InsuranceReceivable\OperRepaymentAccount;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -14,6 +15,7 @@ class QueueEarlyTerminationAction
 {
     public function __construct(
         private readonly InsuranceReceivableStageLogger $stageLogger,
+        private readonly OperRepaymentAccount $operAccount,
     ) {}
 
     public function handle(
@@ -23,7 +25,7 @@ class QueueEarlyTerminationAction
         return DB::transaction(function () use ($insuranceReceivable, $user): InsuranceReceivable {
             $locked = InsuranceReceivable::query()->lockForUpdate()->findOrFail($insuranceReceivable->id);
             $allowedStatuses = [
-                InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING,
+                InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PENDING,
                 InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED,
                 InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED,
             ];
@@ -40,6 +42,11 @@ class QueueEarlyTerminationAction
                 ]);
             }
 
+            $this->operAccount->assertMatches($locked);
+            $locked->forceFill([
+                'saving_account_for_loan_repayment' => $this->operAccount->expected($locked),
+            ])->saveQuietly();
+
             $latestEtAttempt = $locked->earlyTerminationTransactions()->latest('id')->first();
 
             if ($locked->system_status === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_FAILED
@@ -51,11 +58,11 @@ class QueueEarlyTerminationAction
             }
 
             $fromStatus = $locked->system_status;
-            $event = $fromStatus === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_CONFIRMATION_PENDING
+            $event = $fromStatus === InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PENDING
                 ? 'early_termination_queued'
                 : 'early_termination_retry_queued';
             $description = $event === 'early_termination_queued'
-                ? 'Early termination queued after Accounting confirmation.'
+                ? 'Early termination queued automatically after Accounting approval.'
                 : 'Early termination retry queued.';
 
             $locked->forceFill([

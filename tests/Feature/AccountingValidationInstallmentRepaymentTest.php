@@ -5,13 +5,13 @@ namespace Tests\Feature;
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\ResolveInstallmentRepaymentAction;
 use App\Actions\InsuranceReceivable\RetryInstallmentRepaymentAction;
-use App\Actions\InsuranceReceivable\SubmitReceivableFormationValidationAction;
 use App\Models\ApiIntegrationLog;
 use App\Models\ApprovalRequest;
 use App\Models\BranchOffice;
 use App\Models\InsuranceReceivable;
 use App\Models\InsuranceReceivableInstallmentRepayment;
 use App\Models\User;
+use App\Services\Approval\ApprovalService;
 use Database\Seeders\BranchOfficeSeeder;
 use Database\Seeders\ClaimStatusSeeder;
 use Database\Seeders\InsuranceCompanySeeder;
@@ -131,7 +131,7 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
             'account_number' => $receivable->loan_account_number,
             'alt_number' => 'ALT-1',
             'branch_code' => '001',
-            'saving_account_number' => '1000010000000691',
+            'saving_account_number' => '001000OPER',
             'installment_amount' => '1500.00',
             'loan_outstanding_before' => '10000.00',
             'loan_outstanding_after' => '9500.00',
@@ -156,7 +156,7 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
         Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'contract.test'));
     }
 
-    public function test_missing_or_invalid_balance_blocks_before_repayment_post(): void
+    public function test_invalid_oper_blocks_before_installment_repayment_side_effects(): void
     {
         [$receivable, $approver] = $this->accountingValidationReceivable(['date_of_death' => '2026-06-14']);
         Http::fake([
@@ -173,8 +173,7 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
         } catch (ValidationException) {
         }
 
-        $repayment = InsuranceReceivableInstallmentRepayment::query()->sole();
-        $this->assertSame(InsuranceReceivableInstallmentRepayment::STATUS_VALIDATION_FAILED, $repayment->status);
+        $this->assertDatabaseCount('insurance_receivable_installment_repayments', 0);
         $this->assertSame(ApprovalRequest::STATUS_SUBMITTED, ApprovalRequest::query()
             ->where('workflow_code', ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION)
             ->sole()
@@ -223,7 +222,7 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
             'account_number' => $receivable->loan_account_number,
             'alt_number' => 'ALT-1',
             'branch_code' => '001',
-            'saving_account_number' => '1000010000000691',
+            'saving_account_number' => '001000OPER',
             'installment_amount' => '1500.00',
             'loan_outstanding_before' => '10000.00',
             'next_due_date' => '2026-06-15',
@@ -282,21 +281,27 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
 
     private function accountingValidationReceivable(array $attributes = []): array
     {
-        $maker = $this->userWithRole('accounting_maker', '000');
         $approver = $this->userWithRole('accounting_approver', '000');
+        $it = $this->userWithRole('it_user', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
         $receivable = InsuranceReceivable::factory()->create([
             'branch_office_id' => $branch->id,
             'branch_code' => $branch->branch_code,
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION_PENDING,
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
             'loan_account_number' => '3010000000000001',
+            'saving_account_for_loan_repayment' => '001000OPER',
+            'collectability' => '5',
             'loan_outstanding' => '10000.00',
             'date_of_death' => '2026-06-14',
             ...$attributes,
         ]);
 
-        $receivable = app(SubmitReceivableFormationValidationAction::class)->handle($receivable, $maker);
+        app(ApprovalService::class)->submit(
+            $receivable,
+            ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION,
+            $it,
+        );
 
         return [$receivable, $approver];
     }
@@ -319,9 +324,9 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
                 'accountNumber' => '3010000000000001',
                 'altNumber' => 'ALT-1',
                 'branchCode' => '001',
-                'collectability' => '1',
+                'collectability' => '5',
                 'dpd' => 0,
-                'saForLoanRepayment' => '1000010000000691',
+                'saForLoanRepayment' => '001000OPER',
                 'loanOutStanding' => '10000.00',
                 'installmentAmount' => '1500.00',
                 'nextDueDate' => '20260615',
@@ -336,7 +341,7 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
             'responseCode' => '00',
             'description' => 'SUCCESS',
             'data' => [
-                'accountNumber' => '1000010000000691',
+                'accountNumber' => '001000OPER',
                 'documentStatus' => $documentStatus,
                 'availableBalance' => $availableBalance,
                 'ledgerBalance' => $availableBalance,

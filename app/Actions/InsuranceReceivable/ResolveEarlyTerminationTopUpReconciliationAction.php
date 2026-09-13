@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\CoreBanking\CoreBankingClient;
 use App\Services\InsuranceReceivable\CalculateEarlyTerminationSplitTopUp;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
+use App\Services\InsuranceReceivable\OperRepaymentAccount;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Support\Facades\Cache;
@@ -24,6 +25,7 @@ class ResolveEarlyTerminationTopUpReconciliationAction
         private readonly CoreBankingClient $coreBankingClient,
         private readonly CalculateEarlyTerminationSplitTopUp $splitCalculator,
         private readonly InsuranceReceivableStageLogger $stageLogger,
+        private readonly OperRepaymentAccount $operAccount,
     ) {}
 
     public function handle(InsuranceReceivable $receivable, string $purpose, User $user, ?string $notes = null): GlToGlTransaction
@@ -62,11 +64,19 @@ class ResolveEarlyTerminationTopUpReconciliationAction
             $loan = $this->freshLoanInquiry($receivable, $user);
             $fincloud = $this->moneyDecimal($loan['data']['loanOutStanding'] ?? null, 'Fresh Fincloud outstanding');
             $contract = $this->contractOutstanding($receivable, $fincloud);
+            $expectedOper = $this->operAccount->expected($receivable);
+
+            if ($this->operAccount->normalize($loan['data']['saForLoanRepayment'] ?? null) !== $expectedOper) {
+                throw ValidationException::withMessages([
+                    'saving_account_for_loan_repayment' => 'Fresh repayment account does not match branch OPER.',
+                ]);
+            }
+
             $balance = $this->balanceInquiry($receivable, $user, $fincloud);
-            $split = $this->splitCalculator->handle($fincloud, $contract, $balance->available_balance);
+            $split = $this->splitCalculator->handle($fincloud, $contract);
 
             $this->storeSplit($balance, $split);
-            $this->assertResolved($purpose, $split, $balance);
+            $this->assertResolved($transaction, $purpose, $split, $balance);
 
             return DB::transaction(function () use ($transaction, $purpose, $loan, $balance, $split, $user, $notes): GlToGlTransaction {
                 $locked = GlToGlTransaction::query()
@@ -90,9 +100,9 @@ class ResolveEarlyTerminationTopUpReconciliationAction
                         'early_termination_balance_inquiry_id' => $balance->id,
                         'fincloud_outstanding' => (string) $split->fincloudOutstanding,
                         'contract_outstanding' => (string) $split->contractOutstanding,
-                        'available_balance' => (string) $split->availableBalance,
+                        'available_balance' => (string) $balance->available_balance,
                         'spread' => (string) $split->spread,
-                        'total_shortage' => (string) $split->totalShortage,
+                        'total_funding' => (string) $split->totalFundingAmount,
                         'lsa_top_up_amount' => (string) $split->lsaTopUpAmount,
                         'piutang_top_up_amount' => (string) $split->piutangTopUpAmount,
                     ],
@@ -222,29 +232,35 @@ class ResolveEarlyTerminationTopUpReconciliationAction
         $inquiry->forceFill([
             'contract_outstanding_amount' => (string) $split->contractOutstanding->toScale(2, RoundingMode::HalfUp),
             'spread_amount' => (string) $split->spread->toScale(2, RoundingMode::HalfUp),
-            'total_shortage_amount' => (string) $split->totalShortage->toScale(2, RoundingMode::HalfUp),
+            'total_funding_amount' => (string) $split->totalFundingAmount->toScale(2, RoundingMode::HalfUp),
             'lsa_top_up_amount' => (string) $split->lsaTopUpAmount->toScale(2, RoundingMode::HalfUp),
             'piutang_top_up_amount' => (string) $split->piutangTopUpAmount->toScale(2, RoundingMode::HalfUp),
         ])->save();
     }
 
-    private function assertResolved(string $purpose, EarlyTerminationSplitTopUpResult $split, EarlyTerminationBalanceInquiry $balance): void
-    {
-        if ($purpose === GlToGlTransaction::PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP) {
-            if ($split->lsaTopUpAmount->isGreaterThan('0')) {
-                throw ValidationException::withMessages([
-                    'reconciliation' => 'Flat spread component is not funded yet.',
-                ]);
-            }
+    private function assertResolved(
+        GlToGlTransaction $transaction,
+        string $purpose,
+        EarlyTerminationSplitTopUpResult $split,
+        EarlyTerminationBalanceInquiry $balance,
+    ): void {
+        $requiredAmount = $purpose === GlToGlTransaction::PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP
+            ? $split->lsaTopUpAmount
+            : $split->piutangTopUpAmount;
+        $payloadAmount = is_array($transaction->request_payload)
+            ? ($transaction->request_payload['amount'] ?? null)
+            : null;
 
-            return;
+        if ($payloadAmount === null || ! $this->moneyDecimal($payloadAmount, 'Stored GL payload amount')->isEqualTo($requiredAmount)) {
+            throw ValidationException::withMessages([
+                'reconciliation' => 'Stored GL payload amount does not match current required component amount.',
+            ]);
         }
 
-        if ($split->lsaTopUpAmount->isGreaterThan('0')
-            || $split->piutangTopUpAmount->isGreaterThan('0')
-            || BigDecimal::of((string) $balance->available_balance)->isLessThan($split->fincloudOutstanding)) {
+        if ($purpose === GlToGlTransaction::PURPOSE_EARLY_TERMINATION_CONTRACT_TOP_UP
+            && BigDecimal::of((string) $balance->available_balance)->isLessThan($split->fincloudOutstanding)) {
             throw ValidationException::withMessages([
-                'reconciliation' => 'Contract component or final Early Termination funding condition is not satisfied.',
+                'reconciliation' => 'Post-funding OPER balance is insufficient for Early Termination.',
             ]);
         }
     }
