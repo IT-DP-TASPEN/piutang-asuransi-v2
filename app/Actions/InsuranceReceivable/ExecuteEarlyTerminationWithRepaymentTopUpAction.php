@@ -22,6 +22,9 @@ use Throwable;
 
 class ExecuteEarlyTerminationWithRepaymentTopUpAction
 {
+    // Seven sequential Core calls can approach the old 300-second lease during timeout-heavy runs.
+    private const LOCK_TTL_SECONDS = 900;
+
     public function __construct(
         private readonly CoreBankingClient $coreBankingClient,
         private readonly ExecuteEarlyTerminationRepaymentTopUpAction $topUpAction,
@@ -41,7 +44,7 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
             ]);
         }
 
-        $lock = Cache::lock("insurance-receivable:{$insuranceReceivable->getKey()}:early-termination-top-up", 300);
+        $lock = Cache::lock("insurance-receivable:{$insuranceReceivable->getKey()}:early-termination-top-up", self::LOCK_TTL_SECONDS);
 
         if (! $lock->get()) {
             throw ValidationException::withMessages([
@@ -61,7 +64,7 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
                 return null;
             }
 
-            $operLock = Cache::lock("insurance-receivable:oper:{$account}:early-termination", 300);
+            $operLock = Cache::lock("insurance-receivable:oper:{$account}:early-termination", self::LOCK_TTL_SECONDS);
 
             if (! $operLock->get()) {
                 throw ValidationException::withMessages([
@@ -470,7 +473,7 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
             'saving_account_number' => $account,
             'loan_outstanding_amount' => (string) $fincloudOutstanding->toScale(2, RoundingMode::HalfUp),
             'available_balance' => (string) $available->toScale(2, RoundingMode::HalfUp),
-            'required_top_up_amount' => (string) $required->toScale(2, RoundingMode::HalfUp),
+            'balance_shortfall_amount' => (string) $required->toScale(2, RoundingMode::HalfUp),
             'response_code' => $result['response_code'],
             'response_description' => $result['description'],
             'status' => EarlyTerminationBalanceInquiry::STATUS_SUCCESS,
@@ -569,27 +572,18 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
     {
         return $receivable->glToGlTransactions()
             ->where('purpose', $purpose)
-            ->where(function ($query): void {
-                $query->where('resolution_status', GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED)
-                    ->orWhereIn('status', [
-                        GlToGlTransaction::STATUS_PENDING,
-                        GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT,
-                    ]);
-            })
             ->latest('id')
-            ->first();
+            ->get()
+            ->first(fn (GlToGlTransaction $transaction): bool => ! $transaction->isSatisfied() && ! $transaction->canRetry());
     }
 
     private function fundedComponentTransaction(InsuranceReceivable $receivable, string $purpose): ?GlToGlTransaction
     {
         return $receivable->glToGlTransactions()
             ->where('purpose', $purpose)
-            ->where(function ($query): void {
-                $query->where('status', GlToGlTransaction::STATUS_SUCCESS)
-                    ->orWhere('resolution_outcome', GlToGlTransaction::RESOLUTION_OUTCOME_POSTED);
-            })
             ->latest('id')
-            ->first();
+            ->get()
+            ->first(fn (GlToGlTransaction $transaction): bool => $transaction->isSatisfied());
     }
 
     private function markSupersededFailedAttempts(
@@ -699,20 +693,8 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
                 GlToGlTransaction::PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP,
                 GlToGlTransaction::PURPOSE_EARLY_TERMINATION_CONTRACT_TOP_UP,
             ])
-            ->where(function ($query): void {
-                $query->where('resolution_status', GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED)
-                    ->orWhere(function ($query): void {
-                        $query->whereIn('status', [
-                            GlToGlTransaction::STATUS_PENDING,
-                            GlToGlTransaction::STATUS_FAILED,
-                            GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT,
-                        ])->whereNotIn('resolution_status', [
-                            GlToGlTransaction::RESOLUTION_STATUS_NO_LONGER_REQUIRED,
-                            GlToGlTransaction::RESOLUTION_STATUS_RESOLVED_MANUALLY,
-                        ]);
-                    });
-            })
-            ->exists();
+            ->get()
+            ->contains(fn (GlToGlTransaction $transaction): bool => ! $transaction->isSatisfied() && ! $transaction->canRetry());
     }
 
     private function hasTopUpComponent(InsuranceReceivable $receivable): bool

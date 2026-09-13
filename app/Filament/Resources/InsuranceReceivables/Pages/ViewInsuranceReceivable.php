@@ -275,10 +275,10 @@ class ViewInsuranceReceivable extends ViewRecord
     private function resolveEarlyTerminationTopUpReconciliationAction(): Action
     {
         return Action::make('resolveEarlyTerminationTopUpReconciliation')
-            ->label('Verify & Resolve Top Up')
+            ->label('Resolve Top Up Transaction')
             ->color('warning')
             ->requiresConfirmation()
-            ->modalDescription('This verifies fresh loan and balance state for the selected top up component before marking reconciliation resolved.')
+            ->modalDescription('Resolve only after verifying the exact GL reference in Core. OPER balance does not prove this transaction posted.')
             ->visible(fn (): bool => (auth()->user()?->can('reconcileEarlyTerminationTopUp', $this->getRecord()) ?? false))
             ->form([
                 Select::make('purpose')
@@ -290,10 +290,27 @@ class ViewInsuranceReceivable extends ViewRecord
                             GlToGlTransaction::PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP,
                             GlToGlTransaction::PURPOSE_EARLY_TERMINATION_CONTRACT_TOP_UP,
                         ])
-                        ->pluck('purpose', 'purpose')
+                        ->get()
+                        ->mapWithKeys(fn (GlToGlTransaction $transaction): array => [
+                            $transaction->purpose => collect([
+                                $transaction->purpose === GlToGlTransaction::PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP ? 'LSA' : 'PiutangAsuransi',
+                                $transaction->reference_number,
+                                'IDR '.($transaction->request_payload['amount'] ?? '-'),
+                            ])->join(' | '),
+                        ])
                         ->all())
                     ->required(),
-                Textarea::make('notes')->maxLength(65535),
+                Select::make('outcome')
+                    ->label('Manual decision')
+                    ->options([
+                        GlToGlTransaction::RESOLUTION_OUTCOME_POSTED => 'Mark as Posted',
+                        GlToGlTransaction::RESOLUTION_OUTCOME_NOT_POSTED => 'Mark as Not Posted',
+                    ])
+                    ->required(),
+                Textarea::make('notes')
+                    ->label('Reconciliation reason')
+                    ->required()
+                    ->maxLength(65535),
             ])
             ->action(function (array $data): void {
                 $user = auth()->user();
@@ -304,7 +321,7 @@ class ViewInsuranceReceivable extends ViewRecord
 
                 try {
                     app(ResolveEarlyTerminationTopUpReconciliationAction::class)
-                        ->handle($this->getRecord(), $data['purpose'], $user, $data['notes'] ?? null);
+                        ->handle($this->getRecord(), $data['purpose'], $data['outcome'], $user, $data['notes'] ?? null);
                     $this->record = $this->getRecord()->refresh();
 
                     Notification::make()->success()->title('Top up reconciliation resolved')->send();

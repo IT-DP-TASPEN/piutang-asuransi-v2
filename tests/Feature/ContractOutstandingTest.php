@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Actions\InsuranceReceivable\ApproveInsuranceReceivableApprovalAction;
+use App\Actions\InsuranceReceivable\PrepareAccountingValidationContractOutstandingAction;
 use App\Models\ApiIntegrationLog;
 use App\Models\ApprovalRequest;
 use App\Models\BranchOffice;
@@ -188,6 +189,40 @@ class ContractOutstandingTest extends TestCase
         }
 
         Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'contract.test'));
+    }
+
+    public function test_new_accounting_attempt_fetches_fresh_contract_after_branch_return(): void
+    {
+        [$receivable, $approver] = $this->accountingValidationReceivable([
+            'loan_outstanding' => '100.00',
+            'contract_outstanding_amount' => '93.00',
+            'contract_outstanding_requested_as_of' => '2026-06-30',
+            'contract_outstanding_as_of' => '2026-06-30',
+            'contract_outstanding_product_code' => '301',
+            'contract_outstanding_trx_type' => 'LSA01',
+        ]);
+
+        $receivable->forceFill([
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
+        ])->save();
+        $this->assertNull($receivable->refresh()->contract_outstanding_amount);
+
+        $receivable->forceFill([
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
+        ])->save();
+        Http::fake([
+            'http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse('98.00')),
+            'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('91')),
+        ]);
+
+        $fresh = app(PrepareAccountingValidationContractOutstandingAction::class)
+            ->handle($receivable, $approver, '2026-06-30');
+
+        $this->assertSame('91.00', $fresh->contract_outstanding_amount);
+        $split = app(CalculateEarlyTerminationSplitTopUp::class)->handle($fresh->loan_outstanding, $fresh->contract_outstanding_amount);
+        $this->assertSame('7.00', (string) $split->lsaTopUpAmount);
+        $this->assertSame('91.00', (string) $split->piutangTopUpAmount);
+        Http::assertSentCount(2);
     }
 
     public function test_accounting_approval_blocks_when_fresh_collectability_is_no_longer_five(): void

@@ -92,12 +92,14 @@ class GlToGlTransaction extends Model
 
     public function canRetry(): bool
     {
-        if ($this->status !== self::STATUS_FAILED) {
-            return false;
+        if ($this->resolution_outcome === self::RESOLUTION_OUTCOME_NOT_POSTED) {
+            return in_array($this->resolution_status, [
+                self::RESOLUTION_STATUS_RESOLVED,
+                self::RESOLUTION_STATUS_RESOLVED_MANUALLY,
+            ], true);
         }
 
-        return $this->resolution_status === null
-            || $this->resolution_outcome === self::RESOLUTION_OUTCOME_NOT_POSTED;
+        return $this->status === self::STATUS_FAILED && $this->resolution_status === null;
     }
 
     /**

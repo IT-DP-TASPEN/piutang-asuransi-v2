@@ -231,9 +231,9 @@ class InsuranceReceivableInfolist
                                     ->state(fn (InsuranceReceivable $record): ?string => self::calculationOrLegacyInquiry($record)?->available_balance)
                                     ->money('IDR', 0, 'id_ID')
                                     ->placeholder('-'),
-                                TextEntry::make('latest_balance_inquiry_required_top_up_amount')
-                                    ->label('Balance shortage (verification only)')
-                                    ->state(fn (InsuranceReceivable $record): ?string => self::calculationOrLegacyInquiry($record)?->required_top_up_amount)
+                                TextEntry::make('latest_balance_inquiry_balance_shortfall_amount')
+                                    ->label('OPER balance shortfall (verification only)')
+                                    ->state(fn (InsuranceReceivable $record): ?string => self::calculationOrLegacyInquiry($record)?->balance_shortfall_amount)
                                     ->money('IDR', 0, 'id_ID')
                                     ->placeholder('-'),
                                 TextEntry::make('latest_lsa_top_up_amount')
@@ -417,6 +417,9 @@ class InsuranceReceivableInfolist
                 $attempt->resolution_outcome,
                 $attempt->response_code,
                 $attempt->response_description,
+                $attempt->resolution_notes,
+                $attempt->resolver?->name,
+                $attempt->resolved_at?->toDateTimeString(),
                 $attempt->executed_at?->toDateTimeString(),
             ])->filter()->join(' | '))
             ->join("\n");

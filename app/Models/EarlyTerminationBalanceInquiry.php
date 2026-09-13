@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'saving_account_number',
     'loan_outstanding_amount',
     'available_balance',
-    'required_top_up_amount',
+    'balance_shortfall_amount',
     'contract_outstanding_amount',
     'spread_amount',
     'total_funding_amount',
@@ -86,7 +86,7 @@ class EarlyTerminationBalanceInquiry extends Model
         return [
             'loan_outstanding_amount' => 'decimal:2',
             'available_balance' => 'decimal:2',
-            'required_top_up_amount' => 'decimal:2',
+            'balance_shortfall_amount' => 'decimal:2',
             'contract_outstanding_amount' => 'decimal:2',
             'spread_amount' => 'decimal:2',
             'total_funding_amount' => 'decimal:2',

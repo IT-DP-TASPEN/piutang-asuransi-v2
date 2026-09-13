@@ -252,9 +252,25 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
     {
         $approver = $this->userWithRole('accounting_approver', '000');
 
+        $accountingReceivable = $this->accountingReceivable();
+        $accountingReceivable->forceFill([
+            'contract_outstanding_amount' => '93.00',
+            'contract_outstanding_requested_as_of' => '2026-06-30',
+            'contract_outstanding_as_of' => '2026-06-30',
+            'contract_outstanding_product_code' => '301',
+            'contract_outstanding_trx_type' => 'LSA01',
+            'contract_outstanding_api_log_id' => null,
+        ])->save();
+
         $returned = app(ReturnInsuranceReceivableApprovalAction::class)
-            ->handle($this->accountingReceivable(), $approver, 'revise');
+            ->handle($accountingReceivable, $approver, 'revise');
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER, $returned->workflow_status);
+        $this->assertNull($returned->contract_outstanding_amount);
+        $this->assertNull($returned->contract_outstanding_requested_as_of);
+        $this->assertNull($returned->contract_outstanding_as_of);
+        $this->assertNull($returned->contract_outstanding_product_code);
+        $this->assertNull($returned->contract_outstanding_trx_type);
+        $this->assertNull($returned->contract_outstanding_api_log_id);
         $returned->forceFill(['system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED])->saveQuietly();
         $resubmitted = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
             ->handle($returned, $returned->creator);

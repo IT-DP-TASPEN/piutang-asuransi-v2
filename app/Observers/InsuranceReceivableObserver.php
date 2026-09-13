@@ -10,6 +10,19 @@ class InsuranceReceivableObserver
 {
     public function saving(InsuranceReceivable $insuranceReceivable): void
     {
+        if (! $insuranceReceivable->isLegacyOrigin()
+            && $insuranceReceivable->isDirty('workflow_status')
+            && $insuranceReceivable->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER) {
+            $insuranceReceivable->forceFill([
+                'contract_outstanding_amount' => null,
+                'contract_outstanding_requested_as_of' => null,
+                'contract_outstanding_as_of' => null,
+                'contract_outstanding_product_code' => null,
+                'contract_outstanding_trx_type' => null,
+                'contract_outstanding_api_log_id' => null,
+            ]);
+        }
+
         if ($insuranceReceivable->isLegacyOrigin()) {
             return;
         }

@@ -39,6 +39,7 @@ class GlToGlTransactionInfolist
                         TextEntry::make('resolution_status')->label('Resolution status')->badge()->placeholder('-'),
                         TextEntry::make('resolution_outcome')->label('Resolution outcome')->badge()->placeholder('-'),
                         TextEntry::make('resolution_reason')->label('Resolution reason')->placeholder('-'),
+                        TextEntry::make('resolution_notes')->label('Reconciliation note')->placeholder('-'),
                         TextEntry::make('resolver.name')->label('Resolved by')->placeholder('-'),
                         TextEntry::make('resolved_at')->dateTime()->placeholder('-'),
                         TextEntry::make('response_code')->label('Response code'),

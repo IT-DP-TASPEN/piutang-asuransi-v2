@@ -160,6 +160,21 @@ class EarlyTerminationSplitTopUpTest extends TestCase
         }
     }
 
+    public function test_different_oper_accounts_use_independent_locks(): void
+    {
+        $first = Cache::lock('insurance-receivable:oper:001000OPER:early-termination', 900);
+        $second = Cache::lock('insurance-receivable:oper:123000OPER:early-termination', 900);
+
+        $this->assertTrue($first->get());
+
+        try {
+            $this->assertTrue($second->get());
+        } finally {
+            $second->release();
+            $first->release();
+        }
+    }
+
     public function test_final_fresh_loan_mismatch_blocks_et_api(): void
     {
         $receivable = $this->receivable();

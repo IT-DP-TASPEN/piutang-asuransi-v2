@@ -106,15 +106,13 @@ class ExecuteEarlyTerminationRepaymentTopUpAction
                     return $latest;
                 }
 
-                if ($latest->status === GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT
-                    || ($latest->resolution_status === GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED
-                        && $latest->resolution_outcome !== GlToGlTransaction::RESOLUTION_OUTCOME_NOT_POSTED)) {
+                if (! $latest->canRetry()) {
                     throw ValidationException::withMessages([
                         'gl_to_gl_transaction' => 'Early Termination top up requires reconciliation before retry.',
                     ]);
                 }
 
-                if ($latest->status === GlToGlTransaction::STATUS_FAILED && is_array($latest->request_payload)) {
+                if (is_array($latest->request_payload)) {
                     if (! $this->payloadComparator->same($latest->request_payload, $validationPayload)) {
                         $this->markReconciliationRequired($latest, 'Current Early Termination top up payload differs from failed attempt payload.');
 
@@ -208,10 +206,7 @@ class ExecuteEarlyTerminationRepaymentTopUpAction
 
                 $latest = $attempts->first();
 
-                if ($latest instanceof GlToGlTransaction
-                    && ($latest->status === GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT
-                        || ($latest->resolution_status === GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED
-                            && $latest->resolution_outcome !== GlToGlTransaction::RESOLUTION_OUTCOME_NOT_POSTED))) {
+                if ($latest instanceof GlToGlTransaction && ! $latest->isSatisfied() && ! $latest->canRetry()) {
                     throw ValidationException::withMessages([
                         'gl_to_gl_transaction' => 'Previous Core attempt requires reconciliation before retry.',
                     ]);

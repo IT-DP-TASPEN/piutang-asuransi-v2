@@ -70,7 +70,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             'saving_account_number' => '001000OPER',
             'loan_outstanding_amount' => '1000.00',
             'available_balance' => '250.00',
-            'required_top_up_amount' => '750.00',
+            'balance_shortfall_amount' => '750.00',
             'status' => EarlyTerminationBalanceInquiry::STATUS_SUCCESS,
             'requested_by' => $user->id,
             'requested_at' => now()->subMinute(),
@@ -82,7 +82,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             'saving_account_number' => '001000OPER',
             'loan_outstanding_amount' => '1000.00',
             'available_balance' => '400.00',
-            'required_top_up_amount' => '600.00',
+            'balance_shortfall_amount' => '600.00',
             'response_code' => '00',
             'response_description' => 'SUCCESS',
             'status' => EarlyTerminationBalanceInquiry::STATUS_SUCCESS,
@@ -106,7 +106,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             'saving_account_number',
             'loan_outstanding_amount',
             'available_balance',
-            'required_top_up_amount',
+            'balance_shortfall_amount',
             'total_funding_amount',
             'response_code',
             'response_description',
@@ -323,7 +323,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertSame($inquiry->id, $transaction->early_termination_balance_inquiry_id);
         $this->assertSame(EarlyTerminationBalanceInquiry::STATUS_SUCCESS, $inquiry->status);
         $this->assertSame('400.00', $inquiry->available_balance);
-        $this->assertSame('600.11', $inquiry->required_top_up_amount);
+        $this->assertSame('600.11', $inquiry->balance_shortfall_amount);
         $this->assertSame(2, ApiIntegrationLog::query()->where('endpoint', '/saving/inq/balance')->count());
         $this->assertSame("ETPIU{$receivable->id}001", $transaction->reference_number);
         $this->assertSame($transaction->reference_number, $transaction->receipt_number);
@@ -386,7 +386,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertNotSame($firstInquiryId, $retried->early_termination_balance_inquiry_id);
         $this->assertSame(GlToGlTransaction::STATUS_FAILED, $first->refresh()->status);
         $this->assertSame(3, EarlyTerminationBalanceInquiry::query()->count());
-        $this->assertSame('0.00', $latestInquiry->required_top_up_amount);
+        $this->assertSame('0.00', $latestInquiry->balance_shortfall_amount);
         $this->assertSame(EarlyTerminationBalanceInquiry::CONTEXT_POST_TOP_UP_VERIFICATION, $latestInquiry->context);
         $this->assertSame(2, ApiIntegrationLog::query()->where('endpoint', '/trx/transfer/gl-to-gl')->count());
     }
@@ -498,7 +498,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             'saving_account_number' => '001000OPER',
             'loan_outstanding_amount' => '1000.00',
             'available_balance' => '48271.64',
-            'required_top_up_amount' => '0.00',
+            'balance_shortfall_amount' => '0.00',
             'contract_outstanding_amount' => '900.00',
             'spread_amount' => '100.00',
             'total_funding_amount' => '1000.00',
@@ -585,7 +585,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             'saving_account_number' => '001000OPER',
             'loan_outstanding_amount' => '10000000.00',
             'available_balance' => '1000000.00',
-            'required_top_up_amount' => '9000000.00',
+            'balance_shortfall_amount' => '9000000.00',
             'contract_outstanding_amount' => '7000000.00',
             'spread_amount' => '3000000.00',
             'total_funding_amount' => '10000000.00',
@@ -602,7 +602,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
             'saving_account_number' => '001000OPER',
             'loan_outstanding_amount' => '10000000.00',
             'available_balance' => '10000000.00',
-            'required_top_up_amount' => '0.00',
+            'balance_shortfall_amount' => '0.00',
             'status' => EarlyTerminationBalanceInquiry::STATUS_SUCCESS,
             'requested_by' => $this->accountingApprover()->id,
             'requested_at' => now(),
