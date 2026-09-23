@@ -51,10 +51,9 @@ return [
 
     'contract_outstanding' => [
         'base_url' => env('CONTRACT_OUTSTANDING_BASE_URL'),
-        'endpoint' => env('CONTRACT_OUTSTANDING_ENDPOINT', '/api/slik/inquiry'),
         'token' => env('CONTRACT_OUTSTANDING_TOKEN'),
         'timeout' => (int) env('CONTRACT_OUTSTANDING_TIMEOUT', 30),
-        'retry_times' => (int) env('CONTRACT_OUTSTANDING_RETRY_TIMES', 0),
+        'retry_times' => (int) env('CONTRACT_OUTSTANDING_RETRY_TIMES', 1),
         'retry_sleep_ms' => (int) env('CONTRACT_OUTSTANDING_RETRY_SLEEP_MS', 250),
     ],
 

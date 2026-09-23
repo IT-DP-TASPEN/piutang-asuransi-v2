@@ -39,9 +39,23 @@ class PrepareAccountingValidationContractOutstandingAction
             $loanInquiry = $this->freshLoanInquiry($insuranceReceivable, $user);
             $freshOutstanding = $this->moneyDecimal($loanInquiry['data']['loanOutStanding'] ?? null, 'Fresh Fincloud outstanding');
             $receivable = $this->storeFreshLoanSnapshot($insuranceReceivable, $loanInquiry['data']);
+            $resolved = $this->lsaResolver->resolve($receivable->product_id);
+            $productCode = $resolved['product_code'] ?? $this->lsaResolver->productCode($receivable->product_id);
+            $trxType = $resolved['trx_type'] ?? null;
 
             if ($receivable->contract_outstanding_amount !== null) {
-                $this->validateExistingSnapshot($receivable, $freshOutstanding);
+                $this->validateExistingSnapshot($receivable, $freshOutstanding, $businessDate);
+                $spread = $freshOutstanding->minus($this->moneyDecimal($receivable->contract_outstanding_amount, 'Contract outstanding snapshot'));
+                if ($spread->isGreaterThan('0') && $trxType === null) {
+                    $this->logInvalidContract($receivable, $user, 'Positive spread requires mapped LSA transaction type.', $receivable->contract_outstanding_api_log_id);
+
+                    throw ValidationException::withMessages(['contract_outstanding' => 'Positive spread requires mapped LSA transaction type.']);
+                }
+
+                $receivable->forceFill([
+                    'contract_outstanding_product_code' => $productCode,
+                    'contract_outstanding_trx_type' => $trxType,
+                ])->save();
                 $this->stageLogger->log(
                     receivable: $receivable,
                     event: 'contract_outstanding_snapshot_reused',
@@ -84,12 +98,17 @@ class PrepareAccountingValidationContractOutstandingAction
                 throw $exception;
             }
 
-            $contractOutstanding = $contract->bakiDebet->toScale(2, RoundingMode::HalfUp);
+            if ($contract->primaryAccount !== trim((string) $receivable->loan_account_number)) {
+                $this->logInvalidContract($receivable, $user, 'TRS primary account conflicts with the fresh Fincloud loan account.', $contract->apiLogId);
+
+                throw ValidationException::withMessages([
+                    'contract_outstanding' => 'TRS primary account conflicts with the fresh Fincloud loan account.',
+                ]);
+            }
+
+            $contractOutstanding = $contract->contractualOutstanding;
             $this->validateContractAgainstFincloud($receivable, $contractOutstanding, $freshOutstanding);
             $spread = $freshOutstanding->minus($contractOutstanding)->toScale(2, RoundingMode::HalfUp);
-            $resolved = $this->lsaResolver->resolve($contract->loanProduct);
-            $productCode = $resolved['product_code'] ?? $this->lsaResolver->productCode($contract->loanProduct);
-            $trxType = $resolved['trx_type'] ?? null;
 
             if ($spread->isGreaterThan('0') && $trxType === null) {
                 $this->logInvalidContract($receivable, $user, 'Positive spread requires mapped LSA transaction type.', $contract->apiLogId);
@@ -121,20 +140,6 @@ class PrepareAccountingValidationContractOutstandingAction
                 return $locked->refresh();
             });
 
-            if ($contract->returnedAsOf !== null && $contract->returnedAsOf !== $contract->requestedAsOf) {
-                $this->stageLogger->log(
-                    receivable: $stored,
-                    event: 'contract_outstanding_as_of_mismatch',
-                    description: 'Contract Outstanding returned AsOf differs from requested AsOf.',
-                    metadata: [
-                        'requested_as_of' => $contract->requestedAsOf,
-                        'returned_as_of' => $contract->returnedAsOf,
-                    ],
-                    actor: $user,
-                    apiLog: $this->apiLog($contract->apiLogId),
-                );
-            }
-
             $this->stageLogger->log(
                 receivable: $stored,
                 event: 'contract_outstanding_snapshot_stored',
@@ -143,6 +148,8 @@ class PrepareAccountingValidationContractOutstandingAction
                     'contract_outstanding_amount' => (string) $contractOutstanding,
                     'fresh_fincloud_outstanding' => (string) $freshOutstanding->toScale(2, RoundingMode::HalfUp),
                     'spread' => (string) $spread,
+                    'primary_account' => $contract->primaryAccount,
+                    'position_source' => $contract->positionSource,
                     'product_code' => $productCode,
                     'trx_type' => $trxType,
                 ],
@@ -192,6 +199,8 @@ class PrepareAccountingValidationContractOutstandingAction
             $locked->forceFill([
                 'loan_account_number' => $this->stringValue($data['accountNumber'] ?? null) ?? $locked->loan_account_number,
                 'alt_number' => $this->stringValue($data['altNumber'] ?? null) ?? $locked->alt_number,
+                'product_id' => $this->stringValue($data['productID'] ?? null),
+                'product_name' => $this->stringValue($data['productName'] ?? null),
                 'collectability' => $this->stringValue($data['collectability'] ?? null),
                 'dpd' => $this->integerValue($data['dpd'] ?? null),
                 'saving_account_for_loan_repayment' => $this->stringValue($data['saForLoanRepayment'] ?? null),
@@ -203,11 +212,12 @@ class PrepareAccountingValidationContractOutstandingAction
         });
     }
 
-    private function validateExistingSnapshot(InsuranceReceivable $receivable, BigDecimal $freshOutstanding): void
+    private function validateExistingSnapshot(InsuranceReceivable $receivable, BigDecimal $freshOutstanding, string $businessDate): void
     {
-        if ($receivable->contract_outstanding_requested_as_of === null) {
+        if ($receivable->contract_outstanding_requested_as_of?->toDateString() !== $businessDate
+            || $receivable->contract_outstanding_as_of?->toDateString() !== $businessDate) {
             throw ValidationException::withMessages([
-                'contract_outstanding' => 'Existing Contract Outstanding snapshot is incomplete and requires review.',
+                'contract_outstanding' => 'Existing Contract Outstanding snapshot is for a different business date.',
             ]);
         }
 

@@ -290,11 +290,11 @@ class WorkflowQueueAutomationTest extends TestCase
 
     public function test_accounting_approval_automatically_queues_early_termination(): void
     {
+        Carbon::setTestNow('2026-05-31 10:20:30');
         config([
             'core_banking.base_url' => 'http://core.test',
             'core_banking.signature_secret' => 'secret-key',
             'services.contract_outstanding.base_url' => 'http://contract.test',
-            'services.contract_outstanding.endpoint' => '/api/slik/inquiry',
             'services.contract_outstanding.token' => 'test-token',
             'services.contract_outstanding.retry_times' => 0,
         ]);
@@ -321,13 +321,15 @@ class WorkflowQueueAutomationTest extends TestCase
                     'branchCode' => '001',
                     'collectability' => '5',
                     'dpd' => 0,
+                    'productID' => '301',
+                    'productName' => 'Kredit Pegawai Aktif',
                     'saForLoanRepayment' => '001000oper',
                     'loanOutStanding' => '230929055.00',
                     'installmentAmount' => '1000.00',
                     'nextDueDate' => '20260501',
                 ],
             ]),
-            'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('230929055', $receivable->loan_account_number)),
+            'http://contract.test/api/v1/loans/*/contractual*' => Http::response($this->contractResponse('230929055', $receivable->loan_account_number)),
         ]);
 
         app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)->handle($receivable, $maker);
@@ -643,19 +645,9 @@ class WorkflowQueueAutomationTest extends TestCase
         return app(SubmitCkpnJournalAction::class)->handle($journal, $maker);
     }
 
-    private function contractResponse(string $bakiDebet, string $accountNumber): array
+    private function contractResponse(string $amount, string $accountNumber): string
     {
-        return [
-            'result' => [
-                'AccountNumber' => $accountNumber,
-                'AsOf' => '2026-05-31T00:00:00Z',
-                'BakiDebet' => $bakiDebet,
-            ],
-            'loan' => [
-                'AccountNumber' => $accountNumber,
-                'Product' => '301 - Kredit Pegawai Aktif',
-            ],
-        ];
+        return '{"requested_account":"'.$accountNumber.'","primary_account":"'.$accountNumber.'","as_of":"2026-05-31","contract_rate":12.50,"contractual_outstanding":'.$amount.',"position_source":"DWH","repayment_history":[]}';
     }
 
     private function userWithRole(string $role, string $branchCode): User

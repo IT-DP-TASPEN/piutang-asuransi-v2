@@ -19,6 +19,7 @@ use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -35,10 +36,10 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
             'core_banking.base_url' => 'http://core.test',
             'core_banking.signature_secret' => 'secret-key',
             'services.contract_outstanding.base_url' => 'http://contract.test',
-            'services.contract_outstanding.endpoint' => '/api/slik/inquiry',
             'services.contract_outstanding.token' => 'test-token',
             'services.contract_outstanding.retry_times' => 0,
         ]);
+        Carbon::setTestNow('2026-06-30 10:20:30');
 
         $this->seed([
             BranchOfficeSeeder::class,
@@ -46,6 +47,13 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
             ClaimStatusSeeder::class,
             RolePermissionSeeder::class,
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     public function test_equal_or_later_death_date_does_not_repay(): void
@@ -58,7 +66,7 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
                     'nextDueDate' => '20260615',
                     'loanOutStanding' => '9000.00',
                 ])),
-                'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('9000')),
+                'http://contract.test/api/v1/loans/*/contractual*' => Http::response($this->contractResponse('9000')),
             ]);
 
             $result = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $approver);
@@ -95,7 +103,7 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
                 ])),
             'http://core.test/saving/inq/balance*' => Http::response($this->balanceResponse('2000.00')),
             'http://core.test/loan/repayment/' => Http::response($this->successResponse()),
-            'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('9500')),
+            'http://contract.test/api/v1/loans/*/contractual*' => Http::response($this->contractResponse('9500')),
         ]);
 
         $result = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $approver);
@@ -145,7 +153,7 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
                 'loanOutStanding' => '9500.00',
                 'nextDueDate' => '20260615',
             ])),
-            'http://contract.test/api/slik/inquiry' => Http::response(['should_not' => 'call']),
+            'http://contract.test/api/v1/loans/*/contractual*' => Http::response(['should_not' => 'call']),
         ]);
 
         $result = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $approver);
@@ -241,7 +249,7 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
                     'loanOutStanding' => '9900.00',
                     'nextDueDate' => '20260615',
                 ])),
-            'http://contract.test/api/slik/inquiry' => Http::response($this->contractResponse('9900')),
+            'http://contract.test/api/v1/loans/*/contractual*' => Http::response($this->contractResponse('9900')),
         ]);
 
         $result = app(ResolveInstallmentRepaymentAction::class)->handle($receivable, $approver);
@@ -326,6 +334,8 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
                 'branchCode' => '001',
                 'collectability' => '5',
                 'dpd' => 0,
+                'productID' => '301',
+                'productName' => 'Kredit Pegawai Aktif',
                 'saForLoanRepayment' => '001000OPER',
                 'loanOutStanding' => '10000.00',
                 'installmentAmount' => '1500.00',
@@ -349,19 +359,9 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
         ];
     }
 
-    private function contractResponse(string $bakiDebet): array
+    private function contractResponse(string $amount): string
     {
-        return [
-            'result' => [
-                'AccountNumber' => '3010000000000001',
-                'AsOf' => '2026-06-30T00:00:00Z',
-                'BakiDebet' => $bakiDebet,
-            ],
-            'loan' => [
-                'AccountNumber' => '3010000000000001',
-                'Product' => '301 - Kredit Pegawai Aktif',
-            ],
-        ];
+        return '{"requested_account":"3010000000000001","primary_account":"3010000000000001","as_of":"2026-06-30","contract_rate":12.50,"contractual_outstanding":'.$amount.',"position_source":"DWH","repayment_history":[]}';
     }
 
     private function successResponse(): array
