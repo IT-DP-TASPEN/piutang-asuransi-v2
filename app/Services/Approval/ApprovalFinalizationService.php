@@ -59,7 +59,7 @@ class ApprovalFinalizationService
             event: 'initial_approval_chain_completed',
             fromStatus: $fromStatus,
             toStatus: InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
-            description: 'Initial formation approval chain completed. Awaiting collectability change confirmation by IT.',
+            description: 'Initial formation approval chain completed. Awaiting IT confirmation of collectability 5 and branch OPER repayment account.',
             actor: $actor,
             approvalRequest: $approvalRequest,
         );
@@ -91,7 +91,6 @@ class ApprovalFinalizationService
             $amount = $this->finalReceivableAmount($locked);
 
             $locked->forceFill([
-                'saving_account_for_loan_repayment' => $this->operAccount->expected($locked),
                 'receivable_formation_date' => now()->toDateString(),
                 'receivable_amount' => $amount,
                 'remaining_receivable_amount' => $amount,

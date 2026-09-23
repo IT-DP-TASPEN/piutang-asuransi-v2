@@ -3,12 +3,15 @@
 namespace App\Services\CoreBanking\PayloadBuilders;
 
 use App\Models\InsuranceReceivable;
+use App\Services\InsuranceReceivable\OperRepaymentAccount;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonInterface;
 
 class EarlyTerminationRepaymentTopUpPayloadBuilder
 {
+    public function __construct(private readonly OperRepaymentAccount $operAccount) {}
+
     /**
      * @return array<string, string>
      */
@@ -60,7 +63,7 @@ class EarlyTerminationRepaymentTopUpPayloadBuilder
             'dateTime' => ($dateTime ?? now())->format('YmdHis'),
             'description' => $description,
             'debitFee' => '0',
-            'destAccount' => trim((string) $insuranceReceivable->saving_account_for_loan_repayment),
+            'destAccount' => $this->operAccount->actual($insuranceReceivable),
             'currency' => 'IDR',
             'srcAccType' => '10',
             'totalBill' => '',

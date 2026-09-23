@@ -43,9 +43,6 @@ class QueueEarlyTerminationAction
             }
 
             $this->operAccount->assertMatches($locked);
-            $locked->forceFill([
-                'saving_account_for_loan_repayment' => $this->operAccount->expected($locked),
-            ])->saveQuietly();
 
             $latestEtAttempt = $locked->earlyTerminationTransactions()->latest('id')->first();
 

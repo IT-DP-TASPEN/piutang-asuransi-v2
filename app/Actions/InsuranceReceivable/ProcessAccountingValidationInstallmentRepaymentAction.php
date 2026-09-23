@@ -73,9 +73,6 @@ class ProcessAccountingValidationInstallmentRepaymentAction
                 ]);
             }
 
-            $receivable->forceFill([
-                'saving_account_for_loan_repayment' => $this->operAccount->expected($receivable),
-            ])->save();
             $nextDueDate = $this->dateValue($inquiry['data']['nextDueDate'] ?? null);
 
             if (! $this->repaymentRequired($receivable, $nextDueDate)) {

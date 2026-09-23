@@ -28,61 +28,68 @@ class ConfirmCollectabilityChangeCompletedAction
         $this->stageLogger->log(
             receivable: $insuranceReceivable,
             event: 'it_collectability_confirmation_attempted',
-            description: 'IT requested fresh loan validation before collectability confirmation.',
+            description: 'IT requested fresh loan validation of collectability and branch OPER repayment account.',
             actor: $user,
         );
 
         $receivable = $this->loanInquiryAction->handle($insuranceReceivable, $user);
         $apiLog = $this->latestApiLog($receivable);
 
+        $expectedOper = null;
+        $branchError = null;
         try {
             $expectedOper = $this->operAccount->expected($receivable);
         } catch (ValidationException $exception) {
-            return $this->returnToBranchMaker($receivable, $user, $this->validationMessage($exception), null, $apiLog);
+            $branchError = collect($exception->errors())->flatten()->first() ?: $exception->getMessage();
         }
-
         $actualOper = $this->operAccount->actual($receivable);
+        $collectability = trim((string) $receivable->collectability);
+        $freshValues = [
+            'fresh_collectability' => $collectability,
+            'expected_oper_account' => $expectedOper,
+            'actual_repayment_account' => $receivable->saving_account_for_loan_repayment,
+        ];
 
         $this->stageLogger->log(
             receivable: $receivable,
             event: 'it_fresh_loan_validation_completed',
-            description: 'Fresh loan data received for IT collectability confirmation.',
-            metadata: [
-                'fresh_collectability' => $receivable->collectability,
-                'expected_oper_account' => $expectedOper,
-                'actual_repayment_account' => $actualOper,
-            ],
+            description: 'Fresh loan data received for IT collectability and repayment account confirmation.',
+            metadata: $freshValues,
             actor: $user,
             apiLog: $apiLog,
         );
 
-        if ($actualOper !== $expectedOper) {
-            $message = "Fresh repayment account must be branch OPER {$expectedOper}; actual: ".($actualOper === '' ? '(empty)' : $actualOper).'.';
-
-            return $this->returnToBranchMaker($receivable, $user, $message, $expectedOper, $apiLog);
+        $errors = [];
+        if ($collectability !== '5') {
+            $errors['collectability'] = 'Fresh collectability must be 5; actual: '.($collectability === '' ? '(empty)' : $collectability).'.';
+        }
+        if ($branchError !== null || $actualOper !== $expectedOper) {
+            $errors['saving_account_for_loan_repayment'] = $branchError
+                ?? "Fresh repayment account must be changed to branch OPER {$expectedOper}; actual: ".($actualOper === '' ? '(empty)' : $actualOper).'.';
         }
 
-        $collectability = trim((string) $receivable->collectability);
-
-        if ($collectability !== '5') {
-            $message = 'Fresh collectability must be 5; actual: '.($collectability === '' ? '(empty)' : $collectability).'.';
-
+        if ($errors !== []) {
+            $message = implode(' ', $errors);
             $receivable->forceFill(['last_error_message' => $message])->save();
             $this->stageLogger->log(
                 receivable: $receivable,
-                event: 'it_collectability_confirmation_blocked',
+                event: 'it_changes_confirmation_blocked',
                 fromStatus: $receivable->workflow_status,
                 toStatus: $receivable->workflow_status,
                 description: $message,
-                metadata: ['fresh_collectability' => $collectability],
+                metadata: [
+                    ...$freshValues,
+                    'collectability_failed' => isset($errors['collectability']),
+                    'oper_account_failed' => isset($errors['saving_account_for_loan_repayment']),
+                ],
                 actor: $user,
                 apiLog: $apiLog,
             );
 
-            throw ValidationException::withMessages(['collectability' => $message]);
+            throw ValidationException::withMessages([count($errors) > 1 ? 'it_changes' : array_key_first($errors) => $message]);
         }
 
-        return DB::transaction(function () use ($receivable, $user, $expectedOper, $apiLog): InsuranceReceivable {
+        return DB::transaction(function () use ($receivable, $user, $freshValues, $apiLog): InsuranceReceivable {
             $locked = InsuranceReceivable::query()
                 ->whereKey($receivable->getKey())
                 ->lockForUpdate()
@@ -93,16 +100,12 @@ class ConfirmCollectabilityChangeCompletedAction
                 approvable: $locked,
                 workflowCode: ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION,
                 actor: $user,
-                notes: 'Fresh OPER and collectability 5 validated by IT.',
-                metadata: [
-                    'fresh_collectability' => '5',
-                    'expected_oper_account' => $expectedOper,
-                ],
+                notes: 'Fresh collectability 5 and branch OPER repayment account validated by IT.',
+                metadata: $freshValues,
             );
 
             $fromStatus = $locked->workflow_status;
             $locked->forceFill([
-                'saving_account_for_loan_repayment' => $expectedOper,
                 'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
                 'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
                 'last_error_message' => null,
@@ -113,11 +116,8 @@ class ConfirmCollectabilityChangeCompletedAction
                 event: 'collectability_change_confirmed',
                 fromStatus: $fromStatus,
                 toStatus: InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
-                description: 'IT confirmed fresh collectability 5 and branch OPER. Accounting approval requested.',
-                metadata: [
-                    'fresh_collectability' => '5',
-                    'expected_oper_account' => $expectedOper,
-                ],
+                description: 'IT verified fresh collectability 5 and branch OPER repayment account. Accounting approval requested.',
+                metadata: $freshValues,
                 actor: $user,
                 approvalRequest: $approvalRequest,
                 apiLog: $apiLog,
@@ -148,40 +148,6 @@ class ConfirmCollectabilityChangeCompletedAction
         }
     }
 
-    private function returnToBranchMaker(
-        InsuranceReceivable $receivable,
-        User $user,
-        string $message,
-        ?string $expectedOper,
-        ?ApiIntegrationLog $apiLog,
-    ): InsuranceReceivable {
-        $fromStatus = $receivable->workflow_status;
-        $actualOper = $this->operAccount->actual($receivable);
-
-        $receivable->forceFill([
-            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
-            'system_status' => InsuranceReceivable::SYSTEM_STATUS_REINQUIRY_REQUIRED,
-            'last_error_message' => $message,
-        ])->save();
-
-        $this->stageLogger->log(
-            receivable: $receivable,
-            event: 'it_oper_validation_failed_returned',
-            fromStatus: $fromStatus,
-            toStatus: InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
-            description: $message,
-            metadata: [
-                'fresh_collectability' => $receivable->collectability,
-                'expected_oper_account' => $expectedOper,
-                'actual_repayment_account' => $actualOper,
-            ],
-            actor: $user,
-            apiLog: $apiLog,
-        );
-
-        return $receivable->refresh();
-    }
-
     private function latestApiLog(InsuranceReceivable $receivable): ?ApiIntegrationLog
     {
         return ApiIntegrationLog::query()
@@ -189,10 +155,5 @@ class ConfirmCollectabilityChangeCompletedAction
             ->where('related_id', $receivable->getKey())
             ->latest('id')
             ->first();
-    }
-
-    private function validationMessage(ValidationException $exception): string
-    {
-        return collect($exception->errors())->flatten()->first() ?: $exception->getMessage();
     }
 }

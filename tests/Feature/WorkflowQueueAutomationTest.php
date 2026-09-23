@@ -160,31 +160,31 @@ class WorkflowQueueAutomationTest extends TestCase
             ->assertActionHidden('cancelReceivable');
     }
 
-    public function test_inquiry_with_wrong_oper_returns_to_branch_maker_without_approval(): void
+    public function test_initial_inquiry_submits_agf_and_empty_repayment_accounts(): void
     {
         config(['core_banking.base_url' => 'http://core.test', 'core_banking.signature_secret' => 'secret-key']);
         $this->seedDependencies();
         $maker = $this->userWithRole('branch_maker', '001');
-        $receivable = $this->receivableFor($maker);
         Http::fake([
-            'http://core.test/inquiry/detail/loan' => Http::response([
-                'responseCode' => '00',
-                'description' => 'Success',
-                'data' => [
-                    'branchCode' => '001',
-                    'accountNumber' => $receivable->loan_account_number,
-                    'loanOutStanding' => '1000.00',
-                    'saForLoanRepayment' => '002000OPER',
-                ],
-            ]),
+            'http://core.test/inquiry/detail/loan' => Http::sequence()
+                ->push(['responseCode' => '00', 'description' => 'Success', 'data' => [
+                    'branchCode' => '001', 'loanOutStanding' => '1000.00', 'saForLoanRepayment' => '0011234567',
+                ]])
+                ->push(['responseCode' => '00', 'description' => 'Success', 'data' => [
+                    'branchCode' => '001', 'loanOutStanding' => '1000.00', 'saForLoanRepayment' => '',
+                ]]),
         ]);
 
-        $this->runInquiryJob($receivable);
+        foreach (['0011234567', null] as $account) {
+            $receivable = $this->receivableFor($maker);
+            $this->runInquiryJob($receivable);
 
-        $receivable->refresh();
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER, $receivable->workflow_status);
-        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_REINQUIRY_REQUIRED, $receivable->system_status);
-        $this->assertFalse($receivable->approvalRequests()->exists());
+            $receivable->refresh();
+            $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED, $receivable->workflow_status);
+            $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED, $receivable->system_status);
+            $this->assertSame($account, $receivable->saving_account_for_loan_repayment);
+            $this->assertTrue($receivable->approvalRequests()->exists());
+        }
     }
 
     public function test_branch_returned_receivable_save_queues_reinquiry(): void
@@ -321,7 +321,7 @@ class WorkflowQueueAutomationTest extends TestCase
                     'branchCode' => '001',
                     'collectability' => '5',
                     'dpd' => 0,
-                    'saForLoanRepayment' => '001000OPER',
+                    'saForLoanRepayment' => '001000oper',
                     'loanOutStanding' => '230929055.00',
                     'installmentAmount' => '1000.00',
                     'nextDueDate' => '20260501',
@@ -340,6 +340,7 @@ class WorkflowQueueAutomationTest extends TestCase
         Queue::assertPushed(ExecuteEarlyTerminationJob::class);
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED, $receivable->workflow_status);
         $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_QUEUED, $receivable->system_status);
+        $this->assertSame('001000oper', $receivable->saving_account_for_loan_repayment);
         $this->assertTrue($receivable->stageLogs()->where('event', 'early_termination_queued')->exists());
     }
 

@@ -86,7 +86,6 @@ class ExecuteEarlyTerminationWithRepaymentTopUpAction
                 return null;
             }
 
-            $receivable->forceFill(['saving_account_for_loan_repayment' => $account])->save();
             $contractOutstanding = $this->contractOutstanding($receivable, $fincloudOutstanding);
             $preTopUpContext = $this->hasTopUpComponent($receivable)
                 ? EarlyTerminationBalanceInquiry::CONTEXT_RETRY_PRE_TOP_UP

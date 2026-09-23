@@ -7,7 +7,6 @@ use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
-use App\Services\InsuranceReceivable\OperRepaymentAccount;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -16,7 +15,6 @@ class SubmitInsuranceReceivableForApprovalAction
     public function __construct(
         private readonly ApprovalService $approvalService,
         private readonly InsuranceReceivableStageLogger $stageLogger,
-        private readonly OperRepaymentAccount $operAccount,
     ) {}
 
     public function handle(InsuranceReceivable $insuranceReceivable, User $user, ?string $notes = null): InsuranceReceivable
@@ -53,8 +51,6 @@ class SubmitInsuranceReceivableForApprovalAction
                 'system_status' => 'Loan inquiry must complete successfully before submission.',
             ]);
         }
-
-        $this->operAccount->assertMatches($insuranceReceivable);
 
         return DB::transaction(function () use ($insuranceReceivable, $user, $notes): InsuranceReceivable {
             $activeRequest = $this->approvalService->latestActiveRequest(

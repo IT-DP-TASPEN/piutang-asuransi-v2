@@ -7,6 +7,7 @@ use App\Actions\InsuranceReceivable\AutoSubmitInsuranceReceivableForInitialAppro
 use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
 use App\Actions\InsuranceReceivable\RejectInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
+use App\Actions\InsuranceReceivable\SubmitInsuranceReceivableForApprovalAction;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\BranchOffice;
@@ -74,42 +75,36 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         $service->expected(InsuranceReceivable::factory()->make(['branch_code' => null]));
     }
 
-    public function test_valid_oper_creates_full_ordered_initial_approval_chain(): void
+    public function test_initial_accounts_preserve_core_snapshot_and_create_full_approval_chain(): void
     {
         $maker = $this->userWithRole('branch_maker', '001');
-        $result = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
-            ->handle($this->receivableFor($maker), $maker);
-        $request = $result->approvalRequests()->sole();
+        foreach (['0011234567', null, '001000OPER', '002000OPER'] as $account) {
+            $result = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
+                ->handle($this->receivableFor($maker, ['saving_account_for_loan_repayment' => $account]), $maker);
 
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED, $result->workflow_status);
-        $this->assertSame([
-            'branch_approver',
-            'insurance_approver',
-            'business_approver',
-        ], $request->steps()->orderBy('step_order')->pluck('role_name')->all());
+            $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED, $result->workflow_status);
+            $this->assertSame($account, $result->saving_account_for_loan_repayment);
+            $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED, $result->system_status);
+            $this->assertSame([
+                'branch_approver',
+                'insurance_approver',
+                'business_approver',
+            ], $result->approvalRequests()->sole()->steps()->orderBy('step_order')->pluck('role_name')->all());
+            $this->assertFalse($result->stageLogs()->where('event', 'oper_account_validation_failed')->exists());
+        }
     }
 
-    public function test_invalid_oper_returns_without_approval_and_can_retry(): void
+    public function test_manual_initial_submission_accepts_agf_account(): void
     {
         $maker = $this->userWithRole('branch_maker', '001');
-        $receivable = $this->receivableFor($maker, ['saving_account_for_loan_repayment' => '002000OPER']);
+        $admin = $this->userWithRole('super_admin', '000');
+        $result = app(SubmitInsuranceReceivableForApprovalAction::class)->handle(
+            $this->receivableFor($maker, ['saving_account_for_loan_repayment' => '0011234567']),
+            $admin,
+        );
 
-        $returned = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)->handle($receivable, $maker);
-
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER, $returned->workflow_status);
-        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_REINQUIRY_REQUIRED, $returned->system_status);
-        $this->assertStringContainsString('001000OPER', $returned->last_error_message);
-        $this->assertStringContainsString('002000OPER', $returned->last_error_message);
-        $this->assertFalse($returned->approvalRequests()->exists());
-
-        $returned->forceFill([
-            'saving_account_for_loan_repayment' => '001000OPER',
-            'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
-        ])->saveQuietly();
-        $resubmitted = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)->handle($returned, $maker);
-
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED, $resubmitted->workflow_status);
-        $this->assertCount(3, $resubmitted->approvalRequests()->sole()->steps);
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED, $result->workflow_status);
+        $this->assertSame('0011234567', $result->saving_account_for_loan_repayment);
     }
 
     public function test_only_current_initial_approver_can_act_and_it_waits_for_all_three(): void
@@ -119,7 +114,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         $insurance = $this->userWithRole('insurance_approver', '000');
         $business = $this->userWithRole('business_approver', '000');
         $receivable = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
-            ->handle($this->receivableFor($maker), $maker);
+            ->handle($this->receivableFor($maker, ['saving_account_for_loan_repayment' => '0011234567']), $maker);
 
         try {
             app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $insurance);
@@ -134,6 +129,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $business);
 
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING, $receivable->workflow_status);
+        $this->assertSame('0011234567', $receivable->saving_account_for_loan_repayment);
         $this->assertTrue($receivable->stageLogs()->where('event', 'initial_approval_chain_completed')->exists());
     }
 
@@ -215,17 +211,77 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
             ->where('workflow_code', ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION)->exists());
     }
 
-    public function test_it_returns_fresh_wrong_oper_to_branch_maker(): void
+    public function test_it_blocks_wrong_branch_oper_and_stays_at_it(): void
     {
         $it = $this->userWithRole('it_user', '000');
         $receivable = $this->itReceivable();
         Http::fake(['http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse('5', '002000OPER'))]);
 
-        $result = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $it);
+        try {
+            app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $it);
+            $this->fail('Wrong branch OPER must block IT confirmation.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('001000OPER', $exception->getMessage());
+            $this->assertStringContainsString('002000OPER', $exception->getMessage());
+        }
 
-        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER, $result->workflow_status);
-        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_REINQUIRY_REQUIRED, $result->system_status);
-        $this->assertFalse($result->approvalRequests()
+        $receivable->refresh();
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING, $receivable->workflow_status);
+        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED, $receivable->system_status);
+        $this->assertSame('002000OPER', $receivable->saving_account_for_loan_repayment);
+        $this->assertStringContainsString('001000OPER', $receivable->last_error_message);
+        $this->assertFalse($receivable->approvalRequests()
+            ->where('workflow_code', ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION)->exists());
+        $log = $receivable->stageLogs()->where('event', 'it_changes_confirmation_blocked')->firstOrFail();
+        $this->assertSame('001000OPER', $log->metadata['expected_oper_account']);
+        $this->assertSame('002000OPER', $log->metadata['actual_repayment_account']);
+        $this->assertTrue($log->metadata['oper_account_failed']);
+    }
+
+    public function test_it_reports_both_unmet_core_changes_and_can_retry(): void
+    {
+        $it = $this->userWithRole('it_user', '000');
+        $receivable = $this->itReceivable(['saving_account_for_loan_repayment' => '0011234567']);
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::sequence()
+            ->push($this->loanResponse('4', '0011234567'))
+            ->push($this->loanResponse('5', '001000OPER'))]);
+
+        try {
+            app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $it);
+            $this->fail('Both incorrect Core values must block confirmation.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('actual: 4', $exception->getMessage());
+            $this->assertStringContainsString('001000OPER', $exception->getMessage());
+            $this->assertStringContainsString('0011234567', $exception->getMessage());
+        }
+
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING, $receivable->refresh()->workflow_status);
+        $this->assertStringContainsString('actual: 4', $receivable->last_error_message);
+        $this->assertStringContainsString('0011234567', $receivable->last_error_message);
+        $log = $receivable->stageLogs()->where('event', 'it_changes_confirmation_blocked')->firstOrFail();
+        $this->assertTrue($log->metadata['collectability_failed']);
+        $this->assertTrue($log->metadata['oper_account_failed']);
+
+        $result = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $it);
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION, $result->workflow_status);
+        $this->assertNull($result->last_error_message);
+    }
+
+    public function test_it_blocks_agf_account_even_when_collectability_is_five(): void
+    {
+        $it = $this->userWithRole('it_user', '000');
+        $receivable = $this->itReceivable();
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse('5', '0011234567'))]);
+
+        try {
+            app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $it);
+            $this->fail('AGF account must block IT confirmation.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('0011234567', $exception->getMessage());
+        }
+
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING, $receivable->refresh()->workflow_status);
+        $this->assertFalse($receivable->approvalRequests()
             ->where('workflow_code', ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION)->exists());
     }
 
@@ -233,7 +289,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
     {
         $it = $this->userWithRole('it_user', '000');
         $receivable = $this->itReceivable(['collectability' => '1']);
-        Http::fake(['http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse('5'))]);
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse('5', '001000oper'))]);
 
         $result = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($receivable, $it);
         $request = $result->approvalRequests()
@@ -241,6 +297,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
 
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION, $result->workflow_status);
         $this->assertSame('5', $result->collectability);
+        $this->assertSame('001000oper', $result->saving_account_for_loan_repayment);
         $this->assertSame(['accounting_approver'], $request->steps()->pluck('role_name')->all());
         $this->assertSame($it->id, $request->submitted_by);
         $this->assertDatabaseMissing('permissions', [

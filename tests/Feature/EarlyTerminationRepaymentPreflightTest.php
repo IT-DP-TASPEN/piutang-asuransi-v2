@@ -207,6 +207,25 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_fresh_et_inquiry_blocks_funding_when_repayment_account_changed_after_it(): void
+    {
+        $receivable = $this->receivable();
+        $response = $this->loanResponse();
+        $response['data']['saForLoanRepayment'] = '0011234567';
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::response($response)]);
+
+        $result = app(ExecuteEarlyTerminationWithRepaymentTopUpAction::class)
+            ->handle($receivable, $this->accountingApprover());
+
+        $this->assertNull($result);
+        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_TOP_UP_FAILED, $receivable->refresh()->system_status);
+        $this->assertSame('0011234567', $receivable->saving_account_for_loan_repayment);
+        $this->assertStringContainsString('001000OPER', $receivable->last_error_message);
+        $this->assertDatabaseCount('gl_to_gl_transactions', 0);
+        $this->assertDatabaseCount('early_termination_transactions', 0);
+        Http::assertSentCount(1);
+    }
+
     public function test_failed_balance_inquiry_blocks_early_termination(): void
     {
         $receivable = $this->receivable();
@@ -291,10 +310,12 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
     public function test_existing_balance_does_not_reduce_piutang_asuransi_payload(): void
     {
         $receivable = $this->receivable(['loan_outstanding' => '1000.105']);
+        $loanResponse = $this->loanResponse('1000.105');
+        $loanResponse['data']['saForLoanRepayment'] = '001000oper';
         Http::fake([
             'http://core.test/inquiry/detail/loan' => Http::sequence()
-                ->push($this->loanResponse('1000.105'))
-                ->push($this->loanResponse('1000.105')),
+                ->push($loanResponse)
+                ->push($loanResponse),
             'http://core.test/saving/inq/balance*' => Http::sequence()
                 ->push($this->balanceResponse('400.00'))
                 ->push($this->balanceResponse('1000.105')),
@@ -334,6 +355,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
         $this->assertSame('001', $transaction->request_payload['branchCode']);
         $this->assertSame('1000.11', $transaction->request_payload['amount']);
         $this->assertSame(GlToGlTransaction::STATUS_SUCCESS, $transaction->status);
+        $this->assertSame('001000oper', $receivable->saving_account_for_loan_repayment);
     }
 
     public function test_failed_top_up_retry_uses_new_reference_and_keeps_failed_attempt(): void

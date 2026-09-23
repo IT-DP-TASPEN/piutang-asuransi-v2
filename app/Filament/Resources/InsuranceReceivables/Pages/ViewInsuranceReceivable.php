@@ -419,8 +419,9 @@ class ViewInsuranceReceivable extends ViewRecord
     private function confirmCollectabilityChangeAction(): Action
     {
         return Action::make('confirmCollectabilityChange')
-            ->label('Confirm Collectability Change Completed')
+            ->label('Confirm Collectability & OPER Change')
             ->requiresConfirmation()
+            ->modalDescription('Before confirming, change collectability to 5 and the repayment/AGF account to this branch’s OPER account in Core. Fresh loan inquiry verifies both.')
             ->visible(fn (): bool => (auth()->user()?->can('confirmCollectabilityChange', $this->getRecord()) ?? false)
                 && ! $this->getRecord()->isTerminal()
                 && $this->getRecord()->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING)
@@ -435,18 +436,12 @@ class ViewInsuranceReceivable extends ViewRecord
                     $receivable = app(ConfirmCollectabilityChangeCompletedAction::class)->handle($this->getRecord(), $user);
                     $this->record = $receivable;
 
-                    if ($receivable->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER) {
-                        Notification::make()->warning()->title('Returned to Branch Maker')->body($receivable->last_error_message)->send();
-
-                        return;
-                    }
-
-                    Notification::make()->success()->title('Collectability change confirmed')->send();
+                    Notification::make()->success()->title('Collectability and OPER change confirmed')->send();
                 } catch (\Throwable $e) {
                     $message = (string) ($e instanceof ValidationException
                         ? collect($e->errors())->flatten()->first()
                         : $e->getMessage());
-                    Notification::make()->danger()->title('Collectability confirmation blocked')->body($message)->send();
+                    Notification::make()->danger()->title('IT changes confirmation blocked')->body($message)->send();
                 }
             });
     }
