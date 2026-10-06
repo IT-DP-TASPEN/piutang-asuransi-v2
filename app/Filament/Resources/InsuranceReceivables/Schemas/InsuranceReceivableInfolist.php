@@ -2,7 +2,9 @@
 
 namespace App\Filament\Resources\InsuranceReceivables\Schemas;
 
+use App\Filament\Resources\ApprovalQueues\ApprovalQueueResource;
 use App\Models\ApprovalRequest;
+use App\Models\ApprovalStep;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\EarlyTerminationBalanceInquiry;
 use App\Models\GlToGlTransaction;
@@ -18,6 +20,7 @@ use Filament\Support\Enums\FontFamily;
 use Filament\Support\Enums\FontWeight;
 use Filament\Support\Enums\TextSize;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\Str;
 
 class InsuranceReceivableInfolist
 {
@@ -183,13 +186,41 @@ class InsuranceReceivableInfolist
                                 ->where('status', ApprovalRequest::STATUS_SUBMITTED)
                                 ->exists())
                             ->schema([
-                                TextEntry::make('pending_approval')
-                                    ->label('Request')
-                                    ->badge()
-                                    ->state(fn (InsuranceReceivable $record): ?string => $record->approvalRequests()
-                                        ->where('status', ApprovalRequest::STATUS_SUBMITTED)
-                                        ->latest('id')
-                                        ->first()?->workflow_code),
+                                Section::make()
+                                    ->compact()
+                                    ->columns(2)
+                                    ->schema([
+                                        TextEntry::make('pending_approval')
+                                            ->label('Workflow')
+                                            ->weight(FontWeight::SemiBold)
+                                            ->state(fn (InsuranceReceivable $record): ?string => ($code = self::pendingApproval($record)?->workflow_code)
+                                                ? ApprovalQueueResource::workflowOptions()[$code] ?? Str::headline($code)
+                                                : null),
+                                        TextEntry::make('pending_approval_waiting_on')
+                                            ->label('Waiting on')
+                                            ->badge()
+                                            ->color('warning')
+                                            ->state(function (InsuranceReceivable $record): ?string {
+                                                $steps = self::pendingApproval($record)?->steps;
+                                                $step = $steps?->where('status', ApprovalStep::STATUS_PENDING)->sortBy('step_order')->first();
+
+                                                return $step instanceof ApprovalStep
+                                                    ? Str::headline($step->role_name)." (step {$step->step_order} of {$steps->count()})"
+                                                    : null;
+                                            })
+                                            ->placeholder('-'),
+                                        TextEntry::make('pending_approval_submitted_by')
+                                            ->label('Submitted by')
+                                            ->state(fn (InsuranceReceivable $record): ?string => self::pendingApproval($record)?->submitter?->name)
+                                            ->icon(Heroicon::OutlinedUser)
+                                            ->placeholder('-'),
+                                        TextEntry::make('pending_approval_submitted_at')
+                                            ->label('Submitted at')
+                                            ->state(fn (InsuranceReceivable $record): mixed => self::pendingApproval($record)?->submitted_at)
+                                            ->dateTime()
+                                            ->icon(Heroicon::OutlinedCalendarDays)
+                                            ->placeholder('-'),
+                                    ]),
                             ]),
                         Tabs\Tab::make('Installment repayment')
                             ->visible(fn (InsuranceReceivable $record): bool => $record->installmentRepayment()->exists()
@@ -464,6 +495,15 @@ class InsuranceReceivableInfolist
                             ]),
                     ]),
             ]);
+    }
+
+    private static function pendingApproval(InsuranceReceivable $record): ?ApprovalRequest
+    {
+        return $record->approvalRequests()
+            ->with(['steps', 'submitter'])
+            ->where('status', ApprovalRequest::STATUS_SUBMITTED)
+            ->latest('id')
+            ->first();
     }
 
     private static function installmentRepayment(InsuranceReceivable $record): ?InsuranceReceivableInstallmentRepayment
