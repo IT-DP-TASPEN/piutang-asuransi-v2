@@ -2,10 +2,12 @@
 
 namespace App\Filament\Resources\InsuranceReceivables\RelationManagers;
 
+use App\Models\InsuranceReceivableStageLog;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Support\Enums\FontWeight;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
@@ -20,41 +22,40 @@ class StageLogsRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('event')
             ->defaultSort('created_at', 'desc')
+            ->paginated([10, 25, 50])
+            ->defaultPaginationPageOption(10)
             ->columns([
                 TextColumn::make('created_at')
                     ->label('Time')
-                    ->dateTime()
+                    ->since()
+                    ->dateTimeTooltip()
                     ->sortable(),
                 TextColumn::make('event')
-                    ->badge()
-                    ->searchable()
-                    ->sortable(),
-                TextColumn::make('description')
+                    ->weight(FontWeight::Medium)
+                    ->description(fn (InsuranceReceivableStageLog $record): ?string => str($record->description)->limit(80)->toString() ?: null)
                     ->wrap()
-                    ->limit(90)
-                    ->searchable(),
-                TextColumn::make('triggered_by_type')
-                    ->label('Triggered by')
-                    ->badge()
-                    ->sortable(),
-                TextColumn::make('actor.name')
-                    ->label('Actor')
-                    ->searchable()
-                    ->sortable(),
-                TextColumn::make('from_status')
-                    ->label('From')
-                    ->badge()
+                    ->searchable(['event', 'description'])
                     ->sortable(),
                 TextColumn::make('to_status')
-                    ->label('To')
+                    ->label('Status')
                     ->badge()
+                    ->description(fn (InsuranceReceivableStageLog $record): ?string => filled($record->from_status) && $record->from_status !== $record->to_status
+                        ? "from {$record->from_status}"
+                        : null)
+                    ->placeholder('-')
+                    ->sortable(),
+                TextColumn::make('actor.name')
+                    ->label('By')
+                    ->description(fn (InsuranceReceivableStageLog $record): ?string => $record->triggered_by_type)
+                    ->placeholder('System')
+                    ->searchable()
                     ->sortable(),
                 TextColumn::make('approval_request_id')
                     ->label('Approval #')
-                    ->sortable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('api_integration_log_id')
                     ->label('API log #')
-                    ->sortable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->recordActions([
                 ViewAction::make()
