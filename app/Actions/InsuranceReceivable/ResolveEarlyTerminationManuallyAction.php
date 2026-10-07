@@ -2,6 +2,7 @@
 
 namespace App\Actions\InsuranceReceivable;
 
+use App\Jobs\RunKolekRpaJob;
 use App\Models\ApiIntegrationLog;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
@@ -134,6 +135,8 @@ class ResolveEarlyTerminationManuallyAction
                     'last_error_message' => null,
                     'early_termination_resolved_at' => now(),
                 ])->save();
+
+                RunKolekRpaJob::dispatch($locked->id, RunKolekRpaJob::OPERATION_RESTORE_REPAYMENT_ACCOUNT)->afterCommit();
 
                 $attempt = $locked->earlyTerminationTransactions()->latest('id')->first();
 

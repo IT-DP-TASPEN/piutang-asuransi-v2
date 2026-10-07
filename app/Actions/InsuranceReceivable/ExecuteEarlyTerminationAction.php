@@ -2,6 +2,7 @@
 
 namespace App\Actions\InsuranceReceivable;
 
+use App\Jobs\RunKolekRpaJob;
 use App\Models\EarlyTerminationTransaction;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
@@ -129,6 +130,8 @@ class ExecuteEarlyTerminationAction
                     $insuranceReceivable->forceFill([
                         'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED,
                     ])->save();
+
+                    RunKolekRpaJob::dispatch($insuranceReceivable->id, RunKolekRpaJob::OPERATION_RESTORE_REPAYMENT_ACCOUNT)->afterCommit();
                 }
 
                 return $transaction->refresh();

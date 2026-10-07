@@ -139,6 +139,10 @@ class InsuranceReceivableInfolist
                                             ->label('Saving account for loan repayment')
                                             ->copyable()
                                             ->icon(Heroicon::OutlinedBanknotes),
+                                        TextEntry::make('original_saving_account_for_loan_repayment')
+                                            ->label('Original repayment account (before OPER)')
+                                            ->placeholder('-')
+                                            ->copyable(),
                                         TextEntry::make('collectability')
                                             ->label('Collectability')
                                             ->badge(),

@@ -39,6 +39,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'product_id',
     'product_name',
     'saving_account_for_loan_repayment',
+    'original_saving_account_for_loan_repayment',
     'start_period',
     'end_period',
     'receivable_formation_date',

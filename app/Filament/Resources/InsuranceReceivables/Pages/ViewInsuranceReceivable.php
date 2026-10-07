@@ -63,6 +63,7 @@ class ViewInsuranceReceivable extends ViewRecord
                 $this->retryInquiryAction(),
                 $this->retryRpaAction(RunKolekRpaJob::OPERATION_OPER_ACCOUNT),
                 $this->retryRpaAction(RunKolekRpaJob::OPERATION_COLLECTABILITY),
+                $this->retryRpaAction(RunKolekRpaJob::OPERATION_RESTORE_REPAYMENT_ACCOUNT),
                 $this->retryInstallmentRepaymentAction(),
                 $this->resolveInstallmentRepaymentAction(),
                 $this->cancelReceivableAction(),
@@ -200,10 +201,14 @@ class ViewInsuranceReceivable extends ViewRecord
 
     private function retryRpaAction(string $operation): Action
     {
-        $isOper = $operation === RunKolekRpaJob::OPERATION_OPER_ACCOUNT;
+        [$name, $label] = match ($operation) {
+            RunKolekRpaJob::OPERATION_OPER_ACCOUNT => ['retryOperAccountRpa', 'Retry OPER Account RPA'],
+            RunKolekRpaJob::OPERATION_COLLECTABILITY => ['retryCollectabilityRpa', 'Retry Collectability RPA'],
+            RunKolekRpaJob::OPERATION_RESTORE_REPAYMENT_ACCOUNT => ['retryRestoreRepaymentAccountRpa', 'Retry Restore Repayment Account RPA'],
+        };
 
-        return Action::make($isOper ? 'retryOperAccountRpa' : 'retryCollectabilityRpa')
-            ->label($isOper ? 'Retry OPER Account RPA' : 'Retry Collectability RPA')
+        return Action::make($name)
+            ->label($label)
             ->requiresConfirmation()
             ->modalDescription('Only retry after confirming in Fincloud that no change from the failed attempt is pending, otherwise a duplicate change is submitted.')
             ->visible(fn (): bool => $this->canRetryRpa($operation))
@@ -218,9 +223,11 @@ class ViewInsuranceReceivable extends ViewRecord
     {
         $user = auth()->user();
         $record = $this->getRecord();
-        $allowed = $operation === RunKolekRpaJob::OPERATION_OPER_ACCOUNT
-            ? ($user?->can('approveApproval', $record) ?? false) && $this->canActOnCurrentApproval()
-            : $user?->can('confirmCollectabilityChange', $record) ?? false;
+        $allowed = match ($operation) {
+            RunKolekRpaJob::OPERATION_OPER_ACCOUNT => ($user?->can('approveApproval', $record) ?? false) && $this->canActOnCurrentApproval(),
+            RunKolekRpaJob::OPERATION_COLLECTABILITY => $user?->can('confirmCollectabilityChange', $record) ?? false,
+            RunKolekRpaJob::OPERATION_RESTORE_REPAYMENT_ACCOUNT => $user?->can('executeEarlyTermination', $record) ?? false,
+        };
 
         return $allowed && RunKolekRpaJob::canRetry($record, $operation);
     }
@@ -639,6 +646,7 @@ class ViewInsuranceReceivable extends ViewRecord
         return $canRetryInquiry
             || $this->canRetryRpa(RunKolekRpaJob::OPERATION_OPER_ACCOUNT)
             || $this->canRetryRpa(RunKolekRpaJob::OPERATION_COLLECTABILITY)
+            || $this->canRetryRpa(RunKolekRpaJob::OPERATION_RESTORE_REPAYMENT_ACCOUNT)
             || $canRetryInstallmentRepayment
             || $canResolveInstallmentRepayment
             || $canCancel

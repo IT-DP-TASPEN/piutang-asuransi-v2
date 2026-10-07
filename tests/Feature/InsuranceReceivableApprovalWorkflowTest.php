@@ -375,6 +375,35 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         $this->assertFalse(RunKolekRpaJob::canRetry($receivable->refresh(), RunKolekRpaJob::OPERATION_OPER_ACCOUNT));
     }
 
+    public function test_oper_rpa_remembers_agf_and_restore_rpa_submits_it_after_early_termination(): void
+    {
+        $maker = $this->userWithRole('branch_maker', '001');
+        $receivable = $this->receivableFor($maker, [
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
+            'saving_account_for_loan_repayment' => '0011234567',
+        ]);
+
+        $this->fakeRepaymentFincloud($receivable, 'Active');
+        $this->runRpa($receivable, RunKolekRpaJob::OPERATION_OPER_ACCOUNT);
+        $this->assertSame('0011234567', $receivable->refresh()->original_saving_account_for_loan_repayment);
+
+        // Not applicable before Early Termination.
+        $this->runRpa($receivable, RunKolekRpaJob::OPERATION_RESTORE_REPAYMENT_ACCOUNT);
+        $this->assertFalse($receivable->stageLogs()->where('event', 'restore_repayment_account_rpa_succeeded')->exists());
+
+        $receivable->forceFill([
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED,
+            'saving_account_for_loan_repayment' => '001000OPER',
+        ])->save();
+        $this->runRpa($receivable, RunKolekRpaJob::OPERATION_RESTORE_REPAYMENT_ACCOUNT);
+
+        Http::assertSent(fn ($request): bool => str_ends_with($request->url(), '/pembuatan/pinjaman')
+            && $request['norektab_bayarangsuran'] === '0011234567'
+            && $request['tabbayar_namapemilik'] === 'AGF 001');
+        $this->assertSame('0011234567', $receivable->refresh()->original_saving_account_for_loan_repayment);
+        $this->assertTrue($receivable->stageLogs()->where('event', 'restore_repayment_account_rpa_succeeded')->exists());
+    }
+
     public function test_oper_rpa_skips_when_already_oper_and_failure_enables_manual_retry(): void
     {
         $maker = $this->userWithRole('branch_maker', '001');
@@ -502,9 +531,9 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
                 'tgl_pencairan' => ['date' => '2013-03-18 00:00:00.000000'],
                 'pejabatkredit' => null,
             ]]]),
-            'http://core.test/saving/inq/balance*' => Http::response(['responseCode' => '00', 'data' => [
-                'accountNumber' => '001000OPER',
-                'customerName' => 'OPER 001',
+            'http://core.test/saving/inq/balance*' => fn ($request) => Http::response(['responseCode' => '00', 'data' => [
+                'accountNumber' => $request['accountNumber'],
+                'customerName' => $request['accountNumber'] === '001000OPER' ? 'OPER 001' : 'AGF 001',
                 'documentStatus' => $savingStatus,
                 'currency' => 'IDR',
             ]]),

@@ -26,6 +26,8 @@ class RunKolekRpaJob implements ShouldQueue
 
     public const OPERATION_COLLECTABILITY = 'collectability';
 
+    public const OPERATION_RESTORE_REPAYMENT_ACCOUNT = 'restore_repayment_account';
+
     public int $tries = 1;
 
     // ponytail: must stay below the queue's retry_after (90s default) or a slow RPA call gets re-reserved
@@ -49,6 +51,13 @@ class RunKolekRpaJob implements ShouldQueue
 
         $requestedBy = $this->requestedById ? User::query()->find($this->requestedById) : null;
 
+        // Remember the pre-OPER (AGF) account so it can be restored after Early Termination.
+        if ($this->operation === self::OPERATION_OPER_ACCOUNT && blank($receivable->original_saving_account_for_loan_repayment)) {
+            $receivable->forceFill([
+                'original_saving_account_for_loan_repayment' => trim((string) $receivable->saving_account_for_loan_repayment) ?: null,
+            ])->saveQuietly();
+        }
+
         try {
             $metadata = match ($this->operation) {
                 self::OPERATION_OPER_ACCOUNT => $client->setRepaymentAccount(
@@ -64,6 +73,12 @@ class RunKolekRpaJob implements ShouldQueue
                     $receivable,
                     $requestedBy,
                 ),
+                self::OPERATION_RESTORE_REPAYMENT_ACCOUNT => $client->setRepaymentAccount(
+                    $receivable->loan_account_number,
+                    $receivable->original_saving_account_for_loan_repayment,
+                    $receivable,
+                    $requestedBy,
+                ),
             };
         } catch (ValidationException $exception) {
             $this->logFailure($receivable, $logger, collect($exception->errors())->flatten()->first() ?: $exception->getMessage());
@@ -76,9 +91,11 @@ class RunKolekRpaJob implements ShouldQueue
         $logger->log(
             receivable: $receivable,
             event: "{$this->operation}_rpa_succeeded",
-            description: $this->operation === self::OPERATION_OPER_ACCOUNT
-                ? 'RPA submitted the repayment account change to branch OPER in Fincloud. Awaiting approval in Fincloud before BM approval.'
-                : 'RPA submitted the collectability change to 5 (Manual) in Fincloud. Awaiting IT approval in Fincloud.',
+            description: match ($this->operation) {
+                self::OPERATION_OPER_ACCOUNT => 'RPA submitted the repayment account change to branch OPER in Fincloud. Awaiting approval in Fincloud before BM approval.',
+                self::OPERATION_COLLECTABILITY => 'RPA submitted the collectability change to 5 (Manual) in Fincloud. Awaiting IT approval in Fincloud.',
+                self::OPERATION_RESTORE_REPAYMENT_ACCOUNT => "RPA submitted the repayment account change back to {$receivable->original_saving_account_for_loan_repayment} in Fincloud. Awaiting approval in Fincloud.",
+            },
             metadata: $metadata,
             actor: $requestedBy,
             apiLog: $this->latestApiLog($receivable),
@@ -108,6 +125,10 @@ class RunKolekRpaJob implements ShouldQueue
             self::OPERATION_OPER_ACCOUNT => $receivable->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED
                 && ! app(OperRepaymentAccount::class)->matches($receivable),
             self::OPERATION_COLLECTABILITY => $receivable->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
+            self::OPERATION_RESTORE_REPAYMENT_ACCOUNT => in_array($receivable->workflow_status, [
+                InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED,
+                InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_RESOLVED,
+            ], true) && filled($receivable->original_saving_account_for_loan_repayment),
             default => false,
         };
     }
