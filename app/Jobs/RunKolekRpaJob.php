@@ -14,7 +14,7 @@ use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
- * Submits a Fincloud change through kolek-rpa. Not retried automatically: the RPA
+ * Submits a Fincloud change through Fincloud Web. Not retried automatically: the RPA
  * creates a pending change in Fincloud, so a blind retry after a lost response can
  * file a duplicate. Failures are logged and retried manually from the receivable page.
  */
@@ -29,7 +29,8 @@ class RunKolekRpaJob implements ShouldQueue
     public int $tries = 1;
 
     // ponytail: must stay below the queue's retry_after (90s default) or a slow RPA call gets re-reserved
-    // and marked failed while still running; raise DB_QUEUE_RETRY_AFTER together with KOLEK_RPA_TIMEOUT.
+    // and marked failed while still running. Up to three Fincloud Web calls (FINCLOUD_WEB_TIMEOUT each) plus
+    // one 30s core banking inquiry must fit; raise DB_QUEUE_RETRY_AFTER together with either.
     public int $timeout = 85;
 
     public function __construct(
@@ -69,6 +70,8 @@ class RunKolekRpaJob implements ShouldQueue
 
             return;
         }
+
+        $receivable->forceFill(['last_error_message' => null])->saveQuietly();
 
         $logger->log(
             receivable: $receivable,

@@ -57,10 +57,14 @@ return [
         'retry_sleep_ms' => (int) env('CONTRACT_OUTSTANDING_RETRY_SLEEP_MS', 250),
     ],
 
-    'kolek_rpa' => [
-        'base_url' => env('KOLEK_RPA_BASE_URL'),
-        'api_key' => env('KOLEK_RPA_API_KEY'),
-        'timeout' => (int) env('KOLEK_RPA_TIMEOUT', 75),
+    'fincloud_web' => [
+        'base_url' => env('FINCLOUD_WEB_BASE_URL'),
+        'username' => env('FINCLOUD_WEB_USERNAME'),
+        'password' => env('FINCLOUD_WEB_PASSWORD'),
+        'role_id' => env('FINCLOUD_WEB_ROLE_ID'),
+        // Fincloud Web is served over HTTPS with a self-signed certificate on an internal IP.
+        'verify_ssl' => (bool) env('FINCLOUD_WEB_VERIFY_SSL', true),
+        'timeout' => (int) env('FINCLOUD_WEB_TIMEOUT', 15),
     ],
 
 ];

@@ -357,22 +357,26 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         Queue::assertPushed(RunKolekRpaJob::class, fn (RunKolekRpaJob $job): bool => $job->insuranceReceivableId === $receivable->id
             && $job->operation === RunKolekRpaJob::OPERATION_OPER_ACCOUNT);
 
-        $this->configureRpa();
-        Http::fake(['http://rpa.test/*' => Http::response(['status' => 'ok', 'data' => ['primary_loan_account' => $receivable->loan_account_number]])]);
+        $this->fakeRepaymentFincloud($receivable, 'Active');
         $this->runRpa($receivable, RunKolekRpaJob::OPERATION_OPER_ACCOUNT);
 
-        Http::assertSent(fn ($request): bool => $request->url() === 'http://rpa.test/api/v1/repayment-account'
-            && $request->hasHeader('Authorization', 'Bearer rpa-key')
-            && $request['saving_account'] === '001000OPER'
-            && $request['loan_account'] === $receivable->loan_account_number);
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://fincloud.test/admin/access/login'
+            && $request['locationid'] === substr($receivable->loan_account_number, 3, 3)
+            && $request['pwd'] === 'rpa-pass');
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://fincloud.test/pinjaman/pendaftaranPenghapusanAutodebit/pembuatan/pinjaman'
+            && $request->hasHeader('sessionid', 'session-1')
+            && $request['id'] === $receivable->loan_account_number
+            && $request['norektab_bayarangsuran'] === '001000OPER'
+            && $request['tabbayar_namapemilik'] === 'OPER 001'
+            && $request['tgl_pencairan'] === '2013-3-18'
+            && $request['plafondlimit'] === '30000000'
+            && $request['status_dokumen'] === 'Diajukan');
         $this->assertTrue($receivable->stageLogs()->where('event', 'oper_account_rpa_succeeded')->exists());
         $this->assertFalse(RunKolekRpaJob::canRetry($receivable->refresh(), RunKolekRpaJob::OPERATION_OPER_ACCOUNT));
     }
 
     public function test_oper_rpa_skips_when_already_oper_and_failure_enables_manual_retry(): void
     {
-        $this->configureRpa();
-        Http::fake(['http://rpa.test/*' => Http::response(['status' => 'error', 'error' => ['message' => 'saving account is not active']], 422)]);
         $maker = $this->userWithRole('branch_maker', '001');
         $alreadyOper = $this->receivableFor($maker, ['workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED]);
         $agf = $this->receivableFor($maker, [
@@ -380,12 +384,14 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
             'saving_account_for_loan_repayment' => '0011234567',
         ]);
 
+        $this->fakeRepaymentFincloud($agf, 'Closed');
         $this->runRpa($alreadyOper, RunKolekRpaJob::OPERATION_OPER_ACCOUNT);
         Http::assertNothingSent();
 
         $this->runRpa($agf, RunKolekRpaJob::OPERATION_OPER_ACCOUNT);
         $agf->refresh();
-        $this->assertSame('Kolek RPA rejected the request: saving account is not active.', $agf->last_error_message);
+        $this->assertSame('Saving account 001000OPER has status Closed.', $agf->last_error_message);
+        Http::assertNotSent(fn ($request): bool => str_ends_with($request->url(), '/pembuatan/pinjaman'));
         $this->assertTrue($agf->stageLogs()->where('event', 'oper_account_rpa_failed')->exists());
         $this->assertTrue(RunKolekRpaJob::canRetry($agf, RunKolekRpaJob::OPERATION_OPER_ACCOUNT));
     }
@@ -432,25 +438,78 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         Queue::assertPushed(RunKolekRpaJob::class, fn (RunKolekRpaJob $job): bool => $job->operation === RunKolekRpaJob::OPERATION_COLLECTABILITY);
 
         $this->configureRpa();
-        Http::fake(['http://rpa.test/*' => Http::sequence()
-            ->push(['status' => 'ok', 'data' => ['processed' => 1, 'failed' => 1, 'results' => [['status' => 'FAILED', 'error' => 'Fincloud operation failed']]]])
-            ->push(['status' => 'ok', 'data' => ['processed' => 1, 'success' => 1, 'results' => [['status' => 'SUCCESS', 'new_kolek' => 5]]]])]);
+        $inquiry = fn (int $kolekBi, string $updateBi): array => ['status' => 'ok', 'data' => ['result' => [
+            'norekening' => $receivable->loan_account_number,
+            'namanasabah' => 'Ratna Juwita',
+            'nopk' => 'PL001000073837',
+            'appdate' => ['date' => '2026-08-27 00:00:00.000000'],
+            'datarekening' => [
+                'kolekbi' => $kolekBi, 'kolekbpr' => 5, 'updatekolekbi' => $updateBi, 'updatekolekbpr' => 'Manual',
+                'dpd' => 4423, 'totalassetvalue' => 0, 'totalcollateralvalue' => 0,
+            ],
+        ]]];
+        Http::fake([
+            'https://fincloud.test/admin/access/login' => Http::response(['status' => 'ok', 'data' => ['result' => ['sessionid' => 'session-1']]]),
+            'https://fincloud.test/pinjaman/updateManualKolek/pembuatan/cari*' => Http::sequence()
+                ->push($inquiry(2, 'Automatic'))
+                ->push($inquiry(2, 'Automatic'))
+                ->push($inquiry(5, 'Manual')),
+            'https://fincloud.test/pinjaman/updateManualKolek/pembuatan/pinjaman' => Http::sequence()
+                ->push(['status' => 'error', 'error' => ['system' => 'Fincloud operation failed']])
+                ->push(['status' => 'ok']),
+        ]);
 
         $this->runRpa($receivable, RunKolekRpaJob::OPERATION_COLLECTABILITY);
-        $this->assertSame('Collectability RPA failed: Fincloud operation failed.', $receivable->refresh()->last_error_message);
+        $this->assertSame('Fincloud rejected /pinjaman/updateManualKolek/pembuatan/pinjaman: Fincloud operation failed.', $receivable->refresh()->last_error_message);
         $this->assertTrue(RunKolekRpaJob::canRetry($receivable, RunKolekRpaJob::OPERATION_COLLECTABILITY));
 
         $this->runRpa($receivable, RunKolekRpaJob::OPERATION_COLLECTABILITY);
-        Http::assertSent(fn ($request): bool => $request->url() === 'http://rpa.test/api/v1/kolek'
-            && $request['kolek'] === 5
-            && $request['change_type'] === 'Manual'
-            && $request['accounts'] === [$receivable->loan_account_number]);
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://fincloud.test/pinjaman/updateManualKolek/pembuatan/pinjaman'
+            && $request['norekening'] === $receivable->loan_account_number
+            && $request['tgl_transaksi'] === '2026-8-27'
+            && $request['nilai_kolekbilama'] === '2'
+            && $request['nilai_kolekbi'] === '5'
+            && $request['nilai_kolekbpr'] === '5'
+            && $request['jenisperubahan_kolekbi'] === 'Manual');
         $this->assertFalse(RunKolekRpaJob::canRetry($receivable->refresh(), RunKolekRpaJob::OPERATION_COLLECTABILITY));
+        $this->assertNull($receivable->last_error_message);
+
+        $this->runRpa($receivable, RunKolekRpaJob::OPERATION_COLLECTABILITY);
+        $this->assertSame('SKIPPED', $receivable->stageLogs()->where('event', 'collectability_rpa_succeeded')->latest('id')->firstOrFail()->metadata['status']);
     }
 
     private function configureRpa(): void
     {
-        config(['services.kolek_rpa.base_url' => 'http://rpa.test', 'services.kolek_rpa.api_key' => 'rpa-key']);
+        config(['services.fincloud_web' => [
+            'base_url' => 'https://fincloud.test',
+            'username' => 'rpa-user',
+            'password' => 'rpa-pass',
+            'role_id' => 'RPA',
+            'verify_ssl' => true,
+            'timeout' => 15,
+        ]]);
+    }
+
+    private function fakeRepaymentFincloud(InsuranceReceivable $receivable, string $savingStatus): void
+    {
+        $this->configureRpa();
+        Http::fake([
+            'https://fincloud.test/admin/access/login' => Http::response(['status' => 'ok', 'data' => ['result' => ['sessionid' => 'session-1']]]),
+            'https://fincloud.test/pinjaman/pendaftaranPenghapusanAutodebit/pembuatan/cari*' => Http::response(['status' => 'ok', 'data' => ['result' => [
+                'id' => $receivable->loan_account_number,
+                'namanasabah' => 'Ratna Juwita',
+                'plafondlimit' => 30000000,
+                'tgl_pencairan' => ['date' => '2013-03-18 00:00:00.000000'],
+                'pejabatkredit' => null,
+            ]]]),
+            'http://core.test/saving/inq/balance*' => Http::response(['responseCode' => '00', 'data' => [
+                'accountNumber' => '001000OPER',
+                'customerName' => 'OPER 001',
+                'documentStatus' => $savingStatus,
+                'currency' => 'IDR',
+            ]]),
+            'https://fincloud.test/pinjaman/pendaftaranPenghapusanAutodebit/pembuatan/pinjaman' => Http::response(['status' => 'ok']),
+        ]);
     }
 
     private function runRpa(InsuranceReceivable $receivable, string $operation): void
