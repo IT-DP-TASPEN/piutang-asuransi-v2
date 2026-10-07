@@ -31,10 +31,10 @@ class ClaimDocumentChecklistTest extends TestCase
 
         $this->assertSame('ajk', InsuranceCompany::query()->where('name', 'ASKRINDO')->value('claim_type'));
         $this->assertSame('ajk', InsuranceCompany::query()->where('name', 'AA PIALANG')->value('claim_type'));
-        $this->assertSame('ajk', InsuranceCompany::query()->where('name', 'MPM')->value('claim_type'));
+        $this->assertSame('ajk', InsuranceCompany::query()->where('name', 'MPM INSURANCE')->value('claim_type'));
         $this->assertSame('credit', InsuranceCompany::query()->where('name', 'MNC ASURANSI')->value('claim_type'));
         $this->assertDatabaseHas('insurance_companies', ['name' => 'ASKRINDO', 'code' => 'ASKRINDO']);
-        $this->assertDatabaseHas('insurance_companies', ['name' => 'VICTORIA ALIFE', 'ckpn_weight' => 0]);
+        $this->assertDatabaseHas('insurance_companies', ['name' => 'PT VICTORIA ALIFE INDONESIA', 'ckpn_weight' => 0]);
         $this->assertDatabaseHas('insurance_companies', ['name' => 'MNC ASURANSI', 'ckpn_weight' => 0]);
 
         $askrindo = InsuranceCompany::query()->where('name', 'ASKRINDO')->firstOrFail();
@@ -74,7 +74,7 @@ class ClaimDocumentChecklistTest extends TestCase
         $this->assertFalse($ajkCodes->contains('slik_ojk'));
         $this->assertSame(10, $ajkChecklist->requiredUploadCount);
 
-        $credit = $this->receivableFor('ASEI');
+        $credit = $this->receivableFor('PT ASURANSI ASEI INDONESIA');
         $creditChecklist = app(ResolveClaimDocumentChecklist::class)->handle($credit);
         $creditCodes = collect($creditChecklist->items)->pluck('code');
         $this->assertFalse($creditCodes->contains('claim_submission_form'));

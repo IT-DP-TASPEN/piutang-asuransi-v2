@@ -48,8 +48,8 @@ class EarlyTerminationActionTest extends TestCase
             'receivable_amount' => '230929055.00',
             'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
         ]);
-        $expectedFirstRawBody = '{"trxReference":"ETERM-1-001","accountNumber":"3010010000000068","altNumber":"ALT-1","principalPaid":230929055,"interestPaid":0,"penaltyPaid":0,"principalWaive":0,"interestWaive":0,"description":"Pelunasan Debitur MD","branchCode":"001"}';
-        $expectedSecondRawBody = '{"trxReference":"ETERM-1-002","accountNumber":"3010010000000068","altNumber":"ALT-1","principalPaid":230929055,"interestPaid":0,"penaltyPaid":0,"principalWaive":0,"interestWaive":0,"description":"Pelunasan Debitur MD","branchCode":"001"}';
+        $expectedFirstRawBody = '{"trxReference":"ETERM1001","accountNumber":"3010010000000068","altNumber":"ALT-1","principalPaid":230929055,"interestPaid":0,"penaltyPaid":0,"principalWaive":0,"interestWaive":0,"description":"Pelunasan Debitur MD","branchCode":"001"}';
+        $expectedSecondRawBody = '{"trxReference":"ETERM1002","accountNumber":"3010010000000068","altNumber":"ALT-1","principalPaid":230929055,"interestPaid":0,"penaltyPaid":0,"principalWaive":0,"interestWaive":0,"description":"Pelunasan Debitur MD","branchCode":"001"}';
 
         Http::fake([
             'http://core.test/loan/earlytermination/' => Http::sequence()
@@ -73,13 +73,13 @@ class EarlyTerminationActionTest extends TestCase
 
         $first = app(ExecuteEarlyTerminationAction::class)->handle($receivable, $user);
         $this->assertSame(EarlyTerminationTransaction::STATUS_FAILED, $first->status);
-        $this->assertSame('ETERM-1-001', $first->trx_reference);
+        $this->assertSame('ETERM1001', $first->trx_reference);
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED, $receivable->refresh()->workflow_status);
 
         $second = app(ExecuteEarlyTerminationAction::class)->handle($receivable->refresh(), $user);
 
         $this->assertNotSame($first->id, $second->id);
-        $this->assertSame('ETERM-1-002', $second->trx_reference);
+        $this->assertSame('ETERM1002', $second->trx_reference);
         $this->assertSame(EarlyTerminationTransaction::STATUS_FAILED, $first->refresh()->status);
         $this->assertSame(EarlyTerminationTransaction::STATUS_SUCCESS, $second->status);
         $this->assertSame('TRX-1', $second->transaction_id);
@@ -87,7 +87,7 @@ class EarlyTerminationActionTest extends TestCase
         $this->assertSame('CORE-REF-1', $second->core_trx_reference);
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_EARLY_TERMINATION_EXECUTED, $receivable->refresh()->workflow_status);
         $this->assertSame([
-            'trxReference' => 'ETERM-1-002',
+            'trxReference' => 'ETERM1002',
             'accountNumber' => '3010010000000068',
             'altNumber' => 'ALT-1',
             'principalPaid' => 230929055,
@@ -121,7 +121,7 @@ class EarlyTerminationActionTest extends TestCase
             $this->assertSame($expectedBodies[$index], $log->request_body);
             $this->assertSame('[masked]', $log->request_headers['Signature']);
         });
-        $this->assertSame(['ETERM-1-001', 'ETERM-1-002'], CoreTransactionReference::query()->orderBy('id')->pluck('reference')->all());
+        $this->assertSame(['ETERM1001', 'ETERM1002'], CoreTransactionReference::query()->orderBy('id')->pluck('reference')->all());
 
         $logs = ApiIntegrationLog::query()->orderBy('id')->get();
         $this->assertSame('99', $logs[0]->response_body['responseCode']);

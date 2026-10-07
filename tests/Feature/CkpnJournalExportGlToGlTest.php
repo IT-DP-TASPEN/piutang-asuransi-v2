@@ -51,8 +51,8 @@ class CkpnJournalExportGlToGlTest extends TestCase
         $this->seedDependencies();
         $user = $this->userWithRole('accounting_approver', '000');
         $journal = $this->approvedJournal(totalAmount: '3077644.00');
-        $expectedFirstRawBody = '{"referenceNumber":"CKPNJ-1-001","trxType":"SAKEP CKPN","termType":"","termId":"FINCLOUD","receiptNumber":"CKPNJ-1-001","debitAccount":"D-1","creditAccount":"C-1","amount":"3077644.00","fee":"0","creditFee":"0","branchCode":"001","debitNarrative":"Debit narrative","creditNarrative":"Credit narrative","customerId":"","dateTime":"20260531102030","description":"CKPN journal","debitFee":"0","destAccount":"","currency":"IDR","srcAccType":"10","totalBill":"","type":"G2"}';
-        $expectedSecondRawBody = '{"referenceNumber":"CKPNJ-1-002","trxType":"SAKEP CKPN","termType":"","termId":"FINCLOUD","receiptNumber":"CKPNJ-1-002","debitAccount":"D-1","creditAccount":"C-1","amount":"3077644.00","fee":"0","creditFee":"0","branchCode":"001","debitNarrative":"Debit narrative","creditNarrative":"Credit narrative","customerId":"","dateTime":"20260531102030","description":"CKPN journal","debitFee":"0","destAccount":"","currency":"IDR","srcAccType":"10","totalBill":"","type":"G2"}';
+        $expectedFirstRawBody = '{"referenceNumber":"CKPNJ1001","trxType":"SAKEP CKPN","termType":"","termId":"FINCLOUD","receiptNumber":"CKPNJ1001","debitAccount":"D-1","creditAccount":"C-1","amount":"3077644.00","fee":"0","creditFee":"0","branchCode":"001","debitNarrative":"Debit narrative","creditNarrative":"Credit narrative","customerId":"","dateTime":"20260531102030","description":"CKPN journal","debitFee":"0","destAccount":"","currency":"IDR","srcAccType":"10","totalBill":"","type":"G2"}';
+        $expectedSecondRawBody = '{"referenceNumber":"CKPNJ1002","trxType":"SAKEP CKPN","termType":"","termId":"FINCLOUD","receiptNumber":"CKPNJ1002","debitAccount":"D-1","creditAccount":"C-1","amount":"3077644.00","fee":"0","creditFee":"0","branchCode":"001","debitNarrative":"Debit narrative","creditNarrative":"Credit narrative","customerId":"","dateTime":"20260531102030","description":"CKPN journal","debitFee":"0","destAccount":"","currency":"IDR","srcAccType":"10","totalBill":"","type":"G2"}';
 
         Http::fake([
             'http://core.test/trx/transfer/gl-to-gl' => Http::sequence()
@@ -70,8 +70,8 @@ class CkpnJournalExportGlToGlTest extends TestCase
         $first = app(ExecuteGlToGlTransferAction::class)->handle($journal, $user);
 
         $this->assertSame(GlToGlTransaction::STATUS_FAILED, $first->status);
-        $this->assertSame('CKPNJ-1-001', $first->reference_number);
-        $this->assertSame('CKPNJ-1-001', $first->receipt_number);
+        $this->assertSame('CKPNJ1001', $first->reference_number);
+        $this->assertSame('CKPNJ1001', $first->receipt_number);
         $this->assertSame('3077644.00', $first->request_payload['amount']);
         $this->assertStringNotContainsString(',', $first->request_payload['amount']);
         $this->assertSame('3077644.00', $journal->refresh()->total_amount);
@@ -80,8 +80,8 @@ class CkpnJournalExportGlToGlTest extends TestCase
 
         $this->assertNotSame($first->id, $second->id);
         $this->assertSame(GlToGlTransaction::STATUS_SUCCESS, $second->status);
-        $this->assertSame('CKPNJ-1-002', $second->reference_number);
-        $this->assertSame('CKPNJ-1-002', $second->receipt_number);
+        $this->assertSame('CKPNJ1002', $second->reference_number);
+        $this->assertSame('CKPNJ1002', $second->receipt_number);
         $this->assertSame('00', $second->response_code);
         $this->assertSame('Accepted', $second->response_description);
         $this->assertSame('V-1', $second->response_payload['data']['unknownResponse']['voucher']);
@@ -109,7 +109,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
             $this->assertSame('[masked]', $log->request_headers['Signature']);
             $this->assertStringNotContainsString('secret-key', json_encode($log->request_headers));
         });
-        $this->assertSame(['CKPNJ-1-001', 'CKPNJ-1-002'], CoreTransactionReference::query()->orderBy('id')->pluck('reference')->all());
+        $this->assertSame(['CKPNJ1001', 'CKPNJ1002'], CoreTransactionReference::query()->orderBy('id')->pluck('reference')->all());
 
         $logs = ApiIntegrationLog::query()->orderBy('id')->get();
         $this->assertSame('temporary_failure', $logs[0]->response_body['result']);

@@ -189,7 +189,7 @@ class ReceivablePaymentTest extends TestCase
         $this->assertSame(ReceivablePaymentRequest::STATUS_GL_FAILED, $failed->status);
         $this->assertSame('Core timeout', $failed->last_error_message);
         $this->assertSame(GlToGlTransaction::STATUS_FAILED, $firstGl->status);
-        $this->assertSame("RCPAY-{$request->id}-001", $firstGl->reference_number);
+        $this->assertSame("RCPAY{$request->id}001", $firstGl->reference_number);
         $this->assertSame(ApprovalRequest::STATUS_SUBMITTED, $request->approvalRequest->refresh()->status);
         $this->assertDatabaseCount('receivable_payments', 0);
         $this->assertSame('10000.00', $receivable->refresh()->remaining_receivable_amount);
@@ -199,12 +199,12 @@ class ReceivablePaymentTest extends TestCase
 
         $this->assertSame(ReceivablePaymentRequest::STATUS_PAYMENT_RECORDED, $succeeded->status);
         $this->assertNotSame($firstGl->id, $retriedGl->id);
-        $this->assertSame("RCPAY-{$request->id}-002", $retriedGl->reference_number);
+        $this->assertSame("RCPAY{$request->id}002", $retriedGl->reference_number);
         $this->assertSame(GlToGlTransaction::STATUS_SUCCESS, $retriedGl->status);
         $this->assertSame(GlToGlTransaction::STATUS_FAILED, $firstGl->refresh()->status);
         $this->assertDatabaseCount('gl_to_gl_transactions', 2);
         $this->assertSame(
-            ["RCPAY-{$request->id}-001", "RCPAY-{$request->id}-002"],
+            ["RCPAY{$request->id}001", "RCPAY{$request->id}002"],
             CoreTransactionReference::query()->orderBy('id')->pluck('reference')->all(),
         );
         $this->assertDatabaseCount('receivable_payments', 1);

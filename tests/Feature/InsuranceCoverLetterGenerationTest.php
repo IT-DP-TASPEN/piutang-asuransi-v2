@@ -78,7 +78,7 @@ class InsuranceCoverLetterGenerationTest extends TestCase
         $receivable = $this->receivableFor('TASPEN LIFE');
         $ajk = app(GenerateInsuranceCoverLetterAction::class)->handle($receivable, $user);
 
-        $creditCompany = InsuranceCompany::query()->where('name', 'ASEI')->firstOrFail();
+        $creditCompany = InsuranceCompany::query()->where('name', 'PT ASURANSI ASEI INDONESIA')->firstOrFail();
         $receivable->update(['insurance_company_id' => $creditCompany->id]);
         $credit = app(GenerateInsuranceCoverLetterAction::class)->handle($receivable->refresh(), $user);
 

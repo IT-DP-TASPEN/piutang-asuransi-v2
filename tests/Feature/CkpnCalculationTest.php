@@ -35,7 +35,7 @@ class CkpnCalculationTest extends TestCase
 
         $this->assertSame(180, $result->ageDays);
         $this->assertSame('1 - 6 bulan', $result->ageBucketName);
-        $this->assertSame('0.0000', $result->ageWeight);
+        $this->assertSame('0.1000', $result->ageWeight);
     }
 
     public function test_age_bucket_selection_181_to_365_days(): void
@@ -88,8 +88,45 @@ class CkpnCalculationTest extends TestCase
         $result = app(CkpnCalculationService::class)->calculate($this->input($receivable, '2026-06-30'));
 
         $this->assertSame('3.0000', $result->insuranceCompanyWeight);
-        $this->assertSame('1.0000', $result->finalCkpnRate);
-        $this->assertSame('100.00', $result->ckpnAmount);
+        $this->assertSame('1.0333', $result->finalCkpnRate);
+        $this->assertSame('103.33', $result->ckpnAmount);
+    }
+
+    public function test_receivables_formed_on_or_before_2024_use_flat_full_rate(): void
+    {
+        $this->seedDependencies();
+        $insuranceCompany = InsuranceCompany::query()->create([
+            'code' => 'TEST',
+            'name' => 'TEST INSURANCE',
+            'claim_type' => InsuranceCompany::CLAIM_TYPE_AJK,
+            'ckpn_weight' => '3.0000',
+            'sla_description' => null,
+            'is_active' => true,
+        ]);
+        $lastLegacyDay = $this->receivable([
+            'insurance_company_id' => $insuranceCompany->id,
+            'receivable_formation_date' => '2024-12-31',
+            'receivable_amount' => '10000.00',
+            'remaining_receivable_amount' => '6000.00',
+        ]);
+        $firstNewDay = $this->receivable([
+            'insurance_company_id' => $insuranceCompany->id,
+            'receivable_formation_date' => '2025-01-01',
+            'receivable_amount' => '10000.00',
+            'remaining_receivable_amount' => '10000.00',
+        ]);
+
+        $legacy = app(CkpnCalculationService::class)->calculate($this->input($lastLegacyDay, '2025-06-29'));
+        $current = app(CkpnCalculationService::class)->calculate($this->input($firstNewDay, '2025-06-29'));
+
+        // Flat 100% ignores all three weights and applies to the remaining amount.
+        $this->assertSame('100.0000', $legacy->finalCkpnRate);
+        $this->assertSame('6000.00', $legacy->ckpnAmount);
+
+        // One day later the normal average applies: (3 + 0.1 + 0) / 3.
+        $this->assertSame('0.1000', $current->ageWeight);
+        $this->assertSame('1.0333', $current->finalCkpnRate);
+        $this->assertSame('103.33', $current->ckpnAmount);
     }
 
     public function test_rejected_partial_remaining_uses_half_percent_factor_in_average(): void
@@ -106,8 +143,8 @@ class CkpnCalculationTest extends TestCase
         $result = app(CkpnCalculationService::class)->calculate($this->input($receivable, '2026-06-30'));
 
         $this->assertSame('0.5000', $result->claimStatusFactor);
-        $this->assertSame('0.1667', $result->finalCkpnRate);
-        $this->assertSame('10.00', $result->ckpnAmount);
+        $this->assertSame('0.2000', $result->finalCkpnRate);
+        $this->assertSame('12.00', $result->ckpnAmount);
     }
 
     public function test_rejected_over_365_days_uses_plain_average_not_special_override(): void

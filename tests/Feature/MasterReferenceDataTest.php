@@ -24,7 +24,7 @@ class MasterReferenceDataTest extends TestCase
             BranchOffice::query()->orderBy('branch_code')->pluck('branch_code')->all(),
         );
 
-        $this->assertSame('0.5000', InsuranceCompany::query()->where('name', 'HEKSA INSURANCE')->firstOrFail()->ckpn_weight);
+        $this->assertSame('0.5000', InsuranceCompany::query()->where('name', 'HEKSA SOLUTION INSURANCE')->firstOrFail()->ckpn_weight);
         $this->assertSame('50.0000', InsuranceCompany::query()->where('name', 'PT ASURANSI BHAKTI BHAYANGKARA')->firstOrFail()->ckpn_weight);
         $this->assertSame('100.0000', InsuranceCompany::query()->where('name', 'TASPEN LIFE')->firstOrFail()->ckpn_weight);
 

@@ -86,10 +86,10 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATED, $workpaper->status);
         $this->assertSame('10000.00', $workpaper->total_receivable_amount);
-        $this->assertSame('100.00', $workpaper->total_calculated_ckpn_amount);
+        $this->assertSame('103.33', $workpaper->total_calculated_ckpn_amount);
         $this->assertSame('0.00', $workpaper->total_adjustment_delta);
-        $this->assertSame('100.00', $workpaper->total_effective_ckpn_amount);
-        $this->assertSame('100.00', $workpaper->total_ckpn_amount);
+        $this->assertSame('103.33', $workpaper->total_effective_ckpn_amount);
+        $this->assertSame('103.33', $workpaper->total_ckpn_amount);
         $this->assertSame(InsuranceReceivable::ORIGIN_TYPE_WORKFLOW, $item->origin_type);
         $this->assertSame($receivable->id, $item->insurance_receivable_id);
         $this->assertSame('Snapshot Customer', $item->customer_name);
@@ -100,10 +100,10 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame('10000.00', $item->receivable_amount);
         $this->assertSame('10000.00', $item->remaining_receivable_amount);
         $this->assertSame('0.0000', $item->claim_status_weight);
-        $this->assertSame('1.0000', $item->calculated_ckpn_rate);
-        $this->assertSame('100.00', $item->calculated_ckpn_amount);
-        $this->assertSame('1.0000', $item->effective_ckpn_rate);
-        $this->assertSame('100.00', $item->effective_ckpn_amount);
+        $this->assertSame('1.0333', $item->calculated_ckpn_rate);
+        $this->assertSame('103.33', $item->calculated_ckpn_amount);
+        $this->assertSame('1.0333', $item->effective_ckpn_rate);
+        $this->assertSame('103.33', $item->effective_ckpn_amount);
         $this->assertSame('TEST SNAPSHOT', $item->snapshot['insurance_company']['name']);
         $this->assertSame('ON PROSES', $item->snapshot['claim_status']['keterangan']);
         $this->assertSame('0.0000', $item->snapshot['claim_status']['factor']);
@@ -134,8 +134,8 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame('IMMUTABLE', $item->insurance_company_name);
         $this->assertSame('3.0000', $item->insurance_company_weight);
         $this->assertSame('IMMUTABLE', $item->snapshot['insurance_company']['name']);
-        $this->assertSame('1.0000', $item->calculated_ckpn_rate);
-        $this->assertSame('1.0000', $item->effective_ckpn_rate);
+        $this->assertSame('1.0333', $item->calculated_ckpn_rate);
+        $this->assertSame('1.0333', $item->effective_ckpn_rate);
     }
 
     public function test_branch_workpaper_only_includes_matching_branch_and_central_includes_all(): void
@@ -779,21 +779,21 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         $this->assertSame(CkpnAdjustment::STATUS_SUBMITTED, $adjustment->status);
         $this->assertSame(ApprovalRequest::WORKFLOW_CKPN_ADJUSTMENT, ApprovalRequest::query()->sole()->workflow_code);
-        $this->assertSame('0.00', $item->refresh()->effective_ckpn_amount);
+        $this->assertSame('3.33', $item->refresh()->effective_ckpn_amount);
 
         $adjustment = app(ApproveCkpnAdjustmentAction::class)->handle($adjustment, $approver);
         $item = $item->refresh();
         $workpaper = $workpaper->refresh();
 
         $this->assertSame(CkpnAdjustment::STATUS_APPROVED, $adjustment->status);
-        $this->assertSame('0.0000', $item->calculated_ckpn_rate);
-        $this->assertSame('0.00', $item->calculated_ckpn_amount);
+        $this->assertSame('0.0333', $item->calculated_ckpn_rate);
+        $this->assertSame('3.33', $item->calculated_ckpn_amount);
         $this->assertSame('2.0000', $item->effective_ckpn_rate);
         $this->assertSame('200.00', $item->effective_ckpn_amount);
         $this->assertSame('2.0000', $adjustment->approved_adjusted_ckpn_rate);
         $this->assertSame('200.00', $adjustment->approved_adjusted_ckpn_amount);
-        $this->assertSame('0.00', $workpaper->total_calculated_ckpn_amount);
-        $this->assertSame('200.00', $workpaper->total_adjustment_delta);
+        $this->assertSame('3.33', $workpaper->total_calculated_ckpn_amount);
+        $this->assertSame('196.67', $workpaper->total_adjustment_delta);
         $this->assertSame('200.00', $workpaper->total_effective_ckpn_amount);
         $this->assertSame('200.00', $workpaper->total_ckpn_amount);
 
@@ -831,8 +831,8 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $adjustment = app(SubmitCkpnAdjustmentAction::class)->handle($adjustment, $maker);
         app(RejectCkpnAdjustmentAction::class)->handle($adjustment, $approver, 'No');
 
-        $this->assertSame('0.00', $item->refresh()->effective_ckpn_amount);
-        $this->assertSame('0.00', $workpaper->refresh()->total_effective_ckpn_amount);
+        $this->assertSame('3.33', $item->refresh()->effective_ckpn_amount);
+        $this->assertSame('3.33', $workpaper->refresh()->total_effective_ckpn_amount);
     }
 
     public function test_adjustment_approval_is_blocked_after_financial_output_exists(): void
