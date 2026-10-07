@@ -57,4 +57,10 @@ return [
         'retry_sleep_ms' => (int) env('CONTRACT_OUTSTANDING_RETRY_SLEEP_MS', 250),
     ],
 
+    'kolek_rpa' => [
+        'base_url' => env('KOLEK_RPA_BASE_URL'),
+        'api_key' => env('KOLEK_RPA_API_KEY'),
+        'timeout' => (int) env('KOLEK_RPA_TIMEOUT', 75),
+    ],
+
 ];

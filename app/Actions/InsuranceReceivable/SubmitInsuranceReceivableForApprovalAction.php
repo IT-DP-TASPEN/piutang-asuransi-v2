@@ -2,6 +2,7 @@
 
 namespace App\Actions\InsuranceReceivable;
 
+use App\Jobs\RunKolekRpaJob;
 use App\Models\ApprovalRequest;
 use App\Models\InsuranceReceivable;
 use App\Models\User;
@@ -87,6 +88,8 @@ class SubmitInsuranceReceivableForApprovalAction
                 actor: $user,
                 approvalRequest: $approvalRequest,
             );
+
+            RunKolekRpaJob::dispatch($insuranceReceivable->id, RunKolekRpaJob::OPERATION_OPER_ACCOUNT)->afterCommit();
 
             return $insuranceReceivable->refresh();
         });

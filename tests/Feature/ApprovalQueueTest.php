@@ -79,6 +79,13 @@ class ApprovalQueueTest extends TestCase
         $insurance = $this->userWithRole('insurance_approver', '000');
         $business = $this->userWithRole('business_approver', '000');
         $request = $this->submittedBranchRequest($maker, 'Ordered Customer');
+        // BM approval re-checks the OPER repayment account with a fresh loan inquiry.
+        config(['core_banking.base_url' => 'http://core.test', 'core_banking.signature_secret' => 'secret-key']);
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::response([
+            'responseCode' => '00',
+            'description' => 'SUCCESS',
+            'data' => ['branchCode' => '001', 'customerName' => 'Ordered Customer', 'saForLoanRepayment' => '001000OPER'],
+        ])]);
 
         Livewire::actingAs($insurance)
             ->test(ListApprovalQueue::class)

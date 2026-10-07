@@ -8,6 +8,7 @@ use App\Actions\InsuranceReceivable\ConfirmCollectabilityChangeCompletedAction;
 use App\Actions\InsuranceReceivable\RejectInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitInsuranceReceivableForApprovalAction;
+use App\Jobs\RunKolekRpaJob;
 use App\Models\ApprovalRequest;
 use App\Models\ApprovalStep;
 use App\Models\BranchOffice;
@@ -21,6 +22,7 @@ use Database\Seeders\InsuranceCompanySeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
@@ -109,6 +111,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
 
     public function test_only_current_initial_approver_can_act_and_it_waits_for_all_three(): void
     {
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse('4'))]);
         $maker = $this->userWithRole('branch_maker', '001');
         $bm = $this->userWithRole('branch_approver', '001');
         $insurance = $this->userWithRole('insurance_approver', '000');
@@ -129,12 +132,13 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $business);
 
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING, $receivable->workflow_status);
-        $this->assertSame('0011234567', $receivable->saving_account_for_loan_repayment);
+        $this->assertSame('001000OPER', $receivable->saving_account_for_loan_repayment);
         $this->assertTrue($receivable->stageLogs()->where('event', 'initial_approval_chain_completed')->exists());
     }
 
     public function test_return_at_each_initial_step_restarts_a_fresh_full_chain(): void
     {
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse('4'))]);
         $maker = $this->userWithRole('branch_maker', '001');
         $approvers = [
             $this->userWithRole('branch_approver', '001'),
@@ -172,6 +176,7 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
 
     public function test_reject_at_any_initial_step_is_terminal(): void
     {
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse('4'))]);
         $maker = $this->userWithRole('branch_maker', '001');
         $approvers = [
             $this->userWithRole('branch_approver', '001'),
@@ -340,6 +345,117 @@ class InsuranceReceivableApprovalWorkflowTest extends TestCase
         $rejected = app(RejectInsuranceReceivableApprovalAction::class)
             ->handle($this->accountingReceivable(), $approver, 'reject');
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_REJECTED, $rejected->workflow_status);
+    }
+
+    public function test_initial_submission_queues_oper_rpa_and_job_submits_branch_oper(): void
+    {
+        Queue::fake();
+        $maker = $this->userWithRole('branch_maker', '001');
+        $receivable = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
+            ->handle($this->receivableFor($maker, ['saving_account_for_loan_repayment' => '0011234567']), $maker);
+
+        Queue::assertPushed(RunKolekRpaJob::class, fn (RunKolekRpaJob $job): bool => $job->insuranceReceivableId === $receivable->id
+            && $job->operation === RunKolekRpaJob::OPERATION_OPER_ACCOUNT);
+
+        $this->configureRpa();
+        Http::fake(['http://rpa.test/*' => Http::response(['status' => 'ok', 'data' => ['primary_loan_account' => $receivable->loan_account_number]])]);
+        $this->runRpa($receivable, RunKolekRpaJob::OPERATION_OPER_ACCOUNT);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'http://rpa.test/api/v1/repayment-account'
+            && $request->hasHeader('Authorization', 'Bearer rpa-key')
+            && $request['saving_account'] === '001000OPER'
+            && $request['loan_account'] === $receivable->loan_account_number);
+        $this->assertTrue($receivable->stageLogs()->where('event', 'oper_account_rpa_succeeded')->exists());
+        $this->assertFalse(RunKolekRpaJob::canRetry($receivable->refresh(), RunKolekRpaJob::OPERATION_OPER_ACCOUNT));
+    }
+
+    public function test_oper_rpa_skips_when_already_oper_and_failure_enables_manual_retry(): void
+    {
+        $this->configureRpa();
+        Http::fake(['http://rpa.test/*' => Http::response(['status' => 'error', 'error' => ['message' => 'saving account is not active']], 422)]);
+        $maker = $this->userWithRole('branch_maker', '001');
+        $alreadyOper = $this->receivableFor($maker, ['workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED]);
+        $agf = $this->receivableFor($maker, [
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
+            'saving_account_for_loan_repayment' => '0011234567',
+        ]);
+
+        $this->runRpa($alreadyOper, RunKolekRpaJob::OPERATION_OPER_ACCOUNT);
+        Http::assertNothingSent();
+
+        $this->runRpa($agf, RunKolekRpaJob::OPERATION_OPER_ACCOUNT);
+        $agf->refresh();
+        $this->assertSame('Kolek RPA rejected the request: saving account is not active.', $agf->last_error_message);
+        $this->assertTrue($agf->stageLogs()->where('event', 'oper_account_rpa_failed')->exists());
+        $this->assertTrue(RunKolekRpaJob::canRetry($agf, RunKolekRpaJob::OPERATION_OPER_ACCOUNT));
+    }
+
+    public function test_bm_approval_is_blocked_until_fresh_inquiry_shows_branch_oper(): void
+    {
+        Queue::fake();
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::sequence()
+            ->push($this->loanResponse('4', '0011234567'))
+            ->push($this->loanResponse('4'))]);
+        $maker = $this->userWithRole('branch_maker', '001');
+        $bm = $this->userWithRole('branch_approver', '001');
+        $receivable = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
+            ->handle($this->receivableFor($maker, ['saving_account_for_loan_repayment' => '0011234567']), $maker);
+
+        try {
+            app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $bm);
+            $this->fail('BM must not approve before the OPER change is live in Fincloud.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('branch OPER 001000OPER; actual: 0011234567', $exception->getMessage());
+        }
+
+        $request = $receivable->approvalRequests()->latest('id')->firstOrFail();
+        $this->assertSame(ApprovalStep::STATUS_PENDING, $request->steps()->orderBy('step_order')->value('status'));
+        $this->assertTrue($receivable->stageLogs()->where('event', 'branch_approval_oper_check_blocked')->exists());
+
+        $approved = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable->refresh(), $bm);
+        $this->assertSame(ApprovalStep::STATUS_APPROVED, $request->steps()->orderBy('step_order')->value('status'));
+        $this->assertNull($approved->last_error_message);
+    }
+
+    public function test_completed_initial_chain_queues_collectability_rpa_for_kolek_five_manual(): void
+    {
+        Queue::fake();
+        Http::fake(['http://core.test/inquiry/detail/loan' => Http::response($this->loanResponse('4'))]);
+        $maker = $this->userWithRole('branch_maker', '001');
+        $receivable = app(AutoSubmitInsuranceReceivableForInitialApprovalAction::class)
+            ->handle($this->receivableFor($maker), $maker);
+        foreach (['branch_approver' => '001', 'insurance_approver' => '000', 'business_approver' => '000'] as $role => $branch) {
+            $receivable = app(ApproveInsuranceReceivableApprovalAction::class)->handle($receivable, $this->userWithRole($role, $branch));
+        }
+
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING, $receivable->workflow_status);
+        Queue::assertPushed(RunKolekRpaJob::class, fn (RunKolekRpaJob $job): bool => $job->operation === RunKolekRpaJob::OPERATION_COLLECTABILITY);
+
+        $this->configureRpa();
+        Http::fake(['http://rpa.test/*' => Http::sequence()
+            ->push(['status' => 'ok', 'data' => ['processed' => 1, 'failed' => 1, 'results' => [['status' => 'FAILED', 'error' => 'Fincloud operation failed']]]])
+            ->push(['status' => 'ok', 'data' => ['processed' => 1, 'success' => 1, 'results' => [['status' => 'SUCCESS', 'new_kolek' => 5]]]])]);
+
+        $this->runRpa($receivable, RunKolekRpaJob::OPERATION_COLLECTABILITY);
+        $this->assertSame('Collectability RPA failed: Fincloud operation failed.', $receivable->refresh()->last_error_message);
+        $this->assertTrue(RunKolekRpaJob::canRetry($receivable, RunKolekRpaJob::OPERATION_COLLECTABILITY));
+
+        $this->runRpa($receivable, RunKolekRpaJob::OPERATION_COLLECTABILITY);
+        Http::assertSent(fn ($request): bool => $request->url() === 'http://rpa.test/api/v1/kolek'
+            && $request['kolek'] === 5
+            && $request['change_type'] === 'Manual'
+            && $request['accounts'] === [$receivable->loan_account_number]);
+        $this->assertFalse(RunKolekRpaJob::canRetry($receivable->refresh(), RunKolekRpaJob::OPERATION_COLLECTABILITY));
+    }
+
+    private function configureRpa(): void
+    {
+        config(['services.kolek_rpa.base_url' => 'http://rpa.test', 'services.kolek_rpa.api_key' => 'rpa-key']);
+    }
+
+    private function runRpa(InsuranceReceivable $receivable, string $operation): void
+    {
+        app()->call([new RunKolekRpaJob($receivable->id, $operation), 'handle']);
     }
 
     private function receivableFor(User $user, array $attributes = []): InsuranceReceivable

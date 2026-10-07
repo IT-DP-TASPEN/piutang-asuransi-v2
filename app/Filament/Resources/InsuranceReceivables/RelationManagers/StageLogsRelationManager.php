@@ -36,7 +36,7 @@ class StageLogsRelationManager extends RelationManager
                     ->formatStateUsing(fn (?string $state): string => self::eventLabel($state))
                     ->color(fn (?string $state): ?string => match (true) {
                         str($state)->contains(['failed', 'blocked', 'rejected', 'cancelled']) => 'danger',
-                        str($state)->contains(['approved', 'completed', 'passed', 'executed', 'resolved', 'verified', 'confirmed']) => 'success',
+                        str($state)->contains(['approved', 'completed', 'passed', 'executed', 'resolved', 'verified', 'confirmed', 'succeeded']) => 'success',
                         default => null,
                     })
                     ->weight(FontWeight::Medium)

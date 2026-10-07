@@ -5,6 +5,7 @@ namespace App\Services\Approval;
 use App\Actions\CkpnAdjustment\ApplyApprovedCkpnAdjustmentAction;
 use App\Actions\InsuranceReceivable\QueueEarlyTerminationAction;
 use App\Jobs\ExecuteGlToGlJob;
+use App\Jobs\RunKolekRpaJob;
 use App\Models\ApprovalRequest;
 use App\Models\CkpnAdjustment;
 use App\Models\CkpnJournal;
@@ -59,10 +60,12 @@ class ApprovalFinalizationService
             event: 'initial_approval_chain_completed',
             fromStatus: $fromStatus,
             toStatus: InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING,
-            description: 'Initial formation approval chain completed. Awaiting IT confirmation of collectability 5 and branch OPER repayment account.',
+            description: 'Initial formation approval chain completed. Collectability RPA queued; awaiting IT confirmation of collectability 5 and branch OPER repayment account.',
             actor: $actor,
             approvalRequest: $approvalRequest,
         );
+
+        RunKolekRpaJob::dispatch($receivable->id, RunKolekRpaJob::OPERATION_COLLECTABILITY)->afterCommit();
     }
 
     private function finalizeAccountingValidation(ApprovalRequest $approvalRequest, User $actor, ?string $notes): void

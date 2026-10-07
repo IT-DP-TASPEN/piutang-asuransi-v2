@@ -19,6 +19,7 @@ use App\Actions\InsuranceReceivable\ReturnInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\SubmitManualEarlyTerminationConfirmationAction;
 use App\Filament\Resources\ApiIntegrationLogs\ApiIntegrationLogResource;
 use App\Filament\Resources\InsuranceReceivables\InsuranceReceivableResource;
+use App\Jobs\RunKolekRpaJob;
 use App\Models\ClaimStatus;
 use App\Models\ClaimStatusChangeRequest;
 use App\Models\EarlyTerminationTransaction;
@@ -60,6 +61,8 @@ class ViewInsuranceReceivable extends ViewRecord
                 ->visible(fn (): bool => $this->hasVisibleApprovalActions()),
             ActionGroup::make([
                 $this->retryInquiryAction(),
+                $this->retryRpaAction(RunKolekRpaJob::OPERATION_OPER_ACCOUNT),
+                $this->retryRpaAction(RunKolekRpaJob::OPERATION_COLLECTABILITY),
                 $this->retryInstallmentRepaymentAction(),
                 $this->resolveInstallmentRepaymentAction(),
                 $this->cancelReceivableAction(),
@@ -193,6 +196,33 @@ class ViewInsuranceReceivable extends ViewRecord
 
                 Notification::make()->success()->title('Loan inquiry retry queued')->send();
             });
+    }
+
+    private function retryRpaAction(string $operation): Action
+    {
+        $isOper = $operation === RunKolekRpaJob::OPERATION_OPER_ACCOUNT;
+
+        return Action::make($isOper ? 'retryOperAccountRpa' : 'retryCollectabilityRpa')
+            ->label($isOper ? 'Retry OPER Account RPA' : 'Retry Collectability RPA')
+            ->requiresConfirmation()
+            ->modalDescription('Only retry after confirming in Fincloud that no change from the failed attempt is pending, otherwise a duplicate change is submitted.')
+            ->visible(fn (): bool => $this->canRetryRpa($operation))
+            ->action(function () use ($operation): void {
+                RunKolekRpaJob::dispatch($this->getRecord()->id, $operation, auth()->id());
+
+                Notification::make()->success()->title('RPA retry queued')->send();
+            });
+    }
+
+    private function canRetryRpa(string $operation): bool
+    {
+        $user = auth()->user();
+        $record = $this->getRecord();
+        $allowed = $operation === RunKolekRpaJob::OPERATION_OPER_ACCOUNT
+            ? ($user?->can('approveApproval', $record) ?? false) && $this->canActOnCurrentApproval()
+            : $user?->can('confirmCollectabilityChange', $record) ?? false;
+
+        return $allowed && RunKolekRpaJob::canRetry($record, $operation);
     }
 
     private function retryEarlyTerminationAction(): Action
@@ -421,7 +451,7 @@ class ViewInsuranceReceivable extends ViewRecord
         return Action::make('confirmCollectabilityChange')
             ->label('Confirm Collectability & OPER Change')
             ->requiresConfirmation()
-            ->modalDescription('Before confirming, change collectability to 5 and the repayment/AGF account to this branch’s OPER account in Core. Fresh loan inquiry verifies both.')
+            ->modalDescription('Before confirming, approve the RPA collectability change (5, Manual) in Fincloud. Fresh loan inquiry verifies collectability 5 and the branch OPER repayment account.')
             ->visible(fn (): bool => (auth()->user()?->can('confirmCollectabilityChange', $this->getRecord()) ?? false)
                 && ! $this->getRecord()->isTerminal()
                 && $this->getRecord()->workflow_status === InsuranceReceivable::WORKFLOW_STATUS_COLLECTABILITY_CONFIRMATION_PENDING)
@@ -607,6 +637,8 @@ class ViewInsuranceReceivable extends ViewRecord
             && $record->canResolveInstallmentRepayment();
 
         return $canRetryInquiry
+            || $this->canRetryRpa(RunKolekRpaJob::OPERATION_OPER_ACCOUNT)
+            || $this->canRetryRpa(RunKolekRpaJob::OPERATION_COLLECTABILITY)
             || $canRetryInstallmentRepayment
             || $canResolveInstallmentRepayment
             || $canCancel
