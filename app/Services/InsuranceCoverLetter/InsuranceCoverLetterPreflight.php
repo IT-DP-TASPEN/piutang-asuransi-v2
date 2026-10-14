@@ -48,6 +48,13 @@ class InsuranceCoverLetterPreflight
             ]);
         }
 
+        // Nominal Klaim is the Contract Outstanding, which Accounting Validation fetches from Core.
+        if (blank($insuranceReceivable->contract_outstanding_amount)) {
+            throw ValidationException::withMessages([
+                'contract_outstanding' => 'Contract Outstanding is not available yet. Generate the cover letter after Accounting Validation has fetched it.',
+            ]);
+        }
+
         $checklist = $this->checklistResolver->handle($insuranceReceivable);
         $warnings = $checklist->warnings;
 
@@ -58,7 +65,6 @@ class InsuranceCoverLetterPreflight
         $optionalFields = [
             'customer_name' => 'Customer name is unavailable.',
             'credit_limit' => 'Credit limit/plafond is unavailable.',
-            'loan_outstanding' => 'Loan outstanding is unavailable.',
             'start_period' => 'Credit start period is unavailable.',
             'end_period' => 'Credit end period is unavailable.',
         ];

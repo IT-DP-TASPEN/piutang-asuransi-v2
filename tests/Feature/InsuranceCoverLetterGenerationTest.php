@@ -47,7 +47,9 @@ class InsuranceCoverLetterGenerationTest extends TestCase
         $this->assertStringContainsString('Dengan ini kami sampaikan bahwa nasabah kami yang bernama :', $first->rendered_html);
         $this->assertStringContainsString('Jane Customer', $first->rendered_html);
         $this->assertStringContainsString('Rp 250.000.000', $first->rendered_html);
-        $this->assertStringContainsString('Rp 230.929.055', $first->rendered_html);
+        // Nominal Klaim is the Contract Outstanding, not the Fincloud loan outstanding.
+        $this->assertStringContainsString('Rp 225.000.000', $first->rendered_html);
+        $this->assertStringNotContainsString('Rp 230.929.055', $first->rendered_html);
         $this->assertStringContainsString('21 Juni 2026', $first->rendered_html);
         $this->assertStringContainsString('15 Januari 2026', $first->rendered_html);
         $this->assertStringContainsString('Telah meninggal dunia pada tanggal 15 Januari 2026. Oleh karena itu kami bermaksud mengajukan klaim asuransi jiwa kredit yang bersangkutan, dan sebagai dasar pengajuan klaim berikut kami lampirkan :', $first->rendered_html);
@@ -118,7 +120,7 @@ class InsuranceCoverLetterGenerationTest extends TestCase
         $this->assertRenderedFromTemplate($letter->rendered_html);
         $this->assertStringContainsString('<strong>ASKRINDO</strong><br>', $letter->rendered_html);
         $this->assertStringContainsString('<strong>-</strong></p>', $letter->rendered_html);
-        $this->assertSame(5, preg_match_all('/<td>-<\/td>/', $letter->rendered_html));
+        $this->assertSame(4, preg_match_all('/<td>-<\/td>/', $letter->rendered_html));
         $this->assertStringContainsString('Telah meninggal dunia pada tanggal -.', $letter->rendered_html);
     }
 
@@ -142,6 +144,18 @@ class InsuranceCoverLetterGenerationTest extends TestCase
         $this->assertNotEmpty($letter->rendered_html);
         $this->assertNull($letter->generated_file_path);
         $this->assertSame(InsuranceCoverLetter::STATUS_GENERATED, $letter->status);
+    }
+
+    public function test_letter_requires_contract_outstanding(): void
+    {
+        $this->seedDependencies();
+        Storage::fake('local');
+
+        $this->expectException(ValidationException::class);
+        app(GenerateInsuranceCoverLetterAction::class)->handle(
+            $this->receivableFor('TASPEN LIFE', ['contract_outstanding_amount' => null]),
+            User::factory()->create(),
+        );
     }
 
     public function test_missing_template_returns_clear_validation_error(): void
@@ -206,6 +220,7 @@ class InsuranceCoverLetterGenerationTest extends TestCase
             'credit_limit' => '250000000.00',
             'loan_outstanding' => '230929055.00',
             'receivable_amount' => '230929055.00',
+            'contract_outstanding_amount' => '225000000.00',
             'start_period' => '2025-01-01',
             'end_period' => '2030-01-01',
             ...$attributes,

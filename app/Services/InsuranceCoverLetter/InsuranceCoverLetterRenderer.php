@@ -14,12 +14,6 @@ class InsuranceCoverLetterRenderer
         InsuranceReceivable $insuranceReceivable,
         InsuranceCoverLetterPreflightResult $preflight,
     ): string {
-        $claimAmount = $insuranceReceivable->receivable_amount;
-
-        if (blank($claimAmount)) {
-            $claimAmount = $insuranceReceivable->loan_outstanding;
-        }
-
         return view($preflight->view, [
             'letterDate' => $this->date($letter->letter_date),
             'letterNumber' => $this->text($letter->letter_number),
@@ -27,7 +21,7 @@ class InsuranceCoverLetterRenderer
             'recipientAddress' => $this->text($preflight->recipientAddress),
             'customerName' => $this->text($insuranceReceivable->customer_name),
             'creditLimit' => $this->money($insuranceReceivable->credit_limit),
-            'claimAmount' => $this->money($claimAmount),
+            'claimAmount' => $this->money($insuranceReceivable->contract_outstanding_amount),
             'startPeriod' => $this->date($insuranceReceivable->start_period),
             'endPeriod' => $this->date($insuranceReceivable->end_period),
             'dateOfDeath' => $this->date($insuranceReceivable->date_of_death),

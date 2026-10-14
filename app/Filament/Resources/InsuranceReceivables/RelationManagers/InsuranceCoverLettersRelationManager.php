@@ -48,6 +48,10 @@ class InsuranceCoverLettersRelationManager extends RelationManager
                     ->visible(fn (): bool => $this->getOwnerRecord() instanceof InsuranceReceivable
                         && $this->getOwnerRecord()->isWorkflowOrigin()
                         && (auth()->user()?->can('Generate:InsuranceCoverLetter') ?? false))
+                    ->disabled(fn (): bool => blank($this->getOwnerRecord()->contract_outstanding_amount))
+                    ->tooltip(fn (): ?string => blank($this->getOwnerRecord()->contract_outstanding_amount)
+                        ? 'Available after Accounting Validation fetches the Contract Outstanding.'
+                        : null)
                     ->requiresConfirmation()
                     ->modalDescription(fn (): string => $this->generationDescription())
                     ->form([

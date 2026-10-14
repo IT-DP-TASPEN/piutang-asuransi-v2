@@ -136,6 +136,7 @@ class ClaimStatusChangeRequestWorkflowTest extends TestCase
             'customer_name' => 'Jane Customer',
             'date_of_death' => '2026-01-15',
             'loan_outstanding' => '230929055.00',
+            'contract_outstanding_amount' => '225000000.00',
         ]);
 
         $letter = app(GenerateInsuranceCoverLetterAction::class)->handle($receivable, $user);
@@ -146,7 +147,7 @@ class ClaimStatusChangeRequestWorkflowTest extends TestCase
         $this->assertSame(InsuranceCoverLetter::STATUS_GENERATED, $letter->status);
         $this->assertSame('Pengajuan Klaim Asuransi 3010010000000068', $letter->subject);
         $this->assertStringContainsString('Jane Customer', $letter->rendered_html);
-        $this->assertStringContainsString('Rp 230.929.055', $letter->rendered_html);
+        $this->assertStringContainsString('Rp 225.000.000', $letter->rendered_html);
     }
 
     private function seedDependencies(): void
