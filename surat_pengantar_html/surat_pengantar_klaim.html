@@ -142,6 +142,11 @@ ol li {
   padding-left: 1.5mm;
 }
 
+/* The numbered list continues into the a/b sub-list, so no gap before it. */
+ol.before-alpha {
+  margin-bottom: 0;
+}
+
 ol.alpha {
   list-style-type: lower-alpha;
   margin-left: 14mm;
@@ -337,7 +342,7 @@ ul.bullets li {
       </table>
 
       <p class="paragraph-tight">Telah meninggal dunia pada tanggal <span class="highlight">&lt;&lt;tanggal meninggal&gt;&gt;</span>. Oleh karena itu kami bermaksud mengajukan klaim asuransi jiwa kredit yang bersangkutan, dan sebagai dasar pengajuan klaim berikut kami lampirkan :</p>
-      <ol>
+      <ol class="before-alpha">
         <li>Surat Pengajuan Klaim</li>
         <li>Fotokopi Sertifikat Asuransi</li>
         <li>Fotokopi KTP/SIM dan KK, Peserta dan ahli waris</li>
