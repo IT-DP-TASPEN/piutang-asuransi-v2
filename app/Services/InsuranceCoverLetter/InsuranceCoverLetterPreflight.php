@@ -40,32 +40,9 @@ class InsuranceCoverLetterPreflight
             ]);
         }
 
-        if (! is_array($template)
-            || ! is_string($template['path'] ?? null)
-            || ! is_string($template['section_id'] ?? null)
-        ) {
-            throw ValidationException::withMessages([
-                'template' => "Cover letter template for claim type {$claimType} is unavailable.",
-            ]);
-        }
+        $view = is_array($template) && is_string($template['view'] ?? null) ? trim($template['view']) : '';
 
-        $templatePath = trim($template['path']);
-        $templateSectionId = trim($template['section_id']);
-        $absoluteTemplatePath = $this->absoluteTemplatePath($templatePath);
-
-        if ($templatePath === ''
-            || $templateSectionId === ''
-            || ! is_file($absoluteTemplatePath)
-            || ! is_readable($absoluteTemplatePath)
-        ) {
-            throw ValidationException::withMessages([
-                'template' => "Cover letter template for claim type {$claimType} is unavailable.",
-            ]);
-        }
-
-        $templateHtml = file_get_contents($absoluteTemplatePath);
-
-        if ($templateHtml === false || ! preg_match($this->sectionPattern($templateSectionId), $templateHtml)) {
+        if ($view === '' || ! view()->exists($view)) {
             throw ValidationException::withMessages([
                 'template' => "Cover letter template for claim type {$claimType} is unavailable.",
             ]);
@@ -94,25 +71,12 @@ class InsuranceCoverLetterPreflight
 
         return new InsuranceCoverLetterPreflightResult(
             claimType: $claimType,
-            templateKey: "{$templatePath}#{$templateSectionId}",
-            templatePath: $templatePath,
-            templateSectionId: $templateSectionId,
+            templateKey: $view,
+            view: $view,
             recipientName: $company->resolvedLetterRecipientName(),
             recipientAddress: $company->letter_recipient_address,
             checklist: $checklist,
             warnings: array_values(array_unique($warnings)),
         );
-    }
-
-    private function absoluteTemplatePath(string $templatePath): string
-    {
-        return str_starts_with($templatePath, DIRECTORY_SEPARATOR)
-            ? $templatePath
-            : base_path($templatePath);
-    }
-
-    private function sectionPattern(string $sectionId): string
-    {
-        return '/<section\b[^>]*\bid="'.preg_quote($sectionId, '/').'"[^>]*>/';
     }
 }

@@ -39,7 +39,7 @@ class InsuranceCoverLetterGenerationTest extends TestCase
         $this->assertSame('ajk', $first->claim_type);
         $this->assertSame(500 + $first->id, $first->sequence_number);
         $this->assertSame("SRT – {$first->sequence_number}/B.01.1/062026", $first->letter_number);
-        $this->assertSame('surat_pengantar_html/surat_pengantar_ajk.html#surat-klaim-ajk', $first->template_key);
+        $this->assertSame('cover-letters.ajk', $first->template_key);
         $this->assertSame('PT ASURANSI JIWA TASPEN', $first->recipient_name);
         $this->assertRenderedFromTemplate($first->rendered_html);
         $this->assertStringContainsString('Kepada :</p>', $first->rendered_html);
@@ -84,7 +84,7 @@ class InsuranceCoverLetterGenerationTest extends TestCase
 
         $this->assertNotSame($ajk->id, $credit->id);
         $this->assertSame('credit', $credit->claim_type);
-        $this->assertSame('surat_pengantar_html/surat_pengantar_klaim.html#surat-klaim-asuransi-kredit', $credit->template_key);
+        $this->assertSame('cover-letters.credit', $credit->template_key);
         $this->assertRenderedFromTemplate($credit->rendered_html);
         $this->assertStringContainsString('Kami bermaksud mengajukan Klaim asuransi yang bersangkutan, sebagai dasar pengajuan klaim berikut kami lampirkan:', $credit->rendered_html);
         $this->assertStringContainsString('Surat Pengajuan Klaim dari Pemegang Polis</li>', $credit->rendered_html);
@@ -147,7 +147,7 @@ class InsuranceCoverLetterGenerationTest extends TestCase
     public function test_missing_template_returns_clear_validation_error(): void
     {
         $this->seedDependencies();
-        config(['insurance_cover_letters.templates.ajk.path' => 'surat_pengantar_html/missing.html']);
+        config(['insurance_cover_letters.templates.ajk.view' => 'cover-letters.missing']);
 
         $this->expectException(ValidationException::class);
         app(GenerateInsuranceCoverLetterAction::class)->handle(

@@ -1,15 +1,10 @@
 <?php
 
 return [
+    // Blade views under resources/views/cover-letters, keyed by insurance company claim_type.
     'templates' => [
-        'ajk' => [
-            'path' => 'surat_pengantar_html/surat_pengantar_ajk.html',
-            'section_id' => 'surat-klaim-ajk',
-        ],
-        'credit' => [
-            'path' => 'surat_pengantar_html/surat_pengantar_klaim.html',
-            'section_id' => 'surat-klaim-asuransi-kredit',
-        ],
+        'ajk' => ['view' => 'cover-letters.ajk'],
+        'credit' => ['view' => 'cover-letters.credit'],
     ],
     'disk' => 'local',
     'directory' => 'insurance-cover-letters',
