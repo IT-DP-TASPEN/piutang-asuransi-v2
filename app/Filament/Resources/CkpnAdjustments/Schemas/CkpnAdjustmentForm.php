@@ -2,13 +2,16 @@
 
 namespace App\Filament\Resources\CkpnAdjustments\Schemas;
 
+use App\Filament\Resources\CkpnWorkpapers\CkpnWorkpaperResource;
 use App\Models\CkpnAdjustment;
 use App\Models\CkpnWorkpaperItem;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Builder;
 
 class CkpnAdjustmentForm
 {
@@ -23,12 +26,19 @@ class CkpnAdjustmentForm
                     ->schema([
                         Select::make('ckpn_workpaper_id')
                             ->label('Workpaper')
-                            ->relationship('ckpnWorkpaper', 'period')
+                            ->relationship(
+                                'ckpnWorkpaper',
+                                'period',
+                                fn (Builder $query) => $query->whereIn('id', CkpnWorkpaperResource::getEloquentQuery()->select('id')),
+                            )
+                            ->live()
                             ->searchable()
                             ->preload(),
                         Select::make('ckpn_workpaper_item_id')
                             ->label('Workpaper item')
-                            ->options(fn (): array => CkpnWorkpaperItem::query()
+                            ->options(fn (Get $get): array => CkpnWorkpaperItem::query()
+                                ->where('ckpn_workpaper_id', $get('ckpn_workpaper_id'))
+                                ->whereIn('ckpn_workpaper_id', CkpnWorkpaperResource::getEloquentQuery()->select('id'))
                                 ->orderBy('id')
                                 ->get()
                                 ->mapWithKeys(fn (CkpnWorkpaperItem $item): array => [

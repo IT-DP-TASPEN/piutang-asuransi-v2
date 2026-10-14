@@ -232,10 +232,10 @@ class KolekRpaClient
             'endpoint' => $path,
             'method' => $method,
             'request_headers' => ['Accept' => 'application/json'],
-            'request_body' => $isLogin ? [...$data, 'pwd' => '[masked]'] : $data,
+            'request_body' => $isLogin ? [...$data, 'pwd' => '[masked]'] : $this->redactPii($data),
             'response_status' => $status,
             // The login response carries the session id.
-            'response_body' => $isLogin ? [] : (is_array($decoded) ? $decoded : ($raw === null ? [] : ['raw' => $raw])),
+            'response_body' => $isLogin ? [] : (is_array($decoded) ? $this->redactPii($decoded) : ($raw === null ? [] : ['raw' => '[redacted]'])),
             'is_success' => $errorMessage === null,
             'error_message' => $errorMessage,
             'duration_ms' => (int) round((hrtime(true) - $startedAt) / 1_000_000),
@@ -258,6 +258,25 @@ class KolekRpaClient
     /**
      * Fincloud dates arrive as {"date": "2026-08-27 00:00:00.000000"} and are posted back as "2026-8-27".
      */
+    /**
+     * Masks customer identity (name, CIF, KTP address, guarantor/spouse data) before it reaches api_integration_logs.
+     *
+     * @param  array<mixed>  $data
+     * @return array<mixed>
+     */
+    private function redactPii(array $data): array
+    {
+        foreach ($data as $key => $value) {
+            if (is_string($key) && preg_match('/^(dataalamat_|namanasabah|aliasnama|nocif|tabbayar_namapemilik|mengetahuisuamiistri|datapenjamin)/', $key)) {
+                $data[$key] = '[redacted]';
+            } elseif (is_array($value)) {
+                $data[$key] = $this->redactPii($value);
+            }
+        }
+
+        return $data;
+    }
+
     private function date(mixed $value): string
     {
         $raw = trim((string) (is_array($value) ? ($value['date'] ?? '') : ''));

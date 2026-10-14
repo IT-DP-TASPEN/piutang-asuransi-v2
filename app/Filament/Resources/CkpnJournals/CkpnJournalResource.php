@@ -46,9 +46,12 @@ class CkpnJournalResource extends Resource
         }
 
         if (RoleScope::isBranchScoped($user)) {
+            // Same rule as CkpnJournalPolicy: journal branch, falling back to the workpaper branch.
             return $query->where(fn (Builder $query) => $query
                 ->where('branch_office_id', $user->branch_office_id)
-                ->orWhereHas('ckpnWorkpaper', fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id)));
+                ->orWhere(fn (Builder $query) => $query
+                    ->whereNull('branch_office_id')
+                    ->whereHas('ckpnWorkpaper', fn (Builder $query) => $query->where('branch_office_id', $user->branch_office_id))));
         }
 
         return $query->whereRaw('1 = 0');

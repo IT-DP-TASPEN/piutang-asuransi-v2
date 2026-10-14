@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\ApiIntegrationLog;
 use App\Models\User;
+use App\Support\Access\RoleScope;
 
 class ApiIntegrationLogPolicy
 {
@@ -71,6 +72,7 @@ class ApiIntegrationLogPolicy
 
     private function can(User $user, string $action): bool
     {
-        return $user->can("{$action}:".self::SUBJECT);
+        // Logs hold every branch's request/response bodies, so only central roles may read them.
+        return RoleScope::canViewAllBranches($user) && $user->can("{$action}:".self::SUBJECT);
     }
 }

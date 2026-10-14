@@ -171,6 +171,29 @@ class ReceivablePaymentTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    public function test_debtor_saving_account_changed_after_submission_is_not_debited(): void
+    {
+        Http::fake([
+            'http://core.test/saving/inq/balance*' => Http::response($this->balanceResponse('7500.00')),
+            'http://core.test/trx/transfer/gl-to-gl' => Http::response(['responseCode' => '00']),
+        ]);
+        $maker = $this->userWithRole('accounting_maker', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $receivable = $this->receivable(['saving_account_for_loan_repayment' => '1000010000000691']);
+        $request = app(SubmitReceivablePaymentRequestAction::class)->handle($receivable, [
+            'amount' => '2500.00',
+            'payment_source' => ReceivablePaymentRequest::PAYMENT_SOURCE_DEBTOR_SAVING,
+        ], $maker);
+        $receivable->forceFill(['saving_account_for_loan_repayment' => '1000010000000999'])->saveQuietly();
+
+        $result = app(ExecuteReceivablePaymentRequestAction::class)->handle($request->refresh(), $approver);
+
+        $this->assertSame(ReceivablePaymentRequest::STATUS_VALIDATION_FAILED, $result->status);
+        $this->assertSame('1000010000000691', $result->saving_account_number);
+        $this->assertDatabaseCount('gl_to_gl_transactions', 0);
+        Http::assertSentCount(1);
+    }
+
     public function test_gl_failure_keeps_pending_and_retry_uses_new_reference_before_success(): void
     {
         Http::fake([

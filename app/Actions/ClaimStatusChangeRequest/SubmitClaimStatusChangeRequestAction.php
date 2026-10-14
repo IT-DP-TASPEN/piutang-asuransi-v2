@@ -5,6 +5,7 @@ namespace App\Actions\ClaimStatusChangeRequest;
 use App\Models\ApprovalRequest;
 use App\Models\ClaimStatus;
 use App\Models\ClaimStatusChangeRequest;
+use App\Models\InsuranceReceivable;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
 use App\Services\InsuranceReceivable\InsuranceReceivableStageLogger;
@@ -35,22 +36,25 @@ class SubmitClaimStatusChangeRequestAction
             ]);
         }
 
-        if ($request->insuranceReceivable->claimStatusChangeRequests()
-            ->whereKeyNot($request->id)
-            ->whereIn('status', [
-                ClaimStatusChangeRequest::STATUS_DRAFT,
-                ClaimStatusChangeRequest::STATUS_SUBMITTED,
-                ClaimStatusChangeRequest::STATUS_RETURNED,
-            ])
-            ->exists()) {
-            throw ValidationException::withMessages([
-                'claim_status' => 'A pending claim status update already exists for this receivable.',
-            ]);
-        }
-
         $this->assertDecisionTarget($request->to_claim_status_id);
 
         return DB::transaction(function () use ($request, $user, $notes): ClaimStatusChangeRequest {
+            // Lock the receivable so two makers cannot both pass the single-open-request check.
+            InsuranceReceivable::query()->whereKey($request->insurance_receivable_id)->lockForUpdate()->firstOrFail();
+
+            if ($request->insuranceReceivable->claimStatusChangeRequests()
+                ->whereKeyNot($request->id)
+                ->whereIn('status', [
+                    ClaimStatusChangeRequest::STATUS_DRAFT,
+                    ClaimStatusChangeRequest::STATUS_SUBMITTED,
+                    ClaimStatusChangeRequest::STATUS_RETURNED,
+                ])
+                ->exists()) {
+                throw ValidationException::withMessages([
+                    'claim_status' => 'A pending claim status update already exists for this receivable.',
+                ]);
+            }
+
             $request->forceFill([
                 'from_claim_status_id' => $request->insuranceReceivable->claim_status_id,
                 'requested_by' => $request->requested_by ?? $user->id,

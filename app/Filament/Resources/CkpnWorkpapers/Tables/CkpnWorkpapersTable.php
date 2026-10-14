@@ -5,6 +5,7 @@ namespace App\Filament\Resources\CkpnWorkpapers\Tables;
 use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
 use App\Actions\CkpnWorkpaper\ApproveCkpnWorkpaperAction;
 use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
+use App\Filament\Resources\CkpnWorkpapers\CkpnWorkpaperResource;
 use App\Models\CkpnWorkpaper;
 use App\Models\User;
 use Carbon\Carbon;
@@ -95,7 +96,8 @@ class CkpnWorkpapersTable
                 SelectFilter::make('period')
                     ->label('Tanggal Cutoff')
                     ->options(
-                        fn () => CkpnWorkpaper::query()
+                        fn () => CkpnWorkpaperResource::getEloquentQuery()
+                            ->reorder()
                             ->selectRaw('DATE(period) as period_date')
                             ->whereNotNull('period')
                             ->distinct()

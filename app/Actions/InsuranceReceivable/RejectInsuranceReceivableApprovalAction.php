@@ -90,5 +90,12 @@ class RejectInsuranceReceivableApprovalAction
                 'approval' => 'This approval request is no longer pending.',
             ]);
         }
+
+        if ($request->workflow_code === ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION
+            && $insuranceReceivable->installmentRepayment()->lockForUpdate()->first()?->mayHavePosted()) {
+            throw ValidationException::withMessages([
+                'installment_repayment' => 'The installment repayment already reached Core. Finish Accounting Validation or resolve the repayment instead.',
+            ]);
+        }
     }
 }

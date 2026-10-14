@@ -68,7 +68,7 @@ class PrepareCkpnAdjustmentDataAction
 
         return [
             'adjustment_type' => $data['adjustment_type'] ?? CkpnAdjustment::TYPE_OVERRIDE_FINAL_CKPN_AMOUNT,
-            'ckpn_workpaper_id' => $data['ckpn_workpaper_id'] ?? $item->ckpn_workpaper_id,
+            'ckpn_workpaper_id' => $item->ckpn_workpaper_id,
             'ckpn_workpaper_item_id' => $item->id,
             'calculated_ckpn_rate' => $item->calculated_ckpn_rate,
             'calculated_ckpn_amount' => $item->calculated_ckpn_amount,

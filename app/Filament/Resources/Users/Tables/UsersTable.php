@@ -40,12 +40,12 @@ class UsersTable
             ->recordActions([
                 EditAction::make(),
                 Impersonate::make()
-                    ->visible(true)
                     ->hiddenLabel(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    DeleteBulkAction::make()
+                        ->authorizeIndividualRecords('delete'),
                 ]),
             ]);
     }

@@ -3,6 +3,10 @@
 namespace Tests\Feature;
 
 use App\Actions\CkpnJournal\ExecuteGlToGlTransferAction;
+use App\Actions\ClaimStatusChangeRequest\ApproveClaimStatusChangeRequestAction;
+use App\Actions\ClaimStatusChangeRequest\CreateAndSubmitClaimStatusChangeFromReceivableAction;
+use App\Actions\CoreBanking\ResolveCoreTransactionOutcomeAction;
+use App\Actions\InsuranceReceivable\RejectInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\StoreClaimDocumentAction;
 use App\Actions\ReceivablePayment\ExecuteReceivablePaymentRequestAction;
 use App\Actions\ReceivablePayment\SubmitReceivablePaymentRequestAction;
@@ -12,7 +16,10 @@ use App\Filament\Resources\InsuranceReceivables\Pages\CreateInsuranceReceivable;
 use App\Filament\Resources\InsuranceReceivables\Pages\EditInsuranceReceivable;
 use App\Filament\Resources\InsuranceReceivables\Pages\ViewInsuranceReceivable;
 use App\Filament\Resources\InsuranceReceivables\RelationManagers\DocumentsRelationManager;
+use App\Filament\Resources\Users\Pages\EditUser;
 use App\Jobs\ExecuteGlToGlJob;
+use App\Jobs\GenerateCkpnWorkpaperJob;
+use App\Models\ApiIntegrationLog;
 use App\Models\ApprovalRequest;
 use App\Models\BranchOffice;
 use App\Models\CkpnJournal;
@@ -22,12 +29,15 @@ use App\Models\GeneratedExport;
 use App\Models\GlToGlTransaction;
 use App\Models\InsuranceCompany;
 use App\Models\InsuranceReceivable;
+use App\Models\InsuranceReceivableInstallmentRepayment;
 use App\Models\ReceivablePaymentRequest;
 use App\Models\User;
 use App\Services\Approval\ApprovalService;
 use App\Services\CoreBanking\CoreBankingClient;
 use App\Services\CoreBanking\CoreBankingSignatureGenerator;
 use App\Services\InsuranceReceivable\ResolveClaimDocumentChecklist;
+use App\Services\KolekRpa\KolekRpaClient;
+use App\Support\Export\SafeXlsxRow;
 use Database\Seeders\BranchOfficeSeeder;
 use Database\Seeders\ClaimDocumentSeeder;
 use Database\Seeders\ClaimStatusSeeder;
@@ -47,7 +57,12 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Livewire\Mechanisms\HandleRequests\EndpointResolver;
+use OpenSpout\Common\Entity\Cell\FormulaCell;
+use OpenSpout\Common\Entity\Cell\StringCell;
+use ReflectionMethod;
 use RuntimeException;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /**
@@ -318,6 +333,153 @@ class SecurityAuditRegressionTest extends TestCase
         $admin->forceFill(['password' => 'Rotated#2026'])->save();
         $this->seed(DatabaseSeeder::class);
         $this->assertTrue(Hash::check('Rotated#2026', $admin->refresh()->password));
+    }
+
+    public function test_maker_checker_blocks_submitter_and_earlier_approver_but_not_super_admin(): void
+    {
+        $dual = $this->userWithRole('branch_maker', '001');
+        $dual->assignRole('branch_approver');
+        $own = $this->submittedClaim($dual);
+        $this->assertFalse(app(ApprovalService::class)->canActOnCurrentStep($own, $dual));
+        $this->assertValidationBlocked(fn () => app(ApprovalService::class)->approveCurrentStep($own, $dual));
+
+        $maker = $this->userWithRole('branch_maker', '001');
+        $approver = $this->userWithRole('branch_approver', '001');
+        $approver->assignRole('insurance_approver');
+        $request = app(ApprovalService::class)->approveCurrentStep($this->submittedClaim($maker), $approver);
+        $this->assertFalse(app(ApprovalService::class)->canActOnCurrentStep($request, $approver));
+
+        $admin = $this->userWithRole('super_admin', '000');
+        $this->assertTrue(app(ApprovalService::class)->canActOnCurrentStep($this->submittedClaim($admin), $admin));
+    }
+
+    public function test_accounting_validation_cannot_be_rejected_after_repayment_reached_core(): void
+    {
+        $it = $this->userWithRole('it_user', '000');
+        $approver = $this->userWithRole('accounting_approver', '000');
+        $receivable = InsuranceReceivable::factory()->create([
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION,
+            'date_of_death' => '2026-01-15',
+        ]);
+        app(ApprovalService::class)->submit($receivable, ApprovalRequest::WORKFLOW_ACCOUNTING_RECEIVABLE_VALIDATION, $it);
+        InsuranceReceivableInstallmentRepayment::query()->create([
+            'insurance_receivable_id' => $receivable->id,
+            'account_number' => $receivable->loan_account_number,
+            'branch_code' => '001',
+            'installment_amount' => '100.00',
+            'loan_outstanding_before' => '500.00',
+            'date_of_death' => '2026-01-15',
+            'status' => InsuranceReceivableInstallmentRepayment::STATUS_EXECUTED,
+        ]);
+
+        $this->assertValidationBlocked(fn () => app(RejectInsuranceReceivableApprovalAction::class)->handle($receivable, $approver));
+        $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_ACCOUNTING_VALIDATION, $receivable->refresh()->workflow_status);
+    }
+
+    public function test_core_outcome_resolution_refuses_settled_transactions(): void
+    {
+        [$journal] = $this->approvedJournal();
+        $transaction = $journal->glToGlTransactions()->create([
+            'purpose' => GlToGlTransaction::PURPOSE_CKPN_JOURNAL,
+            'attempt_no' => 1,
+            'status' => GlToGlTransaction::STATUS_SUCCESS,
+        ]);
+
+        $this->assertValidationBlocked(fn () => app(ResolveCoreTransactionOutcomeAction::class)->handle(
+            $transaction,
+            GlToGlTransaction::RESOLUTION_OUTCOME_NOT_POSTED,
+            $this->userWithRole('accounting_approver', '000'),
+            'notes',
+            ['ref' => 'x'],
+        ));
+        $this->assertSame(GlToGlTransaction::STATUS_SUCCESS, $transaction->refresh()->status);
+    }
+
+    public function test_claim_status_approval_refuses_when_status_changed_after_submission(): void
+    {
+        $maker = $this->userWithRole('business_maker', '000');
+        $approver = $this->userWithRole('business_approver', '000');
+        $receivable = InsuranceReceivable::factory()->create();
+        $request = app(CreateAndSubmitClaimStatusChangeFromReceivableAction::class)->handle($receivable, $maker, [
+            'to_claim_status_id' => ClaimStatus::query()->where('code', ClaimStatus::APPROVED_CODE)->value('id'),
+        ]);
+        $rejected = (int) ClaimStatus::query()->where('code', ClaimStatus::REJECTED_CODE)->value('id');
+        $receivable->forceFill(['claim_status_id' => $rejected])->saveQuietly();
+
+        $this->assertValidationBlocked(fn () => app(ApproveClaimStatusChangeRequestAction::class)->handle($request, $approver));
+        $this->assertSame($rejected, (int) $receivable->refresh()->claim_status_id);
+    }
+
+    public function test_late_generation_failure_does_not_reset_generated_workpaper(): void
+    {
+        $workpaper = CkpnWorkpaper::query()->create([
+            'period' => '2026-04-30', 'branch_office_id' => BranchOffice::query()->where('branch_code', '001')->value('id'),
+            'status' => CkpnWorkpaper::STATUS_SUBMITTED,
+            'total_receivable_amount' => '0.00', 'total_calculated_ckpn_amount' => '0.00',
+            'total_adjustment_delta' => '0.00', 'total_effective_ckpn_amount' => '0.00', 'total_ckpn_amount' => '0.00',
+        ]);
+
+        (new GenerateCkpnWorkpaperJob($workpaper->id))->failed(new RuntimeException('late timeout'));
+
+        $this->assertSame(CkpnWorkpaper::STATUS_SUBMITTED, $workpaper->refresh()->status);
+    }
+
+    public function test_api_integration_logs_are_central_only(): void
+    {
+        $branchUser = $this->userWithRole('branch_maker', '001');
+        $branchUser->givePermissionTo(Permission::findOrCreate('ViewAny:ApiIntegrationLog'));
+
+        $this->assertFalse($branchUser->can('viewAny', ApiIntegrationLog::class));
+    }
+
+    public function test_non_super_admin_cannot_grant_or_take_over_super_admin(): void
+    {
+        $manager = $this->userWithRole('it_user', '000');
+        $manager->givePermissionTo(['ViewAny:User', 'View:User', 'Update:User', 'Create:User']);
+        $admin = $this->userWithRole('super_admin', '000');
+        $plain = $this->userWithRole('auditor', '000');
+
+        $this->assertFalse($manager->can('update', $admin));
+        $this->assertTrue($manager->can('update', $plain));
+
+        $superAdminRoleId = Role::findByName('super_admin')->id;
+        Livewire::actingAs($manager)->test(EditUser::class, ['record' => $plain->id])
+            ->set('data.roles', [(string) $superAdminRoleId])
+            ->call('save')
+            ->assertHasFormErrors(['roles.0']);
+        $this->assertFalse($plain->refresh()->hasRole('super_admin'));
+    }
+
+    public function test_xlsx_rows_never_emit_formula_cells(): void
+    {
+        $cells = SafeXlsxRow::fromValues(['=HYPERLINK("http://x")', 'plain', 12])->getCells();
+
+        $this->assertInstanceOf(StringCell::class, $cells[0]);
+        $this->assertNotInstanceOf(FormulaCell::class, $cells[0]);
+        $this->assertInstanceOf(StringCell::class, $cells[1]);
+    }
+
+    public function test_fincloud_logs_redact_customer_identity(): void
+    {
+        $redact = new ReflectionMethod(KolekRpaClient::class, 'redactPii');
+        $result = $redact->invoke(app(KolekRpaClient::class), ['data' => ['result' => [
+            'id' => '0010010000777',
+            'namanasabah' => 'Budi',
+            'nocif' => 'CIF1',
+            'dataalamat_ktp_alamat1' => 'Jl. Rahasia',
+        ]]]);
+
+        $this->assertSame(['id' => '0010010000777', 'namanasabah' => '[redacted]', 'nocif' => '[redacted]', 'dataalamat_ktp_alamat1' => '[redacted]'], $result['data']['result']);
+    }
+
+    private function submittedClaim(User $submitter): ApprovalRequest
+    {
+        $receivable = InsuranceReceivable::factory()->create([
+            'branch_office_id' => $submitter->branch_office_id,
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED,
+        ]);
+
+        return app(ApprovalService::class)->submit($receivable, ApprovalRequest::WORKFLOW_CLAIM_SUBMISSION_BRANCH, $submitter);
     }
 
     /**

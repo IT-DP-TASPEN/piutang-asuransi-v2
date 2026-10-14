@@ -90,6 +90,21 @@ class InsuranceReceivableInstallmentRepayment extends Model
             && $this->status !== self::STATUS_NO_LONGER_REQUIRED;
     }
 
+    /**
+     * The repayment was sent to Core (or is in flight), so the receivable can no longer be rejected or returned.
+     */
+    public function mayHavePosted(): bool
+    {
+        return in_array($this->status, [
+            self::STATUS_PROCESSING,
+            self::STATUS_UNKNOWN_TIMEOUT,
+            self::STATUS_RECONCILIATION_REQUIRED,
+            self::STATUS_VERIFICATION_FAILED_AFTER_EXECUTION,
+            self::STATUS_EXECUTED,
+            self::STATUS_RESOLVED_MANUALLY,
+        ], true);
+    }
+
     public function canResolve(): bool
     {
         return in_array($this->status, self::resolvableStatuses(), true);

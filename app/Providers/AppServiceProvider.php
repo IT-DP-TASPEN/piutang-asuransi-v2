@@ -35,9 +35,12 @@ use App\Policies\ReceivablePaymentRequestPolicy;
 use App\Policies\RolePolicy;
 use App\RateLimit\WhatsAppRateLimit;
 use App\Services\InsuranceCoverLetter\DompdfInsuranceCoverLetterPdfRenderer;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Spatie\Permission\Models\Role;
+use STS\FilamentImpersonate\Events\EnterImpersonation;
+use STS\FilamentImpersonate\Events\LeaveImpersonation;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -54,6 +57,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // The impersonation package swaps the user without a new session id; rotate it like a login would.
+        Event::listen([EnterImpersonation::class, LeaveImpersonation::class], fn () => session()->migrate(true));
+
         Gate::policy(BranchOffice::class, BranchOfficePolicy::class);
         Gate::policy(InsuranceCompany::class, InsuranceCompanyPolicy::class);
         Gate::policy(ClaimDocumentType::class, ClaimDocumentTypePolicy::class);

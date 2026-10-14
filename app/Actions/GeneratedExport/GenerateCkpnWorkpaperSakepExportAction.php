@@ -6,6 +6,7 @@ use App\Models\CkpnWorkpaper;
 use App\Models\CkpnWorkpaperItem;
 use App\Models\GeneratedExport;
 use App\Models\User;
+use App\Support\Export\SafeXlsxRow;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -80,7 +81,7 @@ class GenerateCkpnWorkpaperSakepExportAction
             ->each(function (CkpnWorkpaperItem $item, int $index) use ($writer): void {
                 $snapshot = $item->snapshot ?? [];
 
-                $writer->addRow(Row::fromValues([
+                $writer->addRow(SafeXlsxRow::fromValues([
                     $index + 1,
                     $item->cif_no,
                     $item->loan_account_number,

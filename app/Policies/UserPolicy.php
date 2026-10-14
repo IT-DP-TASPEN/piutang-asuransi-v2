@@ -24,14 +24,14 @@ class UserPolicy
         return $authUser->can('Create:User');
     }
 
-    public function update(AuthUser $authUser): bool
+    public function update(AuthUser $authUser, AuthUser $user): bool
     {
-        return $authUser->can('Update:User');
+        return $authUser->can('Update:User') && $this->canManage($authUser, $user);
     }
 
-    public function delete(AuthUser $authUser): bool
+    public function delete(AuthUser $authUser, AuthUser $user): bool
     {
-        return $authUser->can('Delete:User');
+        return $authUser->can('Delete:User') && $this->canManage($authUser, $user);
     }
 
     public function deleteAny(AuthUser $authUser): bool
@@ -44,14 +44,22 @@ class UserPolicy
         return $authUser->can('Restore:User');
     }
 
-    public function forceDelete(AuthUser $authUser): bool
+    public function forceDelete(AuthUser $authUser, AuthUser $user): bool
     {
-        return $authUser->can('ForceDelete:User');
+        return $authUser->can('ForceDelete:User') && $this->canManage($authUser, $user);
     }
 
     public function forceDeleteAny(AuthUser $authUser): bool
     {
         return $authUser->can('ForceDeleteAny:User');
+    }
+
+    /**
+     * A super_admin account can only be changed by a super_admin, so other user managers cannot take it over.
+     */
+    private function canManage(AuthUser $authUser, AuthUser $user): bool
+    {
+        return ! $user->hasRole('super_admin') || $authUser->hasRole('super_admin');
     }
 
     public function restoreAny(AuthUser $authUser): bool

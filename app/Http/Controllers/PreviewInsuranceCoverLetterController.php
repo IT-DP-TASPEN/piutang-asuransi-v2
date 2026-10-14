@@ -14,6 +14,8 @@ class PreviewInsuranceCoverLetterController extends Controller
 
         return response($letter->rendered_html)
             ->header('Content-Type', 'text/html; charset=UTF-8')
-            ->header('X-Content-Type-Options', 'nosniff');
+            ->header('X-Content-Type-Options', 'nosniff')
+            // Placeholders are escaped today; this contains a future template regression (no scripts, no outbound loads).
+            ->header('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self' data:; sandbox");
     }
 }

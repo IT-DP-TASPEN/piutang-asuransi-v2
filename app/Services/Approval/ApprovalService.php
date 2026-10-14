@@ -263,6 +263,12 @@ class ApprovalService
             return;
         }
 
+        if ($this->isOwnRequest($step, $actor)) {
+            throw ValidationException::withMessages([
+                'approval' => 'You cannot approve a request you submitted or already acted on.',
+            ]);
+        }
+
         if ($step->assigned_user_id !== null && $step->assigned_user_id !== $actor->id) {
             throw ValidationException::withMessages([
                 'approval' => 'Approval step is assigned to another user.',
@@ -282,10 +288,29 @@ class ApprovalService
             return true;
         }
 
+        if ($this->isOwnRequest($step, $actor)) {
+            return false;
+        }
+
         if ($step->assigned_user_id !== null && $step->assigned_user_id !== $actor->id) {
             return false;
         }
 
         return $step->role_name === null || $actor->hasRole($step->role_name);
+    }
+
+    /**
+     * Maker-checker: the submitter and earlier-step actors cannot act again. super_admin is exempt by design.
+     */
+    private function isOwnRequest(ApprovalStep $step, User $actor): bool
+    {
+        if ($actor->hasRole('super_admin')) {
+            return false;
+        }
+
+        $request = $step->approvalRequest;
+
+        return (int) $request->submitted_by === $actor->id
+            || $request->steps()->where('acted_by', $actor->id)->exists();
     }
 }

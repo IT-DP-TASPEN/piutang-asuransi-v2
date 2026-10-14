@@ -516,7 +516,9 @@ class ApprovalQueueResource extends Resource
             ->orWhereHasMorph('approvable', [CkpnWorkpaper::class], fn (Builder $query) => $query->where('branch_office_id', $branchOfficeId))
             ->orWhereHasMorph('approvable', [CkpnJournal::class], fn (Builder $query) => $query
                 ->where('branch_office_id', $branchOfficeId)
-                ->orWhereHas('ckpnWorkpaper', fn (Builder $query) => $query->where('branch_office_id', $branchOfficeId)))
+                ->orWhere(fn (Builder $query) => $query
+                    ->whereNull('branch_office_id')
+                    ->whereHas('ckpnWorkpaper', fn (Builder $query) => $query->where('branch_office_id', $branchOfficeId))))
             ->orWhereHasMorph('approvable', [CkpnAdjustment::class], fn (Builder $query) => $query->whereHas('ckpnWorkpaper', fn (Builder $query) => $query->where('branch_office_id', $branchOfficeId)));
     }
 

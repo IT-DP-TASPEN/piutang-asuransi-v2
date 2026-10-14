@@ -48,6 +48,12 @@ class ResolveCoreTransactionOutcomeAction
         return DB::transaction(function () use ($record, $outcome, $user, $notes, $evidence): Model {
             $locked = $record::query()->whereKey($record->getKey())->lockForUpdate()->firstOrFail();
 
+            if (! $this->isUnresolved($locked)) {
+                throw ValidationException::withMessages([
+                    'record' => 'Only pending, unknown or reconciliation-required Core transactions can be resolved.',
+                ]);
+            }
+
             return match (true) {
                 $locked instanceof GlToGlTransaction => $this->resolveGl($locked, $outcome, $user, $notes, $evidence),
                 $locked instanceof EarlyTerminationTransaction => $this->resolveEarlyTermination($locked, $outcome, $user, $notes, $evidence),
@@ -126,6 +132,22 @@ class ResolveCoreTransactionOutcomeAction
         ])->save();
 
         return $repayment->refresh();
+    }
+
+    private function isUnresolved(Model $record): bool
+    {
+        return match (true) {
+            $record instanceof GlToGlTransaction => in_array($record->status, [GlToGlTransaction::STATUS_PENDING, GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT], true)
+                || $record->resolution_status === GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED,
+            $record instanceof EarlyTerminationTransaction => in_array($record->status, [EarlyTerminationTransaction::STATUS_PENDING, EarlyTerminationTransaction::STATUS_UNKNOWN_TIMEOUT], true)
+                || $record->resolution_status === EarlyTerminationTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED,
+            $record instanceof InsuranceReceivableInstallmentRepayment => in_array($record->status, [
+                InsuranceReceivableInstallmentRepayment::STATUS_UNKNOWN_TIMEOUT,
+                InsuranceReceivableInstallmentRepayment::STATUS_RECONCILIATION_REQUIRED,
+                InsuranceReceivableInstallmentRepayment::STATUS_VERIFICATION_FAILED_AFTER_EXECUTION,
+            ], true),
+            default => false,
+        };
     }
 
     private function authorized(User $user): bool

@@ -30,6 +30,14 @@ class ApproveCkpnAdjustmentAction
         }
 
         return DB::transaction(function () use ($adjustment, $user, $notes): CkpnAdjustment {
+            $adjustment = CkpnAdjustment::query()->whereKey($adjustment->getKey())->lockForUpdate()->firstOrFail();
+
+            if ($adjustment->status !== CkpnAdjustment::STATUS_SUBMITTED) {
+                throw ValidationException::withMessages([
+                    'approval' => 'This approval request is no longer pending.',
+                ]);
+            }
+
             $approvalRequest = $this->activeApprovalRequestFor($adjustment);
             $this->approvalService->approveCurrentStep($approvalRequest, $user, $notes);
 

@@ -70,7 +70,7 @@ class ItemsRelationManager extends RelationManager
                     ]),
                 SelectFilter::make('branch_code')
                     ->label('Branch')
-                    ->options(fn (): array => CkpnWorkpaperItem::query()
+                    ->options(fn (): array => $this->getOwnerRecord()->items()
                         ->whereNotNull('branch_code')
                         ->distinct()
                         ->orderBy('branch_code')
@@ -78,7 +78,7 @@ class ItemsRelationManager extends RelationManager
                         ->all()),
                 SelectFilter::make('claim_status_name')
                     ->label('Claim status')
-                    ->options(fn (): array => CkpnWorkpaperItem::query()
+                    ->options(fn (): array => $this->getOwnerRecord()->items()
                         ->whereNotNull('claim_status_name')
                         ->distinct()
                         ->orderBy('claim_status_name')
@@ -86,7 +86,7 @@ class ItemsRelationManager extends RelationManager
                         ->all()),
                 SelectFilter::make('claim_status_keterangan')
                     ->label('Keterangan')
-                    ->options(fn (): array => CkpnWorkpaperItem::query()
+                    ->options(fn (): array => $this->getOwnerRecord()->items()
                         ->whereNotNull('claim_status_keterangan')
                         ->distinct()
                         ->orderBy('claim_status_keterangan')
@@ -94,7 +94,7 @@ class ItemsRelationManager extends RelationManager
                         ->all()),
                 SelectFilter::make('insurance_company_name')
                     ->label('Insurance company')
-                    ->options(fn (): array => CkpnWorkpaperItem::query()
+                    ->options(fn (): array => $this->getOwnerRecord()->items()
                         ->whereNotNull('insurance_company_name')
                         ->distinct()
                         ->orderBy('insurance_company_name')

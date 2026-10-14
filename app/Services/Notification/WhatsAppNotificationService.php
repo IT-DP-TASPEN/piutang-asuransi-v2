@@ -12,7 +12,7 @@ class WhatsAppNotificationService
         $endpoint = config('services.whatsapp.endpoint');
         if (! $endpoint) {
             Log::warning('WhatsApp notification skipped: endpoint not configured.', [
-                'phone' => $to,
+                'phone' => $this->maskPhone($to),
             ]);
 
             return false;
@@ -20,7 +20,7 @@ class WhatsAppNotificationService
 
         if (config('services.whatsapp.enabled') === false) {
             Log::info('WhatsApp notification disabled by config.', [
-                'phone' => $to,
+                'phone' => $this->maskPhone($to),
             ]);
 
             return false;
@@ -60,16 +60,22 @@ class WhatsAppNotificationService
 
             Log::warning('WhatsApp notification failed.', [
                 'status' => $response->status(),
-                'body' => $response->body(),
-                'phone' => $to,
+                'phone' => $this->maskPhone($to),
             ]);
         } catch (\Throwable $exception) {
             Log::error('WhatsApp notification error.', [
                 'error' => $exception->getMessage(),
-                'phone' => $to,
+                'phone' => $this->maskPhone($to),
             ]);
         }
 
         return false;
+    }
+
+    private function maskPhone(string $phone): string
+    {
+        $digits = preg_replace('/\D/', '', $phone);
+
+        return '***'.substr($digits, -4);
     }
 }

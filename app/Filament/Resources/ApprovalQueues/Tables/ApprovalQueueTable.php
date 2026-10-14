@@ -137,6 +137,12 @@ class ApprovalQueueTable
             ->modalWidth(Width::FiveExtraLarge)
             ->modalSubmitAction(false)
             ->modalCancelActionLabel('Close')
+            ->visible(function (ApprovalRequest $record): bool {
+                $user = auth()->user();
+
+                return $user instanceof User
+                    && ((int) $record->submitted_by === $user->id || static::adapter($record)->canView($record, $user));
+            })
             ->infolist(fn (ApprovalRequest $record): array => ApprovalQueueDetailsSchema::make($record, static::adapter($record)));
     }
 

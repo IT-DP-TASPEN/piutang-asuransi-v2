@@ -118,6 +118,14 @@ class ExecuteReceivablePaymentRequestAction
 
     private function validateDebtorSavingBeforeGl(ReceivablePaymentRequest $request, User $user): ?ReceivablePaymentRequest
     {
+        // The approver approved the account captured at submission; never debit a different one.
+        $submitted = trim((string) $request->saving_account_number);
+        $current = trim((string) $request->insuranceReceivable->saving_account_for_loan_repayment);
+
+        if ($submitted !== $current) {
+            return $this->markValidationFailed($request, "Debtor saving account changed since submission ({$submitted} to {$current}). Reject this request and submit a new one.");
+        }
+
         try {
             $snapshot = $this->savingAccountValidator->handle(
                 $request->insuranceReceivable,
@@ -134,13 +142,8 @@ class ExecuteReceivablePaymentRequestAction
                 ->whereKey($request->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
-            $receivable = $locked->insuranceReceivable()
-                ->withTrashed()
-                ->lockForUpdate()
-                ->firstOrFail();
 
             $locked->forceFill([
-                'saving_account_number' => trim((string) $receivable->saving_account_for_loan_repayment),
                 'saving_account_snapshot' => $snapshot,
                 'status' => ReceivablePaymentRequest::STATUS_SUBMITTED,
                 'last_error_message' => null,

@@ -30,21 +30,24 @@ class CreateAndSubmitClaimStatusChangeFromReceivableAction
             ]);
         }
 
-        if ($receivable->claimStatusChangeRequests()
-            ->whereIn('status', [
-                ClaimStatusChangeRequest::STATUS_DRAFT,
-                ClaimStatusChangeRequest::STATUS_SUBMITTED,
-                ClaimStatusChangeRequest::STATUS_RETURNED,
-            ])
-            ->exists()) {
-            throw ValidationException::withMessages([
-                'claim_status' => 'A pending claim status update already exists for this receivable.',
-            ]);
-        }
-
         $this->assertDecisionTarget($data['to_claim_status_id'] ?? null);
 
         return DB::transaction(function () use ($receivable, $user, $data): ClaimStatusChangeRequest {
+            // Lock the receivable so two makers cannot both pass the single-open-request check.
+            $receivable = InsuranceReceivable::query()->whereKey($receivable->getKey())->lockForUpdate()->firstOrFail();
+
+            if ($receivable->claimStatusChangeRequests()
+                ->whereIn('status', [
+                    ClaimStatusChangeRequest::STATUS_DRAFT,
+                    ClaimStatusChangeRequest::STATUS_SUBMITTED,
+                    ClaimStatusChangeRequest::STATUS_RETURNED,
+                ])
+                ->exists()) {
+                throw ValidationException::withMessages([
+                    'claim_status' => 'A pending claim status update already exists for this receivable.',
+                ]);
+            }
+
             $request = $receivable->claimStatusChangeRequests()->create([
                 'from_claim_status_id' => $receivable->claim_status_id,
                 'to_claim_status_id' => $data['to_claim_status_id'] ?? null,

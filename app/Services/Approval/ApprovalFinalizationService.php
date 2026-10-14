@@ -158,7 +158,15 @@ class ApprovalFinalizationService
             return;
         }
 
-        $receivable = $request->insuranceReceivable;
+        $receivable = InsuranceReceivable::query()->whereKey($request->insurance_receivable_id)->lockForUpdate()->firstOrFail();
+
+        // The approver judged a change from from_claim_status_id; refuse if another path changed it since.
+        if ((int) $receivable->claim_status_id !== (int) $request->from_claim_status_id) {
+            throw ValidationException::withMessages([
+                'claim_status' => 'The receivable claim status changed after this request was submitted. Reject it and submit a new request.',
+            ]);
+        }
+
         $fromStatus = $receivable->claimStatus?->code;
 
         $receivable->forceFill([

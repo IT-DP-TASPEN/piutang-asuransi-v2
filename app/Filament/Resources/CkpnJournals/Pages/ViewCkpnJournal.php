@@ -155,7 +155,18 @@ class ViewCkpnJournal extends ViewRecord
                     abort(403);
                 }
 
-                $this->journal()->forceFill(['status' => CkpnJournal::STATUS_GL_TO_GL_QUEUED])->save();
+                // Re-check here and claim the failed status atomically so a double click queues one retry.
+                $queued = $this->canRetryGlToGl() && CkpnJournal::query()
+                    ->whereKey($this->journal()->id)
+                    ->where('status', CkpnJournal::STATUS_GL_TO_GL_FAILED)
+                    ->update(['status' => CkpnJournal::STATUS_GL_TO_GL_QUEUED]) === 1;
+
+                if (! $queued) {
+                    Notification::make()->warning()->title('GL-to-GL cannot be retried right now.')->send();
+
+                    return;
+                }
+
                 ExecuteGlToGlJob::dispatch($this->journal()->id, $user->id)->afterCommit();
                 $this->refreshJournalData();
 

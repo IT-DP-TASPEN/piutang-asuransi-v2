@@ -6,6 +6,7 @@ use App\Models\CkpnWorkpaper;
 use App\Models\CkpnWorkpaperItem;
 use App\Models\GeneratedExport;
 use App\Models\User;
+use App\Support\Export\SafeXlsxRow;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
@@ -110,7 +111,7 @@ class GenerateCkpnWorkpaperItemsExportAction
         $workpaper->items()
             ->orderBy('id')
             ->each(function (CkpnWorkpaperItem $item, int $index) use ($writer, $styles): void {
-                $writer->addRow(Row::fromValuesWithStyles($this->rowValues($item, $index), columnStyles: $styles));
+                $writer->addRow(SafeXlsxRow::fromValues($this->rowValues($item, $index), $styles));
             });
 
         $writer->close();

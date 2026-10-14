@@ -6,6 +6,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Hash;
 
 class UserForm
@@ -38,7 +39,14 @@ class UserForm
                             )
                             ->required(),
                         Select::make('roles')
-                            ->relationship('roles', 'name')
+                            // Only a super_admin may grant super_admin; Filament rejects options outside this query.
+                            ->relationship(
+                                'roles',
+                                'name',
+                                fn (Builder $query) => auth()->user()?->hasRole('super_admin')
+                                    ? $query
+                                    : $query->where('name', '!=', 'super_admin'),
+                            )
                             ->multiple()
                             ->preload()
                             ->searchable(),

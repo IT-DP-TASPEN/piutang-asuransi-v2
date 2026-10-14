@@ -73,15 +73,13 @@ class GenerateCkpnWorkpaperJob implements ShouldQueue
 
     private function markFailed(Throwable $exception): void
     {
-        $workpaper = CkpnWorkpaper::query()->find($this->ckpnWorkpaperId);
-
-        if (! $workpaper instanceof CkpnWorkpaper) {
-            return;
-        }
-
-        $workpaper->forceFill([
-            'status' => CkpnWorkpaper::STATUS_GENERATION_FAILED,
-            'last_error_message' => $exception->getMessage() ?: $exception::class,
-        ])->save();
+        // A late failed() must not knock a workpaper that another run already generated back to failed.
+        CkpnWorkpaper::query()
+            ->whereKey($this->ckpnWorkpaperId)
+            ->whereIn('status', [CkpnWorkpaper::STATUS_GENERATION_QUEUED, CkpnWorkpaper::STATUS_GENERATION_PROCESSING])
+            ->update([
+                'status' => CkpnWorkpaper::STATUS_GENERATION_FAILED,
+                'last_error_message' => $exception->getMessage() ?: $exception::class,
+            ]);
     }
 }

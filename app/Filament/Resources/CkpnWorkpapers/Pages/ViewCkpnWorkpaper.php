@@ -98,10 +98,19 @@ class ViewCkpnWorkpaper extends ViewRecord
                 }
 
                 $workpaper = $this->workpaper();
-                $workpaper->forceFill([
-                    'status' => CkpnWorkpaper::STATUS_GENERATION_QUEUED,
-                    'last_error_message' => null,
-                ])->save();
+                $queued = CkpnWorkpaper::query()
+                    ->whereKey($workpaper->id)
+                    ->where('status', CkpnWorkpaper::STATUS_GENERATION_FAILED)
+                    ->update([
+                        'status' => CkpnWorkpaper::STATUS_GENERATION_QUEUED,
+                        'last_error_message' => null,
+                    ]) === 1;
+
+                if (! $queued) {
+                    Notification::make()->warning()->title('CKPN generation is no longer failed.')->send();
+
+                    return;
+                }
 
                 GenerateCkpnWorkpaperJob::dispatch($workpaper->id)->afterCommit();
                 $this->refreshWorkpaperData();
@@ -313,7 +322,18 @@ class ViewCkpnWorkpaper extends ViewRecord
                     return;
                 }
 
-                $journal->forceFill(['status' => CkpnJournal::STATUS_GL_TO_GL_QUEUED])->save();
+                // Re-check here and claim the failed status atomically so a double click queues one retry.
+                $queued = $this->canRetryGlToGl() && CkpnJournal::query()
+                    ->whereKey($journal->id)
+                    ->where('status', CkpnJournal::STATUS_GL_TO_GL_FAILED)
+                    ->update(['status' => CkpnJournal::STATUS_GL_TO_GL_QUEUED]) === 1;
+
+                if (! $queued) {
+                    Notification::make()->warning()->title('GL-to-GL cannot be retried right now.')->send();
+
+                    return;
+                }
+
                 ExecuteGlToGlJob::dispatch($journal->id, $user->id)->afterCommit();
                 $this->refreshWorkpaperData();
 
