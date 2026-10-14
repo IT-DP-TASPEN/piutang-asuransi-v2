@@ -298,13 +298,9 @@ class ExecuteEarlyTerminationRepaymentTopUpAction
 
     private function isUnknownResult(array $result): bool
     {
-        if ($result['status'] === null) {
-            return true;
-        }
-
-        $message = strtolower((string) $result['error_message']);
-
-        return str_contains($message, 'timeout') || str_contains($message, 'timed out');
+        // Core posts only on 00 and every definite rejection carries a non-00 responseCode;
+        // without one (5xx, empty body, transport error) the posting may have been applied.
+        return $result['response_code'] === null || $result['error_message'] !== null;
     }
 
     private function isUniqueConstraintViolation(QueryException $exception): bool

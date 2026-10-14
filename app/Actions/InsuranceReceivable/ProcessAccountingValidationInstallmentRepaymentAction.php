@@ -813,8 +813,9 @@ class ProcessAccountingValidationInstallmentRepaymentAction
 
     private function isUnknownResult(array $result): bool
     {
-        return $result['error_message'] !== null
-            || ($result['status'] === null && $result['response_code'] === null);
+        // Core posts only on 00 and every definite rejection carries a non-00 responseCode;
+        // without one (5xx, empty body, transport error) the posting may have been applied.
+        return $result['response_code'] === null || $result['error_message'] !== null;
     }
 
     private function resultMessage(array $result, string $fallback): string

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Jobs\RunKolekRpaJob;
 use Database\Factories\InsuranceReceivableFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -234,6 +235,17 @@ class InsuranceReceivable extends Model
                 self::WORKFLOW_STATUS_DRAFT,
                 self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
             ], true) && ! $this->isTerminal();
+    }
+
+    /**
+     * The OPER RPA remembers the pre-OPER account for this loan, so the loan number is fixed once it ran.
+     */
+    public function hasOperRpaRun(): bool
+    {
+        $operation = RunKolekRpaJob::OPERATION_OPER_ACCOUNT;
+
+        return filled($this->original_saving_account_for_loan_repayment)
+            || $this->stageLogs()->whereIn('event', ["{$operation}_rpa_succeeded", "{$operation}_rpa_failed"])->exists();
     }
 
     public function canRetryInquiry(): bool

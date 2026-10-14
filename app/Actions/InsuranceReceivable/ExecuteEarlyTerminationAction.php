@@ -68,9 +68,7 @@ class ExecuteEarlyTerminationAction
                     return $latest;
                 }
 
-                if ($latest->status === EarlyTerminationTransaction::STATUS_UNKNOWN_TIMEOUT
-                    || ($latest->resolution_status === EarlyTerminationTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED
-                        && $latest->resolution_outcome !== EarlyTerminationTransaction::RESOLUTION_OUTCOME_NOT_POSTED)) {
+                if (! $latest->canRetry()) {
                     throw ValidationException::withMessages([
                         'early_termination' => 'Previous Early Termination attempt requires reconciliation before retry.',
                     ]);
@@ -156,10 +154,7 @@ class ExecuteEarlyTerminationAction
 
                 $latest = $attempts->sortByDesc('id')->first();
 
-                if ($latest instanceof EarlyTerminationTransaction
-                    && ($latest->status === EarlyTerminationTransaction::STATUS_UNKNOWN_TIMEOUT
-                        || ($latest->resolution_status === EarlyTerminationTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED
-                            && $latest->resolution_outcome !== EarlyTerminationTransaction::RESOLUTION_OUTCOME_NOT_POSTED))) {
+                if ($latest instanceof EarlyTerminationTransaction && ! $latest->canRetry()) {
                     throw ValidationException::withMessages([
                         'early_termination' => 'Previous Early Termination attempt requires reconciliation before retry.',
                     ]);
@@ -263,7 +258,9 @@ class ExecuteEarlyTerminationAction
 
     private function isUnknownResult(array $result): bool
     {
-        return $result['status'] === null || $result['error_message'] !== null;
+        // Core posts only on 00 and every definite rejection carries a non-00 responseCode;
+        // without one (5xx, empty body, transport error) the posting may have been applied.
+        return $result['response_code'] === null || $result['error_message'] !== null;
     }
 
     private function isUniqueConstraintViolation(QueryException $exception): bool

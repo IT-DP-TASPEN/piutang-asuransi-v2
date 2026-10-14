@@ -372,7 +372,7 @@ class EarlyTerminationRepaymentPreflightTest extends TestCase
                 ->push($this->balanceResponse('0'))
                 ->push($this->balanceResponse('1000.00')),
             'http://core.test/trx/transfer/gl-to-gl' => Http::sequence()
-                ->push(['unexpected' => 'timeout'])
+                ->push(['responseCode' => '05', 'unexpected' => 'timeout'])
                 ->push([
                     'responseCode' => '00',
                     'description' => 'Top up success',

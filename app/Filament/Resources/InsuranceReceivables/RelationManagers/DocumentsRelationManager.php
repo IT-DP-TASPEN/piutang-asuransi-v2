@@ -104,6 +104,7 @@ class DocumentsRelationManager extends RelationManager
                             ->disk(InsuranceReceivable::DOCUMENT_DISK)
                             ->directory('insurance-receivable-documents')
                             ->acceptedFileTypes(['application/pdf'])
+                            ->preventFilePathTampering()
                             ->storeFileNamesIn('original_file_name')
                             ->required(),
                     ])

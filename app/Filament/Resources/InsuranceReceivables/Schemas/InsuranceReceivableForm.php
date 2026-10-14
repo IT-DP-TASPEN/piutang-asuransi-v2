@@ -22,6 +22,10 @@ class InsuranceReceivableForm
                     ->schema([
                         TextInput::make('loan_account_number')
                             ->label('Loan account number')
+                            ->disabled(fn (?InsuranceReceivable $record): bool => $record?->hasOperRpaRun() ?? false)
+                            ->helperText(fn (?InsuranceReceivable $record): ?string => $record?->hasOperRpaRun()
+                                ? 'Locked: the OPER repayment account RPA already ran for this loan.'
+                                : null)
                             ->required()
                             ->maxLength(255),
                         TextInput::make('cif_no')
@@ -47,8 +51,7 @@ class InsuranceReceivableForm
                                 ->where('code', ClaimStatus::DEFAULT_CODE)
                                 ->value('id'))
                             ->disabled()
-                            ->dehydrated()
-                            ->required(),
+                            ->dehydrated(false),
                     ]),
                 Section::make('Inquiry snapshot')
                     ->inlineLabel()

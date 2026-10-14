@@ -24,7 +24,6 @@ use App\Models\GlToGlTransaction;
 use App\Models\User;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
-use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -40,9 +39,6 @@ class ViewCkpnWorkpaper extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
-            EditAction::make()
-                ->visible(fn (): bool => $this->isEditable()
-                    && (auth()->user()?->can('update', $this->workpaper()) ?? false)),
             ActionGroup::make([
                 $this->retryGenerationAction(),
                 $this->recalculateAction(),
@@ -463,14 +459,6 @@ class ViewCkpnWorkpaper extends ViewRecord
 
         return $journal instanceof CkpnJournal
             && (auth()->user()?->can('executeGlToGl', $journal) ?? false);
-    }
-
-    private function isEditable(): bool
-    {
-        return in_array($this->workpaper()->status, [
-            CkpnWorkpaper::STATUS_DRAFT,
-            CkpnWorkpaper::STATUS_RETURNED,
-        ], true);
     }
 
     private function latestFailedGlJournal(): ?CkpnJournal

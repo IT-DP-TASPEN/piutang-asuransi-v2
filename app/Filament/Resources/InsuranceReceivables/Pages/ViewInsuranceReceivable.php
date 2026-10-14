@@ -509,8 +509,10 @@ class ViewInsuranceReceivable extends ViewRecord
                 Textarea::make('reason')->maxLength(65535),
                 FileUpload::make('supporting_document_path')
                     ->label('Supporting document')
-                    ->disk('public')
-                    ->directory('claim-status-change-documents'),
+                    ->disk('local')
+                    ->directory('claim-status-change-documents')
+                    ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png'])
+                    ->preventFilePathTampering(),
             ])
             ->action(function (array $data): void {
                 $user = auth()->user();

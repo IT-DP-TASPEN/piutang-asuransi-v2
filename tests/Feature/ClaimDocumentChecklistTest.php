@@ -124,14 +124,14 @@ class ClaimDocumentChecklistTest extends TestCase
         $receivable = $this->receivableFor('TASPEN LIFE', ['death_document_condition' => 'hospital']);
         $type = ClaimDocumentType::query()->where('code', 'insurance_certificate_copy')->firstOrFail();
 
-        app(StoreClaimDocumentAction::class)->handle($receivable, $type->id, 'claims/first.pdf', 'first.pdf', $user);
-        app(StoreClaimDocumentAction::class)->handle($receivable->refresh(), $type->id, 'claims/replacement.pdf', 'replacement.pdf', $user);
+        app(StoreClaimDocumentAction::class)->handle($receivable, $type->id, 'insurance-receivable-documents/first.pdf', 'first.pdf', $user);
+        app(StoreClaimDocumentAction::class)->handle($receivable->refresh(), $type->id, 'insurance-receivable-documents/replacement.pdf', 'replacement.pdf', $user);
 
         $this->assertSame(1, $receivable->documents()->where('claim_document_type_id', $type->id)->count());
         $this->assertDatabaseHas('insurance_receivable_documents', [
             'insurance_receivable_id' => $receivable->id,
             'claim_document_type_id' => $type->id,
-            'file_path' => 'claims/replacement.pdf',
+            'file_path' => 'insurance-receivable-documents/replacement.pdf',
             'original_file_name' => 'replacement.pdf',
         ]);
         $this->assertSame(1, app(ResolveClaimDocumentChecklist::class)->handle($receivable->refresh())->uploadedCount);

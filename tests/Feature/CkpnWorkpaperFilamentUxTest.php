@@ -6,7 +6,6 @@ use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
 use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
 use App\Filament\Resources\CkpnWorkpapers\CkpnWorkpaperResource;
 use App\Filament\Resources\CkpnWorkpapers\Pages\CreateCkpnWorkpaper;
-use App\Filament\Resources\CkpnWorkpapers\Pages\EditCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ListCkpnWorkpapers;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ViewCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\RelationManagers\ItemsRelationManager;
@@ -315,7 +314,7 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
         Queue::assertNotPushed(GenerateCkpnWorkpaperJob::class);
     }
 
-    public function test_list_page_uses_view_as_primary_action_and_hides_edit_when_not_editable(): void
+    public function test_list_page_uses_view_as_primary_action_and_has_no_edit(): void
     {
         $this->seedDependencies();
         $superAdmin = $this->userWithRole('super_admin', '000');
@@ -326,12 +325,13 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
 
         Livewire::actingAs($superAdmin)
             ->test(ListCkpnWorkpapers::class)
-            ->assertTableActionsExistInOrder(['view', 'edit', 'delete'])
+            ->assertTableActionsExistInOrder(['view', 'delete'])
+            ->assertTableActionDoesNotExist('edit')
             ->assertTableActionVisible('view', $draft)
-            ->assertTableActionVisible('edit', $draft)
-            ->assertTableActionHidden('edit', $submitted)
-            ->assertTableActionHidden('edit', $approved)
-            ->assertTableActionHidden('edit', $locked);
+            ->assertTableActionVisible('delete', $draft)
+            ->assertTableActionHidden('delete', $submitted)
+            ->assertTableActionHidden('delete', $approved)
+            ->assertTableActionHidden('delete', $locked);
     }
 
     public function test_view_page_exposes_workpaper_actions_by_status_and_permission(): void
@@ -445,26 +445,6 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
             ->test(ViewCkpnWorkpaper::class, ['record' => $workpaper->id])
             ->assertSee('System')
             ->assertActionVisible('retryGlToGl');
-    }
-
-    public function test_edit_page_does_not_expose_workflow_or_operational_actions(): void
-    {
-        $this->seedDependencies();
-        $maker = $this->userWithRole('accounting_maker', '000');
-        $workpaper = $this->workpaper(CkpnWorkpaper::STATUS_DRAFT);
-
-        Livewire::actingAs($maker)
-            ->test(EditCkpnWorkpaper::class, ['record' => $workpaper->id])
-            ->assertActionDoesNotExist('generate')
-            ->assertActionDoesNotExist('retryGeneration')
-            ->assertActionDoesNotExist('recalculate')
-            ->assertActionDoesNotExist('submit')
-            ->assertActionDoesNotExist('approve')
-            ->assertActionDoesNotExist('reject')
-            ->assertActionDoesNotExist('returnRequest')
-            ->assertActionDoesNotExist('createJournal')
-            ->assertActionDoesNotExist('generateSakepExport')
-            ->assertActionDoesNotExist('retryGlToGl');
     }
 
     public function test_duplicate_ckpn_journal_creation_is_blocked(): void

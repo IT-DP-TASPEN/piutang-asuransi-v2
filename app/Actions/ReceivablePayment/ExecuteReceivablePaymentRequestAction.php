@@ -186,9 +186,7 @@ class ExecuteReceivablePaymentRequestAction
                 $validationPayload = $this->payloadBuilder->build($locked, '__REFERENCE__', '__REFERENCE__');
 
                 if ($latest instanceof GlToGlTransaction) {
-                    if ($latest->status === GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT
-                        || ($latest->resolution_status === GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED
-                            && $latest->resolution_outcome !== GlToGlTransaction::RESOLUTION_OUTCOME_NOT_POSTED)) {
+                    if (! $latest->isSatisfied() && ! $latest->canRetry()) {
                         throw ValidationException::withMessages([
                             'gl_to_gl_transaction' => 'Receivable payment GL-to-GL requires reconciliation before retry.',
                         ]);
@@ -525,7 +523,9 @@ class ExecuteReceivablePaymentRequestAction
 
     private function isUnknownResult(array $result): bool
     {
-        return $result['status'] === null || $result['error_message'] !== null;
+        // Core posts only on 00 and every definite rejection carries a non-00 responseCode;
+        // without one (5xx, empty body, transport error) the posting may have been applied.
+        return $result['response_code'] === null || $result['error_message'] !== null;
     }
 
     private function validationMessage(ValidationException $exception): string

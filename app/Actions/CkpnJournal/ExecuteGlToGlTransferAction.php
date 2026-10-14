@@ -57,9 +57,7 @@ class ExecuteGlToGlTransferAction
                     return $latest;
                 }
 
-                if ($latest->status === GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT
-                    || ($latest->resolution_status === GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED
-                        && $latest->resolution_outcome !== GlToGlTransaction::RESOLUTION_OUTCOME_NOT_POSTED)) {
+                if (! $latest->isSatisfied() && ! $latest->canRetry()) {
                     throw ValidationException::withMessages([
                         'gl_to_gl_transaction' => 'Previous CKPN GL-to-GL attempt requires reconciliation before retry.',
                     ]);
@@ -137,10 +135,7 @@ class ExecuteGlToGlTransferAction
 
                 $latest = $attempts->sortByDesc('id')->first();
 
-                if ($latest instanceof GlToGlTransaction
-                    && ($latest->status === GlToGlTransaction::STATUS_UNKNOWN_TIMEOUT
-                        || ($latest->resolution_status === GlToGlTransaction::RESOLUTION_STATUS_RECONCILIATION_REQUIRED
-                            && $latest->resolution_outcome !== GlToGlTransaction::RESOLUTION_OUTCOME_NOT_POSTED))) {
+                if ($latest instanceof GlToGlTransaction && ! $latest->isSatisfied() && ! $latest->canRetry()) {
                     throw ValidationException::withMessages([
                         'gl_to_gl_transaction' => 'Previous CKPN GL-to-GL attempt requires reconciliation before retry.',
                     ]);
@@ -203,7 +198,9 @@ class ExecuteGlToGlTransferAction
 
     private function isUnknownResult(array $result): bool
     {
-        return $result['status'] === null || $result['error_message'] !== null;
+        // Core posts only on 00 and every definite rejection carries a non-00 responseCode;
+        // without one (5xx, empty body, transport error) the posting may have been applied.
+        return $result['response_code'] === null || $result['error_message'] !== null;
     }
 
     private function isUniqueConstraintViolation(QueryException $exception): bool

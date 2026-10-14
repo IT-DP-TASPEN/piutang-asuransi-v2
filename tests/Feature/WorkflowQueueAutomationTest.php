@@ -472,7 +472,7 @@ class WorkflowQueueAutomationTest extends TestCase
 
         Http::fake([
             'http://core.test/trx/transfer/gl-to-gl' => Http::sequence()
-                ->push(['unexpected' => ['reason' => 'temporary']])
+                ->push(['responseCode' => '05', 'unexpected' => ['reason' => 'temporary']])
                 ->push(['responseCode' => '00', 'description' => 'Success', 'unexpected' => ['voucher' => 'V-1']]),
         ]);
 

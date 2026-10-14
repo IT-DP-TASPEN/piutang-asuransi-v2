@@ -28,6 +28,15 @@ class StoreClaimDocumentAction
             ]);
         }
 
+        // The path comes from the client; it must be a fresh upload, never an existing file.
+        if (! str_starts_with($filePath, 'insurance-receivable-documents/')
+            || str_contains($filePath, '..')
+            || InsuranceReceivableDocument::query()->where('file_path', $filePath)->exists()) {
+            throw ValidationException::withMessages([
+                'file_path' => 'Invalid claim document file.',
+            ]);
+        }
+
         $item = $this->checklistResolver
             ->handle($insuranceReceivable)
             ->itemByDocumentTypeId($claimDocumentTypeId);

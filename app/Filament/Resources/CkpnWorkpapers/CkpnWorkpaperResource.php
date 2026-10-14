@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\CkpnWorkpapers;
 
 use App\Filament\Resources\CkpnWorkpapers\Pages\CreateCkpnWorkpaper;
-use App\Filament\Resources\CkpnWorkpapers\Pages\EditCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ListCkpnWorkpapers;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ViewCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\RelationManagers\AdjustmentsRelationManager;
@@ -84,7 +83,6 @@ class CkpnWorkpaperResource extends Resource
             'index' => ListCkpnWorkpapers::route('/'),
             'create' => CreateCkpnWorkpaper::route('/create'),
             'view' => ViewCkpnWorkpaper::route('/{record}'),
-            'edit' => EditCkpnWorkpaper::route('/{record}/edit'),
         ];
     }
 }

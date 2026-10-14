@@ -58,7 +58,27 @@ class ApprovalQueueResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()
+        $query = parent::getEloquentQuery();
+        $user = auth()->user();
+
+        if (! $user instanceof User) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        // Tabs only narrow this; an unknown tab key falls back to this base query.
+        if (! static::canViewAllPending($user)) {
+            $query->where(function (Builder $query) use ($user): void {
+                $query
+                    ->where('submitted_by', $user->id)
+                    ->orWhereHas('steps', fn (Builder $query) => $query->where('acted_by', $user->id))
+                    ->orWhere(function (Builder $query) use ($user): void {
+                        $query->whereIn('workflow_code', app(ApprovalQueueWorkflowRegistry::class)->supportedWorkflowCodes());
+                        static::scopeToVisibleBranches($query, $user);
+                    });
+            });
+        }
+
+        return $query
             ->with([
                 'submitter',
                 'steps.actor',
@@ -226,21 +246,9 @@ class ApprovalQueueResource extends Resource
 
     public static function scopeToHistory(Builder $query, User $user): Builder
     {
-        $query->whereIn('status', static::terminalStatuses());
-
-        if (! static::canViewAllPending($user)) {
-            $query->where(function (Builder $query) use ($user): void {
-                $query
-                    ->where('submitted_by', $user->id)
-                    ->orWhereHas('steps', fn (Builder $query) => $query->where('acted_by', $user->id))
-                    ->orWhere(function (Builder $query) use ($user): void {
-                        $query->whereIn('workflow_code', app(ApprovalQueueWorkflowRegistry::class)->supportedWorkflowCodes());
-                        static::scopeToVisibleBranches($query, $user);
-                    });
-            });
-        }
-
+        // Visibility (own, acted on, or visible branch) is enforced by getEloquentQuery().
         return $query
+            ->whereIn('status', static::terminalStatuses())
             ->orderByDesc('final_approved_at')
             ->orderByDesc('updated_at')
             ->orderByDesc('id');

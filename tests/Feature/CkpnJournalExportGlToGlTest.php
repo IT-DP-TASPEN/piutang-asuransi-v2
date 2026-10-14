@@ -57,6 +57,7 @@ class CkpnJournalExportGlToGlTest extends TestCase
         Http::fake([
             'http://core.test/trx/transfer/gl-to-gl' => Http::sequence()
                 ->push([
+                    'responseCode' => '05',
                     'result' => 'temporary_failure',
                     'payload' => ['kept' => true],
                 ])

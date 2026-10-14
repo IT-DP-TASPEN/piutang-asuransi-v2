@@ -29,6 +29,11 @@ class DatabaseSeeder extends Seeder
             RolePermissionSeeder::class,
         ]);
 
+        // Demo accounts all use the password 'password'; never create them outside local/testing.
+        if (! app()->environment('local', 'testing')) {
+            return;
+        }
+
         $branchOffices = BranchOffice::query()
             ->get()
             ->keyBy('branch_code');
@@ -45,15 +50,18 @@ class DatabaseSeeder extends Seeder
             ?string $name = null,
             ?string $username = null,
         ): User {
-            $user = User::query()->updateOrCreate(
-                ['email' => $email],
-                [
-                    'branch_office_id' => $branchOffice->id,
-                    'name' => $name ?? Str::headline($role),
-                    'username' => $username ?? $role,
-                    'password' => 'password',
-                ],
-            );
+            $user = User::query()->firstOrNew(['email' => $email])->fill([
+                'branch_office_id' => $branchOffice->id,
+                'name' => $name ?? Str::headline($role),
+                'username' => $username ?? $role,
+            ]);
+
+            // Reseeding must not reset a password that was changed.
+            if (! $user->exists) {
+                $user->password = 'password';
+            }
+
+            $user->save();
 
             $user->syncRoles([$role]);
 

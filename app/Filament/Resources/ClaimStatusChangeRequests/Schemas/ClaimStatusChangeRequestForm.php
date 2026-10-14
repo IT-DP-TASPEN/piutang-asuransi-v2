@@ -62,8 +62,10 @@ class ClaimStatusChangeRequestForm
                             ->maxLength(65535),
                         FileUpload::make('supporting_document_path')
                             ->label('Supporting document')
-                            ->disk('public')
+                            ->disk('local')
                             ->directory('claim-status-change-documents')
+                            ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png'])
+                            ->preventFilePathTampering()
                             ->columnSpanFull(),
                     ]),
             ]);
