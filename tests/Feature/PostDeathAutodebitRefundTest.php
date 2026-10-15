@@ -104,7 +104,7 @@ class PostDeathAutodebitRefundTest extends TestCase
 
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED, $result->workflow_status);
         $this->assertSame([GlToGlTransaction::STATUS_FAILED, GlToGlTransaction::STATUS_SUCCESS], $attempts->pluck('status')->all());
-        $this->assertNotSame($attempts[0]->reference_number, $attempts[1]->reference_number);
+        $this->assertSame(["MDRFD{$receivable->id}-1001", "MDRFD{$receivable->id}-2002"], $attempts->pluck('reference_number')->all());
     }
 
     public function test_reversal_after_death_blocks_without_posting(): void

@@ -91,7 +91,6 @@ class ExecuteEarlyTerminationRepaymentTopUpAction
             balanceInquiry: null,
             destAccount: $destAccount,
             narrative: trim("Refund Angsuran MD {$insuranceReceivable->loan_account_number} {$insuranceReceivable->customer_name}"),
-            referenceKey: $journalNumber,
         );
     }
 
@@ -105,7 +104,6 @@ class ExecuteEarlyTerminationRepaymentTopUpAction
         ?EarlyTerminationBalanceInquiry $balanceInquiry,
         ?string $destAccount = null,
         ?string $narrative = null,
-        ?string $referenceKey = null,
     ): GlToGlTransaction {
         $lock = Cache::lock("core-operation:{$idempotencyKey}", 120);
 
@@ -160,7 +158,6 @@ class ExecuteEarlyTerminationRepaymentTopUpAction
                 balanceInquiry: $balanceInquiry,
                 destAccount: $destAccount,
                 narrative: $narrative,
-                referenceKey: $referenceKey,
             );
 
             $payload = $transaction->request_payload;
@@ -225,10 +222,9 @@ class ExecuteEarlyTerminationRepaymentTopUpAction
         ?EarlyTerminationBalanceInquiry $balanceInquiry,
         ?string $destAccount,
         ?string $narrative,
-        ?string $referenceKey,
     ): GlToGlTransaction {
         try {
-            return DB::transaction(function () use ($insuranceReceivable, $amount, $purpose, $trxType, $idempotencyKey, $user, $balanceInquiry, $destAccount, $narrative, $referenceKey): GlToGlTransaction {
+            return DB::transaction(function () use ($insuranceReceivable, $amount, $purpose, $trxType, $idempotencyKey, $user, $balanceInquiry, $destAccount, $narrative): GlToGlTransaction {
                 $attempts = $this->transactionQuery($insuranceReceivable, $purpose, $idempotencyKey)
                     ->lockForUpdate()
                     ->get();
@@ -246,7 +242,7 @@ class ExecuteEarlyTerminationRepaymentTopUpAction
                 }
 
                 $attemptNo = ((int) $attempts->max('attempt_no')) + 1;
-                $referenceNumber = $this->referenceFor($purpose, $insuranceReceivable->id, $attemptNo, $referenceKey);
+                $referenceNumber = $this->referenceFor($purpose, $insuranceReceivable->id, $attemptNo);
                 $reservation = $this->referenceRegistry->reserve(
                     reference: $referenceNumber,
                     serviceAction: 'gl_to_gl:'.$purpose,
@@ -319,11 +315,16 @@ class ExecuteEarlyTerminationRepaymentTopUpAction
         return $this->transactionQuery($insuranceReceivable, $purpose, $idempotencyKey)->first();
     }
 
-    private function referenceFor(string $purpose, int $insuranceReceivableId, int $attemptNo, ?string $referenceKey): string
+    private function referenceFor(string $purpose, int $insuranceReceivableId, int $attemptNo): string
     {
         return match ($purpose) {
             GlToGlTransaction::PURPOSE_EARLY_TERMINATION_FLAT_SPREAD_TOP_UP => $this->referenceGenerator->earlyTerminationFlatSpread($insuranceReceivableId, $attemptNo),
-            GlToGlTransaction::PURPOSE_POST_DEATH_AUTODEBIT_REFUND => $this->referenceGenerator->postDeathAutodebitRefund($insuranceReceivableId, (string) $referenceKey, $attemptNo),
+            GlToGlTransaction::PURPOSE_POST_DEATH_AUTODEBIT_REFUND => $this->referenceGenerator->postDeathAutodebitRefund(
+                $insuranceReceivableId,
+                // Every refund attempt of the receivable takes the next number, so references stay short and unique.
+                GlToGlTransaction::query()->where('purpose', $purpose)->where('insurance_receivable_id', $insuranceReceivableId)->count() + 1,
+                $attemptNo,
+            ),
             default => $this->referenceGenerator->earlyTerminationPiutang($insuranceReceivableId, $attemptNo),
         };
     }
