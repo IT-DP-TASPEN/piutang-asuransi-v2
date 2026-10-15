@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Actions\CkpnJournal\CreateCkpnJournalFromWorkpaperAction;
 use App\Actions\CkpnWorkpaper\SubmitCkpnWorkpaperAction;
 use App\Filament\Resources\CkpnWorkpapers\CkpnWorkpaperResource;
-use App\Filament\Resources\CkpnWorkpapers\Pages\CreateCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ListCkpnWorkpapers;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ViewCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\RelationManagers\ItemsRelationManager;
@@ -39,26 +38,26 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
         $this->assertContains(ItemsRelationManager::class, CkpnWorkpaperResource::getRelations());
     }
 
-    public function test_create_page_dispatches_generation_and_redirects_to_view(): void
+    public function test_list_page_creates_workpapers_for_all_branches_only(): void
     {
         $this->seedDependencies();
         Queue::fake();
         $maker = $this->userWithRole('accounting_maker', '000');
-        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
 
-        $component = Livewire::actingAs($maker)
-            ->test(CreateCkpnWorkpaper::class)
-            ->assertSee('Tanggal Cutoff')
-            ->set('data.period', '2026-04-30')
-            ->set('data.branch_office_id', $branch->id)
-            ->call('create');
+        Livewire::actingAs($maker)
+            ->test(ListCkpnWorkpapers::class)
+            ->assertActionDoesNotExist('create')
+            ->callAction('createAllBranchWorkpapers', ['period' => '2026-04-30'])
+            ->assertNotified();
 
-        $workpaper = CkpnWorkpaper::query()->sole();
+        $workpapers = CkpnWorkpaper::query()->get();
 
-        $this->assertSame('2026-04-30', $workpaper->period->toDateString());
-        $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
-        Queue::assertPushed(GenerateCkpnWorkpaperJob::class, fn (GenerateCkpnWorkpaperJob $job): bool => $job->ckpnWorkpaperId === $workpaper->id);
-        $component->assertRedirect(CkpnWorkpaperResource::getUrl('view', ['record' => $workpaper]));
+        $this->assertNotEmpty($workpapers);
+        $this->assertTrue($workpapers->every(fn (CkpnWorkpaper $workpaper): bool => $workpaper->period->toDateString() === '2026-04-30'
+            && $workpaper->status === CkpnWorkpaper::STATUS_GENERATION_QUEUED
+            && $workpaper->branch_office_id !== null));
+        Queue::assertPushed(GenerateCkpnWorkpaperJob::class, $workpapers->count());
+        $this->assertArrayNotHasKey('create', CkpnWorkpaperResource::getPages());
     }
 
     public function test_workpaper_pages_label_period_as_tanggal_cutoff(): void
@@ -289,7 +288,7 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
         Queue::assertNotPushed(GenerateCkpnWorkpaperJob::class);
     }
 
-    public function test_create_page_notifies_when_pending_receivables_block_workpaper_creation(): void
+    public function test_bulk_create_notifies_when_pending_receivables_block_workpaper_creation(): void
     {
         $this->seedDependencies();
         Queue::fake();
@@ -303,11 +302,8 @@ class CkpnWorkpaperFilamentUxTest extends TestCase
         ]);
 
         Livewire::actingAs($maker)
-            ->test(CreateCkpnWorkpaper::class)
-            ->set('data.period', '2026-04-30')
-            ->set('data.branch_office_id', $branch->id)
-            ->call('create')
-            ->assertNoRedirect()
+            ->test(ListCkpnWorkpapers::class)
+            ->callAction('createAllBranchWorkpapers', ['period' => '2026-04-30'])
             ->assertNotified('Cannot create CKPN Workpaper because 1 Insurance Receivables are still pending.');
 
         $this->assertSame(0, CkpnWorkpaper::query()->count());

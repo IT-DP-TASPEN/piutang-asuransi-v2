@@ -56,6 +56,12 @@ class StoreClaimDocumentAction
             ]);
         }
 
+        if (! $insuranceReceivable->allowsClaimDocumentUpload($item->status)) {
+            throw ValidationException::withMessages([
+                'document' => 'Claim documents are locked at this stage. After submission only missing documents can be added, until the cover letter is generated.',
+            ]);
+        }
+
         return $insuranceReceivable->documents()->updateOrCreate(
             ['claim_document_type_id' => $claimDocumentTypeId],
             [

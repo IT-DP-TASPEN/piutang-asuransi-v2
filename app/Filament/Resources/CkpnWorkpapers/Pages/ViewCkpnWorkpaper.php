@@ -131,7 +131,17 @@ class ViewCkpnWorkpaper extends ViewRecord
                     abort(403);
                 }
 
-                app(RecalculateCkpnWorkpaperAction::class)->handle($this->workpaper(), $user);
+                try {
+                    app(RecalculateCkpnWorkpaperAction::class)->handle($this->workpaper(), $user);
+                } catch (ValidationException $exception) {
+                    Notification::make()
+                        ->danger()
+                        ->title(collect($exception->errors())->flatten()->first() ?: $exception->getMessage())
+                        ->send();
+
+                    return;
+                }
+
                 $this->refreshWorkpaperData();
 
                 Notification::make()->success()->title('CKPN workpaper recalculated')->send();

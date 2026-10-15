@@ -150,9 +150,11 @@ class ViewInsuranceReceivable extends ViewRecord
             ->action(function (array $data): void {
                 $user = auth()->user();
 
-                if ($user instanceof User) {
-                    app(RejectInsuranceReceivableApprovalAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
+                if (! $user instanceof User) {
+                    abort(403);
                 }
+
+                app(RejectInsuranceReceivableApprovalAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
 
                 Notification::make()->success()->title('Approval rejected')->send();
             });
@@ -177,9 +179,11 @@ class ViewInsuranceReceivable extends ViewRecord
             ->action(function (array $data): void {
                 $user = auth()->user();
 
-                if ($user instanceof User) {
-                    app(ReturnInsuranceReceivableApprovalAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
+                if (! $user instanceof User) {
+                    abort(403);
                 }
+
+                app(ReturnInsuranceReceivableApprovalAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
 
                 Notification::make()->success()->title('Approval returned')->send();
             });
@@ -253,9 +257,11 @@ class ViewInsuranceReceivable extends ViewRecord
             ->action(function (): void {
                 $user = auth()->user();
 
-                if ($user instanceof User) {
-                    app(QueueEarlyTerminationAction::class)->handle($this->getRecord(), $user);
+                if (! $user instanceof User) {
+                    abort(403);
                 }
+
+                app(QueueEarlyTerminationAction::class)->handle($this->getRecord(), $user);
 
                 Notification::make()->success()->title('Early termination retry queued')->send();
             });
@@ -276,10 +282,12 @@ class ViewInsuranceReceivable extends ViewRecord
             ->action(function (array $data): void {
                 $user = auth()->user();
 
-                if ($user instanceof User) {
-                    app(RetryInstallmentRepaymentAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
-                    $this->record = $this->getRecord()->refresh();
+                if (! $user instanceof User) {
+                    abort(403);
                 }
+
+                app(RetryInstallmentRepaymentAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
+                $this->record = $this->getRecord()->refresh();
 
                 Notification::make()->success()->title('Installment repayment retried')->send();
             });
@@ -300,10 +308,12 @@ class ViewInsuranceReceivable extends ViewRecord
             ->action(function (array $data): void {
                 $user = auth()->user();
 
-                if ($user instanceof User) {
-                    app(ResolveInstallmentRepaymentAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
-                    $this->record = $this->getRecord()->refresh();
+                if (! $user instanceof User) {
+                    abort(403);
                 }
+
+                app(ResolveInstallmentRepaymentAction::class)->handle($this->getRecord(), $user, $data['notes'] ?? null);
+                $this->record = $this->getRecord()->refresh();
 
                 Notification::make()->success()->title('Installment repayment resolved')->send();
             });
@@ -386,11 +396,13 @@ class ViewInsuranceReceivable extends ViewRecord
             ->action(function (array $data): void {
                 $user = auth()->user();
 
-                if ($user instanceof User) {
-                    app(SubmitManualEarlyTerminationConfirmationAction::class)
-                        ->handle($this->getRecord(), $user, $data['notes'] ?? null);
-                    $this->record = $this->getRecord()->refresh();
+                if (! $user instanceof User) {
+                    abort(403);
                 }
+
+                app(SubmitManualEarlyTerminationConfirmationAction::class)
+                    ->handle($this->getRecord(), $user, $data['notes'] ?? null);
+                $this->record = $this->getRecord()->refresh();
 
                 Notification::make()->success()->title('Manual Early Termination confirmation submitted')->send();
             });
@@ -410,10 +422,12 @@ class ViewInsuranceReceivable extends ViewRecord
             ->action(function (array $data): void {
                 $user = auth()->user();
 
-                if ($user instanceof User) {
-                    app(CancelInsuranceReceivableAction::class)->handle($this->getRecord(), $user, $data['notes']);
-                    $this->record = $this->getRecord()->refresh();
+                if (! $user instanceof User) {
+                    abort(403);
                 }
+
+                app(CancelInsuranceReceivableAction::class)->handle($this->getRecord(), $user, $data['notes']);
+                $this->record = $this->getRecord()->refresh();
 
                 Notification::make()->success()->title('Insurance receivable cancelled')->send();
             });
@@ -517,9 +531,11 @@ class ViewInsuranceReceivable extends ViewRecord
             ->action(function (array $data): void {
                 $user = auth()->user();
 
-                if ($user instanceof User) {
-                    app(CreateAndSubmitClaimStatusChangeFromReceivableAction::class)->handle($this->getRecord(), $user, $data);
+                if (! $user instanceof User) {
+                    abort(403);
                 }
+
+                app(CreateAndSubmitClaimStatusChangeFromReceivableAction::class)->handle($this->getRecord(), $user, $data);
 
                 Notification::make()->success()->title('Claim status update submitted')->send();
             });

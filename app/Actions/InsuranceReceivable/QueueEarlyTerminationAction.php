@@ -22,6 +22,13 @@ class QueueEarlyTerminationAction
         InsuranceReceivable $insuranceReceivable,
         User $user,
     ): InsuranceReceivable {
+        // Callers are the Filament retry button and Accounting Validation finalization; check here too.
+        if (! $user->can('executeEarlyTermination', $insuranceReceivable)) {
+            throw ValidationException::withMessages([
+                'permission' => 'You are not allowed to queue Early Termination for this receivable.',
+            ]);
+        }
+
         return DB::transaction(function () use ($insuranceReceivable, $user): InsuranceReceivable {
             $locked = InsuranceReceivable::query()->lockForUpdate()->findOrFail($insuranceReceivable->id);
             $allowedStatuses = [

@@ -62,24 +62,6 @@ class CkpnWorkpaperReadinessValidator
         ];
     }
 
-    public function assertNoDuplicateWorkpaper(Carbon|string $period, ?int $branchOfficeId): void
-    {
-        $normalizedPeriod = CkpnWorkpaper::normalizePeriod($period)->toDateString();
-        $branchScopeKey = CkpnWorkpaper::branchScopeKeyFor($branchOfficeId);
-
-        $exists = CkpnWorkpaper::query()
-            ->whereDate('period', $normalizedPeriod)
-            ->where('branch_scope_key', $branchScopeKey)
-            ->lockForUpdate()
-            ->exists();
-
-        if ($exists) {
-            throw ValidationException::withMessages([
-                'period' => 'CKPN Workpaper already exists for this cutoff date and branch scope.',
-            ]);
-        }
-    }
-
     /**
      * @param  Collection<int, BranchOffice>  $branches
      */

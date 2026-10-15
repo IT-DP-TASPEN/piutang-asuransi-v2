@@ -7,6 +7,7 @@ use App\Data\CkpnCalculationResult;
 use App\Data\CkpnReceivableCandidate;
 use App\Models\CkpnWorkpaper;
 use App\Services\Ckpn\CkpnCalculationService;
+use App\Services\Ckpn\CkpnWorkpaperReadinessValidator;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +18,7 @@ class GenerateMonthlyCkpnWorkpaperAction
     public function __construct(
         private readonly CkpnCalculationService $calculationService,
         private readonly CollectCurrentReceivableCandidatesAction $collectCurrentReceivableCandidatesAction,
+        private readonly CkpnWorkpaperReadinessValidator $readinessValidator,
     ) {}
 
     public function handle(CkpnWorkpaper $workpaper): CkpnWorkpaper
@@ -43,6 +45,10 @@ class GenerateMonthlyCkpnWorkpaperAction
                     'status' => 'CKPN workpaper cannot be regenerated after adjustments or outputs exist.',
                 ]);
             }
+
+            // Readiness was checked at creation, but data moves before the queued run or a later Recalculate.
+            $this->readinessValidator->assertNoPendingInsuranceReceivables($workpaper->period, $workpaper->branch_office_id);
+            $this->readinessValidator->assertNoPendingClaimStatusUpdates($workpaper->period, $workpaper->branch_office_id);
 
             $workpaper->items()->delete();
 

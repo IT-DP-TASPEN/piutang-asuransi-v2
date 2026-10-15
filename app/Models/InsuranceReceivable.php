@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Data\ClaimDocuments\ClaimDocumentChecklistItem;
 use App\Jobs\RunKolekRpaJob;
 use Database\Factories\InsuranceReceivableFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -235,6 +236,26 @@ class InsuranceReceivable extends Model
                 self::WORKFLOW_STATUS_DRAFT,
                 self::WORKFLOW_STATUS_RETURNED_TO_BRANCH_MAKER,
             ], true) && ! $this->isTerminal();
+    }
+
+    /**
+     * Claim documents: free to upload or replace while the branch maker owns the draft (draft/returned).
+     * After submission approvers have reviewed them, so only a still-missing slot may be filled, and only
+     * until the cover letter (which ships the documents to the insurer) is generated. Terminal: locked.
+     */
+    public function allowsClaimDocumentUpload(string $checklistStatus): bool
+    {
+        if ($this->isEditable()) {
+            return in_array($checklistStatus, [
+                ClaimDocumentChecklistItem::STATUS_MISSING,
+                ClaimDocumentChecklistItem::STATUS_UPLOADED,
+            ], true);
+        }
+
+        return $this->isWorkflowOrigin()
+            && ! $this->isTerminal()
+            && $checklistStatus === ClaimDocumentChecklistItem::STATUS_MISSING
+            && ! $this->insuranceCoverLetters()->exists();
     }
 
     /**

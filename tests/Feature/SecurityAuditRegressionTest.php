@@ -6,6 +6,8 @@ use App\Actions\CkpnJournal\ExecuteGlToGlTransferAction;
 use App\Actions\ClaimStatusChangeRequest\ApproveClaimStatusChangeRequestAction;
 use App\Actions\ClaimStatusChangeRequest\CreateAndSubmitClaimStatusChangeFromReceivableAction;
 use App\Actions\CoreBanking\ResolveCoreTransactionOutcomeAction;
+use App\Actions\InsuranceCoverLetter\GenerateInsuranceCoverLetterAction;
+use App\Actions\InsuranceReceivable\QueueEarlyTerminationAction;
 use App\Actions\InsuranceReceivable\RejectInsuranceReceivableApprovalAction;
 use App\Actions\InsuranceReceivable\StoreClaimDocumentAction;
 use App\Actions\ReceivablePayment\ExecuteReceivablePaymentRequestAction;
@@ -24,6 +26,7 @@ use App\Models\ApprovalRequest;
 use App\Models\BranchOffice;
 use App\Models\CkpnJournal;
 use App\Models\CkpnWorkpaper;
+use App\Models\ClaimDocumentType;
 use App\Models\ClaimStatus;
 use App\Models\GeneratedExport;
 use App\Models\GlToGlTransaction;
@@ -43,6 +46,7 @@ use Database\Seeders\ClaimDocumentSeeder;
 use Database\Seeders\ClaimStatusSeeder;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\InsuranceCompanySeeder;
+use Database\Seeders\InsuranceCoverLetterSettingSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Filament\Actions\Testing\TestAction;
 use Illuminate\Auth\SessionGuard;
@@ -470,6 +474,62 @@ class SecurityAuditRegressionTest extends TestCase
         ]]]);
 
         $this->assertSame(['id' => '0010010000777', 'namanasabah' => '[redacted]', 'nocif' => '[redacted]', 'dataalamat_ktp_alamat1' => '[redacted]'], $result['data']['result']);
+    }
+
+    public function test_queue_early_termination_requires_permission(): void
+    {
+        $receivable = InsuranceReceivable::factory()->create([
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
+            'system_status' => InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PENDING,
+        ]);
+
+        $this->assertValidationBlocked(fn () => app(QueueEarlyTerminationAction::class)->handle($receivable, $this->userWithRole('branch_maker', '001')));
+        $this->assertSame(InsuranceReceivable::SYSTEM_STATUS_EARLY_TERMINATION_PENDING, $receivable->refresh()->system_status);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_claim_documents_lock_by_stage(): void
+    {
+        $this->seed(InsuranceCoverLetterSettingSeeder::class);
+        Storage::fake('local');
+        $maker = $this->userWithRole('branch_maker', '001');
+        $receivable = InsuranceReceivable::factory()->create([
+            'branch_office_id' => $maker->branch_office_id,
+            'insurance_company_id' => InsuranceCompany::query()->where('name', 'TASPEN LIFE')->firstOrFail()->id,
+            'date_of_death' => '2026-01-15',
+            'death_document_condition' => 'hospital',
+            'contract_outstanding_amount' => '1000.00',
+        ]);
+        $certificate = ClaimDocumentType::query()->where('code', 'insurance_certificate_copy')->firstOrFail()->id;
+        $missingType = collect(app(ResolveClaimDocumentChecklist::class)->handle($receivable)->items)
+            ->first(fn ($item) => $item->uploadable && $item->documentTypeId !== $certificate)->documentTypeId;
+        $store = fn (int $type, string $file) => app(StoreClaimDocumentAction::class)
+            ->handle($receivable->refresh(), $type, "insurance-receivable-documents/{$file}.pdf", "{$file}.pdf", $maker);
+
+        // Draft: upload and replace freely.
+        $store($certificate, 'first');
+        $store($certificate, 'replacement');
+
+        // Submitted: an uploaded document is frozen, a missing slot can still be filled.
+        $receivable->forceFill(['workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_SUBMITTED])->saveQuietly();
+        $this->assertValidationBlocked(fn () => $store($certificate, 'late-replacement'));
+        $store($missingType, 'late-missing');
+        $this->assertFalse($maker->can('update', $receivable->documents()->firstOrFail()));
+
+        // Cover letter generated: the set that ships to the insurer is final.
+        $receivable->documents()->where('claim_document_type_id', $missingType)->delete();
+        app(GenerateInsuranceCoverLetterAction::class)->handle($receivable->refresh(), $maker);
+        $this->assertValidationBlocked(fn () => $store($missingType, 'after-letter'));
+
+        // Rejected: locked.
+        $rejected = InsuranceReceivable::factory()->create([
+            'branch_office_id' => $maker->branch_office_id,
+            'insurance_company_id' => $receivable->insurance_company_id,
+            'death_document_condition' => 'hospital',
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_REJECTED,
+        ]);
+        $this->assertValidationBlocked(fn () => app(StoreClaimDocumentAction::class)
+            ->handle($rejected, $certificate, 'insurance-receivable-documents/rejected.pdf', 'r.pdf', $maker));
     }
 
     private function submittedClaim(User $submitter): ApprovalRequest

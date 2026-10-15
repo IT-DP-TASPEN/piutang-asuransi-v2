@@ -67,6 +67,8 @@ class GenerateCkpnWorkpaperItemsExportAction
                 ],
             ]));
         } catch (Throwable $exception) {
+            report($exception);
+
             if ($disk->exists($relativePath)) {
                 $disk->delete($relativePath);
             }
@@ -82,7 +84,8 @@ class GenerateCkpnWorkpaperItemsExportAction
                     'format' => 'xlsx',
                     'items_count' => $itemsCount,
                     'cutoff_date' => $workpaper->period?->toDateString(),
-                    'error' => $exception->getMessage(),
+                    // The raw message can carry server paths; it goes to the log via report() instead.
+                    'error' => 'Export generation failed. Check the application log for details.',
                 ],
             ]));
         }

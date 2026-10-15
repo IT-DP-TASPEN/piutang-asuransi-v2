@@ -54,6 +54,8 @@ class GenerateCkpnWorkpaperSakepExportAction
                 ],
             ]));
         } catch (Throwable $exception) {
+            report($exception);
+
             return DB::transaction(fn (): GeneratedExport => $workpaper->generatedExports()->create([
                 'export_type' => GeneratedExport::TYPE_CKPN_WORKPAPER_SAKEP_XLSX,
                 'file_path' => null,
@@ -64,7 +66,8 @@ class GenerateCkpnWorkpaperSakepExportAction
                     'format' => 'xlsx',
                     'items_count' => $workpaper->items()->count(),
                     'cutoff_date' => $workpaper->period?->toDateString(),
-                    'error' => $exception->getMessage(),
+                    // The raw message can carry server paths; it goes to the log via report() instead.
+                    'error' => 'Export generation failed. Check the application log for details.',
                 ],
             ]));
         }

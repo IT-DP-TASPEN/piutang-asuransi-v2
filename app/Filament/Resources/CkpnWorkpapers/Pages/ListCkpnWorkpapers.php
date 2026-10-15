@@ -7,7 +7,6 @@ use App\Filament\Resources\CkpnWorkpapers\CkpnWorkpaperResource;
 use App\Models\CkpnWorkpaper;
 use App\Models\User;
 use Filament\Actions\Action;
-use Filament\Actions\CreateAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
@@ -21,7 +20,6 @@ class ListCkpnWorkpapers extends ListRecords
     {
         return [
             $this->createAllBranchWorkpapersAction(),
-            CreateAction::make(),
         ];
     }
 

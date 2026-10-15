@@ -68,7 +68,8 @@ class DocumentsRelationManager extends RelationManager
                 Action::make('setDeathDocumentCondition')
                     ->label('Set death condition')
                     ->icon(Heroicon::OutlinedAdjustmentsHorizontal)
-                    ->visible(fn (): bool => $this->canMutateDocuments())
+                    // The death condition decides which documents are required, so it follows the draft lock.
+                    ->visible(fn (): bool => $this->canMutateDocuments() && $this->getOwnerRecord()->isEditable())
                     ->fillForm(fn (): array => [
                         'death_document_condition' => $this->getOwnerRecord()->death_document_condition,
                     ])
@@ -79,6 +80,8 @@ class DocumentsRelationManager extends RelationManager
                             ->required(),
                     ])
                     ->action(function (array $data): void {
+                        abort_unless($this->canMutateDocuments() && $this->getOwnerRecord()->isEditable(), 403);
+
                         $this->getOwnerRecord()->forceFill([
                             'death_document_condition' => $data['death_document_condition'],
                         ])->save();
@@ -142,10 +145,7 @@ class DocumentsRelationManager extends RelationManager
     {
         return $this->canMutateDocuments()
             && $record['uploadable']
-            && in_array($record['status'], [
-                ClaimDocumentChecklistItem::STATUS_MISSING,
-                ClaimDocumentChecklistItem::STATUS_UPLOADED,
-            ], true);
+            && $this->getOwnerRecord()->allowsClaimDocumentUpload($record['status']);
     }
 
     private function canMutateDocuments(): bool

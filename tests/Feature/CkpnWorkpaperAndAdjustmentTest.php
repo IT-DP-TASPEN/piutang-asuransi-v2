@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Actions\Ckpn\CreateAllBranchCkpnWorkpapersAction;
-use App\Actions\Ckpn\CreateCkpnWorkpaperAction;
 use App\Actions\Ckpn\GenerateMonthlyCkpnWorkpaperAction;
 use App\Actions\Ckpn\RecalculateCkpnWorkpaperAction;
 use App\Actions\CkpnAdjustment\ApproveCkpnAdjustmentAction;
@@ -867,36 +866,28 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         app(ApproveCkpnAdjustmentAction::class)->handle($adjustment, $approver);
     }
 
-    public function test_create_workpaper_preserves_cutoff_date_allows_same_month_and_prevents_duplicate_branch_cutoff(): void
+    public function test_create_workpapers_preserves_cutoff_date_allows_same_month_and_prevents_duplicate_cutoff(): void
     {
         $this->seedDependencies();
         Queue::fake();
         $maker = $this->userWithRole('accounting_maker', '000');
         $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
 
-        $workpaper = app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-15',
-            'branch_office_id' => $branch->id,
-        ], $maker);
+        $workpaper = app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-04-15'], $maker)
+            ->firstWhere('branch_office_id', $branch->id);
 
         $this->assertSame('2026-04-15', $workpaper->period->toDateString());
         $this->assertSame("branch:{$branch->id}", $workpaper->branch_scope_key);
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
         Queue::assertPushed(GenerateCkpnWorkpaperJob::class, fn (GenerateCkpnWorkpaperJob $job): bool => $job->ckpnWorkpaperId === $workpaper->id);
 
-        $secondWorkpaper = app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-30',
-            'branch_office_id' => $branch->id,
-        ], $maker);
+        $second = app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-04-30'], $maker);
 
-        $this->assertSame('2026-04-30', $secondWorkpaper->period->toDateString());
+        $this->assertSame('2026-04-30', $second->first()->period->toDateString());
 
         $this->expectException(ValidationException::class);
 
-        app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-15',
-            'branch_office_id' => $branch->id,
-        ], $maker);
+        app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-04-15'], $maker);
     }
 
     public function test_create_all_branch_workpapers_queues_active_operational_branches(): void
@@ -1122,38 +1113,17 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertTrue($accountingApprover->can('approve', $workpaper));
 
         try {
-            app(CreateCkpnWorkpaperAction::class)->handle([
-                'period' => '2026-04-01',
-                'branch_office_id' => $branch->id,
-            ], $businessMaker);
+            app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-04-01'], $businessMaker);
 
             $this->fail('Business maker should not create CKPN workpapers.');
         } catch (ValidationException) {
         }
 
-        $created = app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-01',
-            'branch_office_id' => $branch->id,
-        ], $accountingMaker);
+        $created = app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-04-01'], $accountingMaker)
+            ->firstWhere('branch_office_id', $branch->id);
 
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $created->status);
         Queue::assertPushed(GenerateCkpnWorkpaperJob::class, fn (GenerateCkpnWorkpaperJob $job): bool => $job->ckpnWorkpaperId === $created->id);
-    }
-
-    public function test_create_workpaper_prevents_duplicate_central_scope(): void
-    {
-        $this->seedDependencies();
-        Queue::fake();
-        $maker = $this->userWithRole('accounting_maker', '000');
-
-        app(CreateCkpnWorkpaperAction::class)->handle(['period' => '2026-04-15'], $maker);
-        $workpaper = app(CreateCkpnWorkpaperAction::class)->handle(['period' => '2026-04-30'], $maker);
-
-        $this->assertSame('2026-04-30', $workpaper->period->toDateString());
-
-        $this->expectException(ValidationException::class);
-
-        app(CreateCkpnWorkpaperAction::class)->handle(['period' => '2026-04-15'], $maker);
     }
 
     public function test_pending_receivable_cutoff_uses_selected_day_end_and_fallback_date(): void
@@ -1174,10 +1144,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         $this->expectException(ValidationException::class);
 
-        app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-15',
-            'branch_office_id' => $branch->id,
-        ], $maker);
+        app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-04-15'], $maker);
     }
 
     public function test_pending_receivable_after_cutoff_does_not_block_workpaper(): void
@@ -1196,10 +1163,8 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
             'system_status' => InsuranceReceivable::SYSTEM_STATUS_INQUIRY_COMPLETED,
         ]);
 
-        $workpaper = app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-15',
-            'branch_office_id' => $branch->id,
-        ], $maker);
+        $workpaper = app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-04-15'], $maker)
+            ->firstWhere('branch_office_id', $branch->id);
 
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
     }
@@ -1223,10 +1188,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         ])->saveQuietly();
 
         try {
-            app(CreateCkpnWorkpaperAction::class)->handle([
-                'period' => '2026-04-15',
-                'branch_office_id' => $branch->id,
-            ], $accountingMaker);
+            app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-04-15'], $accountingMaker);
 
             $this->fail('Pending failed receivable should block workpaper creation.');
         } catch (ValidationException $exception) {
@@ -1238,22 +1200,19 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         $this->assertSame(InsuranceReceivable::WORKFLOW_STATUS_CANCELLED, $receivable->workflow_status);
         $this->assertTrue($receivable->stageLogs()->where('event', 'technical_inquiry_failure_cancelled')->exists());
 
-        $workpaper = app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-15',
-            'branch_office_id' => $branch->id,
-        ], $accountingMaker);
+        $workpaper = app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-04-15'], $accountingMaker)
+            ->firstWhere('branch_office_id', $branch->id);
 
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
     }
 
-    public function test_pending_claim_status_updates_block_workpaper_only_for_cutoff_scope(): void
+    public function test_pending_claim_status_updates_block_workpaper_creation(): void
     {
         $this->seedDependencies();
         Queue::fake();
         $businessMaker = $this->userWithRole('business_maker', '000');
         $accountingMaker = $this->userWithRole('accounting_maker', '000');
         $branchOne = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
-        $branchTwo = BranchOffice::query()->where('branch_code', '002')->firstOrFail();
         $fromStatus = ClaimStatus::query()->where('code', ClaimStatus::DEFAULT_CODE)->firstOrFail();
         $toStatus = ClaimStatus::query()->where('code', 'approved')->firstOrFail();
         $receivable = InsuranceReceivable::factory()->create([
@@ -1273,31 +1232,19 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         ]);
 
         try {
-            app(CreateCkpnWorkpaperAction::class)->handle([
-                'period' => '2026-04-15',
-                'branch_office_id' => $branchOne->id,
-            ], $accountingMaker);
+            app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-04-15'], $accountingMaker);
 
-            $this->fail('Pending claim status request should block scoped CKPN workpaper.');
+            $this->fail('Pending claim status request should block CKPN workpaper creation.');
         } catch (ValidationException $exception) {
             $message = collect($exception->errors())->flatten()->first();
             $this->assertStringContainsString('1 claim status update requests', $message);
             $this->assertStringContainsString("#{$request->id} returned", $message);
         }
 
-        $otherBranchWorkpaper = app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-15',
-            'branch_office_id' => $branchTwo->id,
-        ], $accountingMaker);
-
-        $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $otherBranchWorkpaper->status);
-
         $request->forceFill(['status' => ClaimStatusChangeRequest::STATUS_CANCELLED])->save();
 
-        $workpaper = app(CreateCkpnWorkpaperAction::class)->handle([
-            'period' => '2026-04-15',
-            'branch_office_id' => $branchOne->id,
-        ], $accountingMaker);
+        $workpaper = app(CreateAllBranchCkpnWorkpapersAction::class)->handle(['period' => '2026-04-15'], $accountingMaker)
+            ->firstWhere('branch_office_id', $branchOne->id);
 
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_QUEUED, $workpaper->status);
     }
@@ -1336,6 +1283,7 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
         InsuranceReceivable::factory()->create([
             'branch_office_id' => $branch->id,
             'branch_code' => $branch->branch_code,
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_RECEIVABLE_FORMED,
             'receivable_formation_date' => '2026-04-01',
             'receivable_amount' => '10000.00',
         ]);
@@ -1354,6 +1302,35 @@ class CkpnWorkpaperAndAdjustmentTest extends TestCase
 
         $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_FAILED, $workpaper->refresh()->status);
         $this->assertStringContainsString('Active CKPN calculation rule not found', $workpaper->last_error_message);
+        $this->assertSame(0, $workpaper->items()->count());
+    }
+
+    public function test_generation_rechecks_readiness_for_receivables_that_became_pending(): void
+    {
+        $this->seedDependencies();
+        $branch = BranchOffice::query()->where('branch_code', '001')->firstOrFail();
+        $workpaper = CkpnWorkpaper::query()->create([
+            'period' => '2026-04-30',
+            'branch_office_id' => $branch->id,
+            'status' => CkpnWorkpaper::STATUS_GENERATION_QUEUED,
+        ]);
+        // Appears after creation passed readiness, before the queued generation runs.
+        InsuranceReceivable::factory()->create([
+            'branch_office_id' => $branch->id,
+            'branch_code' => $branch->branch_code,
+            'date_of_death' => '2026-04-15',
+            'workflow_status' => InsuranceReceivable::WORKFLOW_STATUS_DRAFT,
+        ]);
+
+        try {
+            (new GenerateCkpnWorkpaperJob($workpaper->id))->handle(app(GenerateMonthlyCkpnWorkpaperAction::class));
+
+            $this->fail('Generation should stop while a receivable in scope is pending.');
+        } catch (ValidationException) {
+        }
+
+        $this->assertSame(CkpnWorkpaper::STATUS_GENERATION_FAILED, $workpaper->refresh()->status);
+        $this->assertStringContainsString('Insurance Receivables are still pending', $workpaper->last_error_message);
         $this->assertSame(0, $workpaper->items()->count());
     }
 

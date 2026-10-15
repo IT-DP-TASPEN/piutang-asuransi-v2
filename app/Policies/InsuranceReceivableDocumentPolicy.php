@@ -95,7 +95,8 @@ class InsuranceReceivableDocumentPolicy
 
     private function canMutateForParentState(User $user, InsuranceReceivableDocument $insuranceReceivableDocument): bool
     {
+        // Existing documents are only replaced or removed while the branch maker owns the draft.
         return $insuranceReceivableDocument->insuranceReceivable instanceof InsuranceReceivable
-            && $insuranceReceivableDocument->insuranceReceivable->isWorkflowOrigin();
+            && $insuranceReceivableDocument->insuranceReceivable->isEditable();
     }
 }

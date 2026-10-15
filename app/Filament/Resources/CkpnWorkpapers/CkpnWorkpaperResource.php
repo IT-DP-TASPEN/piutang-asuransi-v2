@@ -2,12 +2,10 @@
 
 namespace App\Filament\Resources\CkpnWorkpapers;
 
-use App\Filament\Resources\CkpnWorkpapers\Pages\CreateCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ListCkpnWorkpapers;
 use App\Filament\Resources\CkpnWorkpapers\Pages\ViewCkpnWorkpaper;
 use App\Filament\Resources\CkpnWorkpapers\RelationManagers\AdjustmentsRelationManager;
 use App\Filament\Resources\CkpnWorkpapers\RelationManagers\ItemsRelationManager;
-use App\Filament\Resources\CkpnWorkpapers\Schemas\CkpnWorkpaperForm;
 use App\Filament\Resources\CkpnWorkpapers\Schemas\CkpnWorkpaperInfolist;
 use App\Filament\Resources\CkpnWorkpapers\Tables\CkpnWorkpapersTable;
 use App\Models\CkpnWorkpaper;
@@ -54,11 +52,6 @@ class CkpnWorkpaperResource extends Resource
         return $query->whereRaw('1 = 0');
     }
 
-    public static function form(Schema $schema): Schema
-    {
-        return CkpnWorkpaperForm::configure($schema);
-    }
-
     public static function infolist(Schema $schema): Schema
     {
         return CkpnWorkpaperInfolist::configure($schema);
@@ -81,7 +74,6 @@ class CkpnWorkpaperResource extends Resource
     {
         return [
             'index' => ListCkpnWorkpapers::route('/'),
-            'create' => CreateCkpnWorkpaper::route('/create'),
             'view' => ViewCkpnWorkpaper::route('/{record}'),
         ];
     }
