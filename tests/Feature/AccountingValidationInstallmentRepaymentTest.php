@@ -133,6 +133,13 @@ class AccountingValidationInstallmentRepaymentTest extends TestCase
             'contract_outstanding_as_of' => '2026-06-30',
             'contract_outstanding_product_code' => '301',
             'contract_outstanding_trx_type' => 'LSA01',
+            'contract_outstanding_api_log_id' => ApiIntegrationLog::query()->create([
+                'service_name' => 'contract_outstanding',
+                'endpoint' => '/api/v1/loans/3010000000000001/contractual',
+                'method' => 'GET',
+                'is_success' => true,
+                'response_body' => ['raw' => $this->contractResponse('9500')],
+            ])->id,
         ]);
         InsuranceReceivableInstallmentRepayment::query()->create([
             'insurance_receivable_id' => $receivable->id,

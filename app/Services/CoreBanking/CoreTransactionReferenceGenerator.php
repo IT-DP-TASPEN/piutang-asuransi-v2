@@ -19,6 +19,12 @@ class CoreTransactionReferenceGenerator
         return $this->format('ETPIU', [$insuranceReceivableId], $attemptNo);
     }
 
+    public function postDeathAutodebitRefund(int $insuranceReceivableId, string $journalNumber, int $attemptNo): string
+    {
+        // ponytail: crc32 keeps the reference short; a collision only makes the reference registry refuse the attempt.
+        return $this->format('MDRFD', [$insuranceReceivableId, sprintf('%u', crc32($journalNumber))], $attemptNo);
+    }
+
     public function receivablePayment(int $paymentRequestId, int $attemptNo): string
     {
         return $this->format('RCPAY', [$paymentRequestId], $attemptNo);
@@ -39,6 +45,6 @@ class CoreTransactionReferenceGenerator
      */
     private function format(string $prefix, array $parts, int $attemptNo): string
     {
-        return $prefix . implode('-', $parts) . str_pad((string) $attemptNo, 3, '0', STR_PAD_LEFT);
+        return $prefix.implode('-', $parts).str_pad((string) $attemptNo, 3, '0', STR_PAD_LEFT);
     }
 }

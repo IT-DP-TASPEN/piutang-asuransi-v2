@@ -45,6 +45,8 @@ class GlToGlTransaction extends Model
 
     public const PURPOSE_RECEIVABLE_PAYMENT = 'receivable_payment';
 
+    public const PURPOSE_POST_DEATH_AUTODEBIT_REFUND = 'post_death_autodebit_refund';
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_SUCCESS = 'success';

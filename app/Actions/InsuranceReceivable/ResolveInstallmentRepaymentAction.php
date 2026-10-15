@@ -24,6 +24,7 @@ class ResolveInstallmentRepaymentAction
         private readonly ApprovalService $approvalService,
         private readonly CoreBankingClient $coreBankingClient,
         private readonly PrepareAccountingValidationContractOutstandingAction $contractOutstandingAction,
+        private readonly ProcessPostDeathAutodebitRefundAction $postDeathRefundAction,
         private readonly InsuranceReceivableStageLogger $stageLogger,
     ) {}
 
@@ -139,7 +140,10 @@ class ResolveInstallmentRepaymentAction
             });
 
             $businessDate = now('Asia/Jakarta')->toDateString();
-            $this->contractOutstandingAction->handle($insuranceReceivable->refresh(), $user, $businessDate);
+            $this->postDeathRefundAction->handle(
+                $this->contractOutstandingAction->handle($insuranceReceivable->refresh(), $user, $businessDate),
+                $user,
+            );
             $this->approvalService->approveCurrentStep($request->refresh(), $user, $notes);
 
             return $insuranceReceivable->refresh();

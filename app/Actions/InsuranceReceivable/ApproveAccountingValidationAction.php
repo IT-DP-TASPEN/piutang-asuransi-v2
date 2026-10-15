@@ -14,6 +14,7 @@ class ApproveAccountingValidationAction
         private readonly ApprovalService $approvalService,
         private readonly ProcessAccountingValidationInstallmentRepaymentAction $repaymentAction,
         private readonly PrepareAccountingValidationContractOutstandingAction $contractOutstandingAction,
+        private readonly ProcessPostDeathAutodebitRefundAction $postDeathRefundAction,
     ) {}
 
     public function handle(InsuranceReceivable $insuranceReceivable, ApprovalRequest $request, User $user, ?string $notes = null): InsuranceReceivable
@@ -36,7 +37,10 @@ class ApproveAccountingValidationAction
         $businessDate = now('Asia/Jakarta')->toDateString();
 
         $receivable = $this->repaymentAction->handle($insuranceReceivable, $user);
-        $this->contractOutstandingAction->handle($receivable, $user, $businessDate);
+        $this->postDeathRefundAction->handle(
+            $this->contractOutstandingAction->handle($receivable, $user, $businessDate),
+            $user,
+        );
         $this->approvalService->approveCurrentStep($request->refresh(), $user, $notes);
 
         return $insuranceReceivable->refresh();

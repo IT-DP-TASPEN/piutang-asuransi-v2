@@ -22,6 +22,8 @@ class EarlyTerminationRepaymentTopUpPayloadBuilder
         string $receiptNumber,
         string $trxType = 'PiutangAsuransi',
         ?CarbonInterface $dateTime = null,
+        ?string $destAccount = null,
+        ?string $narrative = null,
     ): array {
         $insuranceReceivable->loadMissing('branchOffice');
 
@@ -37,13 +39,17 @@ class EarlyTerminationRepaymentTopUpPayloadBuilder
             )
         );
         $loanAccount = trim((string) $insuranceReceivable->loan_account_number);
-        $narrative = trim(
+        $narrative ??= trim(
             sprintf(
                 'Piutang Asuransi %s %s',
                 $loanAccount,
                 $insuranceReceivable->customer_name ?? '',
             )
         );
+
+        if ($narrative !== null) {
+            $description = $narrative;
+        }
 
         return [
             'referenceNumber' => $referenceNumber,
@@ -63,7 +69,7 @@ class EarlyTerminationRepaymentTopUpPayloadBuilder
             'dateTime' => ($dateTime ?? now())->format('YmdHis'),
             'description' => $description,
             'debitFee' => '0',
-            'destAccount' => $this->operAccount->actual($insuranceReceivable),
+            'destAccount' => $destAccount ?? $this->operAccount->actual($insuranceReceivable),
             'currency' => 'IDR',
             'srcAccType' => '10',
             'totalBill' => '',

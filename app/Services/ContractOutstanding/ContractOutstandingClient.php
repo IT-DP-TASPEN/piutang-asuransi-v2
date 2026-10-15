@@ -108,6 +108,26 @@ class ContractOutstandingClient
         return $result;
     }
 
+    /**
+     * Repayment history from a stored, already-validated TRS response, with amounts kept as decimal strings.
+     *
+     * @return list<array<string, string>>
+     */
+    public function repaymentHistoryFromLog(ApiIntegrationLog $log): array
+    {
+        try {
+            [$decoded] = $this->decodeResponse($log->response_body['raw'] ?? null);
+        } catch (JsonException) {
+            $this->invalid('Stored TRS response is unreadable.');
+        }
+
+        if (! is_array($decoded['repayment_history'] ?? null)) {
+            $this->invalid('TRS repayment history is malformed.');
+        }
+
+        return $decoded['repayment_history'];
+    }
+
     private function parseResult(array $body, array $native, string $account, string $asOf, int $logId): ContractOutstandingResult
     {
         if (! is_string($body['requested_account'] ?? null) || trim($body['requested_account']) !== $account) {
